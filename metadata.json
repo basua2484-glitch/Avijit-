@@ -1,0 +1,6 @@
+{
+  "name": "Hostel Mess & Shift Manager",
+  "description": "Hostel mess, shift overtime meal management, zero food wastage, multi-role RBAC, and auto-accounting billing system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
