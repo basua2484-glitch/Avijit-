@@ -1974,3 +1974,26 @@ document.getElementById("btn-reset-db")?.addEventListener("click", () => {
 
 // Initial boot render
 renderUI();
+
+// 16. Progressive Web App (PWA) Service Worker Registration & Offline Support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // Register root or relative service worker
+    const swUrl = window.location.pathname.includes('/webapp') ? '../service-worker.js' : 'service-worker.js';
+    navigator.serviceWorker.register(swUrl)
+      .then((reg) => {
+        console.log('✓ Hostel Manager PWA Service Worker Registered successfully:', reg.scope);
+      })
+      .catch((err) => {
+        console.log('PWA Service Worker Registration failed (falling back to standard cache):', err);
+      });
+  });
+}
+
+// Listen for Online/Offline state changes for robust connectivity awareness
+window.addEventListener('online', () => {
+  console.log('Network status: Back online');
+});
+window.addEventListener('offline', () => {
+  console.log('Network status: Offline mode active (localStorage + PWA Cache)');
+});

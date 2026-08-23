@@ -1,0 +1,57 @@
+{
+  "name": "Hostel Manager",
+  "short_name": "Hostel Manager",
+  "description": "Hostel Mess, Attendance, Work Shift & Expense Management System",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
+  "orientation": "any",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "utilities", "business"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Resident Portal",
+      "short_name": "Resident",
+      "description": "Open Resident Home & Meal Controls",
+      "url": "./index.html#resident",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Kitchen Live Counter",
+      "short_name": "Kitchen",
+      "description": "Check Kitchen Headcount & Cook Tally",
+      "url": "./index.html#kitchen",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Manager Ops",
+      "short_name": "Manager",
+      "description": "Manage Roster, Approvals & Expenses",
+      "url": "./index.html#manager",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
