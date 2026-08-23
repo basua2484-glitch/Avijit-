@@ -531,50 +531,105 @@
 
     <!-- MODALS -->
 
-    <!-- 1. Add / Edit User Modal (Admin CRUD) -->
+    <!-- 1. Add / Register User Modal with Phone + OTP Verification -->
     <div class="modal" id="modal-user-form">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="modal-user-title">Add New User</h3>
+          <h3 id="modal-user-title">Employee Registration (OTP Verify)</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Create or update user details, role permissions, room and work shift.</p>
+        <p class="text-sub">Secure Registration: Phone Number verification via OTP required for account activation.</p>
         <input type="hidden" id="form-user-id" value="">
-        <div class="form-group mt-3">
-          <label>Full Name *</label>
-          <input type="text" id="form-user-name" placeholder="e.g. Ramesh Kumar">
+
+        <!-- STEP 1: Registration Details & Phone Input -->
+        <div id="otp-step-1" class="otp-step active">
+          <div class="form-group mt-3">
+            <label>Full Name *</label>
+            <input type="text" id="form-user-name" placeholder="e.g. Ramesh Kumar">
+          </div>
+          <div class="form-group">
+            <label>Mobile Number (for SMS OTP) *</label>
+            <div style="display:flex; gap:6px;">
+              <span style="display:flex; align-items:center; padding:0 10px; background:#F1F5F9; border:1px solid var(--border); border-radius:var(--radius-md); font-weight:700; font-size:12px; color:#475569;">+91</span>
+              <input type="tel" id="form-user-mobile" placeholder="9876543210" maxlength="10" style="flex:1;">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Role Assignment *</label>
+            <select id="form-user-role" class="form-select">
+              <option value="RESIDENT">Hostel Resident / Employee (रहवासी - Self Access Only)</option>
+              <option value="MANAGER">Hostel Manager (प्रबंधक - Ops & Expenses)</option>
+              <option value="ADMIN">Super Admin (व्यवस्थापक - Full Master Access)</option>
+              <option value="COOK">Kitchen Cook (रसोईया - Food Headcount Only)</option>
+            </select>
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Assigned Room / Bed *</label>
+              <input type="text" id="form-user-room" placeholder="e.g. 204 or Bed A-1">
+            </div>
+            <div class="form-group">
+              <label>Employee ID Code</label>
+              <input type="text" id="form-user-code" placeholder="e.g. EMP_101">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Initial Work Shift</label>
+            <select id="form-user-shift" class="form-select">
+              <option value="OFF_DUTY">Off-Duty (Rest Day - Auto-ON Meal)</option>
+              <option value="NIGHT">Night Shift (Auto-ON Meal)</option>
+              <option value="MORNING">Morning Shift (Day - Auto-OFF Meal)</option>
+              <option value="EVENING">Evening Shift (Day - Auto-OFF Meal)</option>
+            </select>
+          </div>
+          <button class="btn btn-primary full-width mt-3" id="btn-proceed-otp">
+            📲 Send Verification OTP
+          </button>
         </div>
-        <div class="form-group">
-          <label>Mobile Number *</label>
-          <input type="tel" id="form-user-mobile" placeholder="e.g. 9876543210">
+
+        <!-- STEP 2: OTP Verification Screen -->
+        <div id="otp-step-2" class="otp-step">
+          <!-- Demo Mock OTP Simulation Banner -->
+          <div class="demo-otp-banner" id="demo-otp-banner">
+            <div class="demo-otp-banner-header">
+              <span style="font-size:11px; font-weight:800; color:#1D4ED8; display:flex; align-items:center; gap:4px;">
+                🔔 SIMULATED SMS GATEWAY
+              </span>
+              <span class="badge badge-success" style="font-size:10px;">Mock Active</span>
+            </div>
+            <div style="font-size:12px; color:#334155;">
+              SMS sent to <strong id="otp-target-mobile">+91 XXXXXXXXXX</strong>:
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
+              <div>OTP Code: <span class="demo-otp-code-highlight" id="simulated-otp-code">1234</span></div>
+              <button class="btn btn-secondary btn-sm" id="btn-autofill-otp" style="padding:4px 8px; font-size:11px;">
+                ⚡ Auto-Fill
+              </button>
+            </div>
+            <div style="font-size:10px; color:#64748B;">
+              (Production ready for Firebase Auth / SMS API Gateway)
+            </div>
+          </div>
+
+          <div class="otp-input-container">
+            <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Verification Code</label>
+            <input type="text" id="input-verify-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
+            <div class="otp-timer-text" id="otp-timer-display">Resend code in 30s</div>
+          </div>
+
+          <div style="display:flex; gap:8px;" class="mt-2">
+            <button class="btn btn-secondary" id="btn-back-otp-step" style="flex:1;">
+              ← Back / Edit
+            </button>
+            <button class="btn btn-secondary" id="btn-resend-otp" disabled style="flex:1;">
+              🔄 Resend OTP
+            </button>
+          </div>
+
+          <button class="btn btn-primary full-width mt-3" id="btn-verify-and-register">
+            🔒 Verify OTP & Complete Registration
+          </button>
         </div>
-        <div class="form-group">
-          <label>Role Assignment *</label>
-          <select id="form-user-role" class="form-select">
-            <option value="RESIDENT">Hostel Resident / Employee (रहवासी)</option>
-            <option value="MANAGER">Hostel Manager (प्रबंधक)</option>
-            <option value="ADMIN">Super Admin (व्यवस्थापक)</option>
-            <option value="COOK">Kitchen Cook (रसोईया)</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Assigned Room / Bed *</label>
-          <input type="text" id="form-user-room" placeholder="e.g. 204 or Bed A-1">
-        </div>
-        <div class="form-group">
-          <label>Employee / ID Code (Optional)</label>
-          <input type="text" id="form-user-code" placeholder="e.g. EMP_101 or MGR_01">
-        </div>
-        <div class="form-group">
-          <label>Initial Work Shift</label>
-          <select id="form-user-shift" class="form-select">
-            <option value="OFF_DUTY">Off-Duty (Rest Day - Auto-ON Meal)</option>
-            <option value="NIGHT">Night Shift (Auto-ON Meal)</option>
-            <option value="MORNING">Morning Shift (Day - Auto-OFF Meal)</option>
-            <option value="EVENING">Evening Shift (Day - Auto-OFF Meal)</option>
-          </select>
-        </div>
-        <button class="btn btn-primary full-width mt-3" id="btn-save-user">Save User</button>
       </div>
     </div>
 
@@ -628,10 +683,22 @@
           <h3>Select / Switch User Role</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Choose an account to test role-based access:</p>
+        <p class="text-sub">Choose an account to test role-based access & permissions:</p>
         <div class="account-list" id="switch-account-list">
           <!-- Populated via JS -->
         </div>
+
+        <div class="rule-box mt-3" style="font-size:11px;">
+          🛡️ <strong>Access Security Rules:</strong><br>
+          • <strong>Normal Employee:</strong> Resident self-portal & Punch In/Out only. Master data editing locked.<br>
+          • <strong>Manager:</strong> Operational desk, approvals & expense recording.<br>
+          • <strong>Super Admin:</strong> Full master authority, database & user control.<br>
+          • <strong>Kitchen Cook:</strong> Kitchen headcount & food preparation tallies.
+        </div>
+
+        <button class="btn btn-secondary full-width mt-3" id="btn-switch-modal-register">
+          ➕ Register New Employee (OTP Verification)
+        </button>
       </div>
     </div>
 

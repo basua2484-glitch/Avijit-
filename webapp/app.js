@@ -60,6 +60,56 @@ let state = (function() {
   return JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
 })();
 
+// OTP Verification Service (Mock/Demo + Production Extensible Architecture)
+const OtpAuthService = {
+  activeSession: null,
+  countdownInterval: null,
+
+  generateOtp() {
+    // Generate clean 4-digit code (e.g. 1234 demo or dynamic 4-digit)
+    return Math.floor(1000 + Math.random() * 9000).toString();
+  },
+
+  sendOtp(userData) {
+    const otp = this.generateOtp();
+    this.activeSession = {
+      userData: userData,
+      otp: otp,
+      phone: userData.mobile,
+      generatedAt: Date.now(),
+      expiresAt: Date.now() + 5 * 60 * 1000,
+      attempts: 0
+    };
+    
+    // PRODUCTION INTEGRATION HOOK:
+    // When deploying to production with Firebase Auth Phone verification or SMS API (e.g., Fast2SMS/Twilio):
+    // Example: sendSmsApi(userData.mobile, `Your Hostel Manager OTP is ${otp}. Valid for 5 mins.`);
+    console.log(`[SMS Gateway Mock] Sent OTP ${otp} to +91 ${userData.mobile}`);
+    return otp;
+  },
+
+  verify(inputOtp) {
+    if (!this.activeSession) {
+      return { success: false, message: "No active verification session found. Please request OTP again." };
+    }
+    if (Date.now() > this.activeSession.expiresAt) {
+      return { success: false, message: "OTP has expired! Please request a new verification code." };
+    }
+    this.activeSession.attempts++;
+    if (this.activeSession.attempts > 4) {
+      this.activeSession = null;
+      return { success: false, message: "Too many failed attempts. Please request a new OTP." };
+    }
+    // Accept either the dynamic generated code or standard testing code '1234'
+    if (inputOtp.trim() === this.activeSession.otp || inputOtp.trim() === "1234") {
+      const data = this.activeSession.userData;
+      this.activeSession = null;
+      return { success: true, userData: data };
+    }
+    return { success: false, message: "Invalid OTP code entered! For testing, use the simulated code or '1234'." };
+  }
+};
+
 function saveState() {
   localStorage.setItem("hostel_mess_state_v2", JSON.stringify(state));
 }
@@ -209,29 +259,34 @@ function renderHeader() {
   document.getElementById("header-avatar").textContent = initials;
   document.getElementById("header-user-name").textContent = user.name;
   document.getElementById("header-user-role").textContent = `${user.role} • ${user.assignedRoom || 'Room Unassigned'}`;
-  document.getElementById("current-role-badge").textContent = user.role;
+  
+  const roleBadge = document.getElementById("current-role-badge");
+  if (roleBadge) {
+    roleBadge.textContent = user.role;
+    roleBadge.className = `role-pill ${user.role.toLowerCase()}`;
+  }
 
-  // Manage Nav Button Opacity & Permissions based on user role
+  // Manage Nav Button Opacity & Lock Indicators based on user role
   const mgrBtn = document.getElementById("nav-manager-btn");
   const expBtn = document.getElementById("nav-expense-btn");
   const admBtn = document.getElementById("nav-admin-btn");
 
-  if (user.role === "RESIDENT") {
-    if (mgrBtn) mgrBtn.style.opacity = "0.4";
-    if (expBtn) expBtn.style.opacity = "0.7";
-    if (admBtn) admBtn.style.opacity = "0.4";
+  if (user.role === "RESIDENT" || user.role === "EMPLOYEE") {
+    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.title = "🔒 Manager Ops (Restricted)"; }
+    if (expBtn) { expBtn.style.opacity = "0.9"; expBtn.title = "Expense View"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
   } else if (user.role === "MANAGER") {
-    if (mgrBtn) mgrBtn.style.opacity = "1";
-    if (expBtn) expBtn.style.opacity = "1";
-    if (admBtn) admBtn.style.opacity = "0.4";
+    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.title = "Manager Operations"; }
+    if (expBtn) { expBtn.style.opacity = "1"; expBtn.title = "Expense Ledger"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
   } else if (user.role === "ADMIN") {
-    if (mgrBtn) mgrBtn.style.opacity = "1";
-    if (expBtn) expBtn.style.opacity = "1";
-    if (admBtn) admBtn.style.opacity = "1";
+    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.title = "Manager Operations"; }
+    if (expBtn) { expBtn.style.opacity = "1"; expBtn.title = "Expense Ledger"; }
+    if (admBtn) { admBtn.style.opacity = "1"; admBtn.title = "Super Admin Panel"; }
   } else if (user.role === "COOK") {
-    if (mgrBtn) mgrBtn.style.opacity = "0.4";
-    if (expBtn) expBtn.style.opacity = "0.7";
-    if (admBtn) admBtn.style.opacity = "0.4";
+    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.title = "🔒 Manager Ops (Restricted)"; }
+    if (expBtn) { expBtn.style.opacity = "0.7"; expBtn.title = "Expense View"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
   }
 }
 
@@ -496,11 +551,41 @@ document.querySelectorAll(".filter-chip").forEach(chip => {
 
 // 4. Manager Operations Screen
 function renderManagerScreen() {
+  const user = state.currentUser || state.users[0];
+  const isNormalEmployee = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
+
+  const leavesContainer = document.getElementById("manager-leaves-list");
+  const rList = document.getElementById("manager-resident-list");
+  const addResBtn = document.getElementById("btn-mgr-add-resident");
+
+  if (isNormalEmployee) {
+    document.getElementById("mgr-active-count").textContent = "🔒 Locked";
+    document.getElementById("mgr-pending-count").textContent = "🔒 Locked";
+    if (addResBtn) addResBtn.style.display = "none";
+
+    if (leavesContainer) {
+      leavesContainer.innerHTML = `
+        <div class="locked-tab-card">
+          <div class="locked-icon-bubble">🔒</div>
+          <h4 style="margin:0;">Manager Operations Portal Locked</h4>
+          <p class="text-sub">
+            Access Restricted: Only Super Admin and Hostel Manager can view, approve leave requests, and manage employee records.<br>
+            Normal employees can use the <strong>Resident Home</strong> and <strong>Kitchen Live</strong> dashboards.
+          </p>
+        </div>
+      `;
+    }
+    if (rList) {
+      rList.innerHTML = `<div class="text-sub text-center" style="padding:16px;">Resident Master Roster is restricted to Admin & Manager.</div>`;
+    }
+    return;
+  }
+
+  if (addResBtn) addResBtn.style.display = "inline-flex";
   const activeResidents = state.users.filter(u => u.status === 'ACTIVE' && (u.role === 'RESIDENT' || u.role === 'EMPLOYEE'));
   document.getElementById("mgr-active-count").textContent = `${activeResidents.length} Active`;
   document.getElementById("mgr-pending-count").textContent = `${(state.pendingLeaves || []).length} Requests`;
 
-  const leavesContainer = document.getElementById("manager-leaves-list");
   leavesContainer.innerHTML = "";
 
   if (!state.pendingLeaves || state.pendingLeaves.length === 0) {
@@ -524,11 +609,10 @@ function renderManagerScreen() {
   }
 
   // Resident Directory
-  const rList = document.getElementById("manager-resident-list");
   rList.innerHTML = "";
 
   if (activeResidents.length === 0) {
-    rList.innerHTML = `<div class="empty-state">No residents added yet. Click "+ New Resident" or use Admin Panel to add members.</div>`;
+    rList.innerHTML = `<div class="empty-state">No residents added yet. Click "+ New Resident" to register members with OTP verification.</div>`;
   } else {
     activeResidents.forEach(u => {
       const div = document.createElement("div");
@@ -536,7 +620,7 @@ function renderManagerScreen() {
       div.innerHTML = `
         <div>
           <strong>${u.name} (Room ${u.assignedRoom || '101'})</strong>
-          <p class="text-sub">${u.userIdCode || 'EMP'} • 📱 ${u.mobile}</p>
+          <p class="text-sub">${u.userIdCode || 'EMP'} • 📱 +91 ${u.mobile} ${u.isOtpVerified ? '• <span class="text-success font-bold">✓ OTP Verified</span>' : ''}</p>
         </div>
         <span class="role-tag">${u.currentShift || 'OFF_DUTY'}</span>
       `;
@@ -546,14 +630,21 @@ function renderManagerScreen() {
 }
 
 function processLeave(id, approve) {
+  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+    alert("🔒 Access Denied: Only Super Admin and Hostel Manager can approve or reject leaves.");
+    return;
+  }
   state.pendingLeaves = state.pendingLeaves.filter(l => l.id !== id);
   saveState();
   renderUI();
   alert(approve ? "✓ Leave Approved! Meals automatically locked for the duration." : "Leave Request Rejected.");
 }
 
-// 5. Expense Ledger Screen (Actual Expenses Tracking)
+// 5. Expense Ledger Screen (Actual Expenses Tracking & Role Security)
 function renderExpenseScreen() {
+  const user = state.currentUser || state.users[0];
+  const isNormalEmployee = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
+
   const expTotals = calculateExpenseTotals();
   const dynamicRate = getDynamicPlateRate();
 
@@ -561,9 +652,24 @@ function renderExpenseScreen() {
   document.getElementById("exp-metric-grocery").textContent = `₹${expTotals.GROCERY.toFixed(2)}`;
   document.getElementById("exp-metric-plate-rate").textContent = `₹${dynamicRate.toFixed(2)}`;
 
+  const addExpBtn = document.getElementById("btn-open-add-expense");
   const settingRentInput = document.getElementById("setting-room-rent");
-  if (settingRentInput && !settingRentInput.matches(":focus")) {
-    settingRentInput.value = state.roomRentPerPerson || 1500;
+  const saveRentBtn = document.getElementById("btn-save-room-rent");
+
+  if (isNormalEmployee) {
+    if (addExpBtn) addExpBtn.style.display = "none";
+    if (settingRentInput) {
+      settingRentInput.value = state.roomRentPerPerson || 1500;
+      settingRentInput.disabled = true;
+    }
+    if (saveRentBtn) saveRentBtn.style.display = "none";
+  } else {
+    if (addExpBtn) addExpBtn.style.display = "inline-flex";
+    if (settingRentInput && !settingRentInput.matches(":focus")) {
+      settingRentInput.value = state.roomRentPerPerson || 1500;
+      settingRentInput.disabled = false;
+    }
+    if (saveRentBtn) saveRentBtn.style.display = "inline-flex";
   }
 
   const categoryFilter = state.selectedExpenseCategoryFilter || "ALL";
@@ -579,7 +685,7 @@ function renderExpenseScreen() {
     container.innerHTML = `
       <div class="empty-state">
         <p>No expenses recorded yet.</p>
-        <p class="text-sub mt-1">Click <strong>"+ Add Real Expense"</strong> to log grocery, electricity, cook salary, etc.</p>
+        <p class="text-sub mt-1">${isNormalEmployee ? 'No expense logs available.' : 'Click <strong>"+ Add Real Expense"</strong> to log grocery, electricity, cook salary, etc.'}</p>
       </div>
     `;
     return;
@@ -601,7 +707,7 @@ function renderExpenseScreen() {
       </div>
       <div style="text-align:right; display:flex; align-items:center; gap:10px;">
         <span style="font-size:16px; font-weight:800; color:var(--text-primary);">₹${parseFloat(exp.amount).toFixed(2)}</span>
-        <button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>
+        ${!isNormalEmployee ? `<button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>` : ''}
       </div>
     `;
     container.appendChild(card);
@@ -631,6 +737,10 @@ function getCategoryBadgeClass(cat) {
 }
 
 function deleteExpense(id) {
+  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+    alert("🔒 Access Denied: Only Admin and Manager can delete expense entries.");
+    return;
+  }
   if (confirm("Are you sure you want to delete this expense entry?")) {
     state.expensesLog = state.expensesLog.filter(e => e.id !== id);
     saveState();
@@ -650,6 +760,10 @@ document.querySelectorAll(".exp-chip").forEach(chip => {
 
 // Save Room Rent
 document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
+  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+    alert("🔒 Access Denied: Only Admin and Manager can configure room rent.");
+    return;
+  }
   const val = parseFloat(document.getElementById("setting-room-rent").value) || 0;
   state.roomRentPerPerson = val;
   saveState();
@@ -659,32 +773,59 @@ document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
 
 // 6. Admin Screen Rendering (User & Role Management CRUD + Attendance & OT Report)
 function renderAdminScreen() {
+  const user = state.currentUser || state.users[0];
+  const isResidentOrCook = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
+  const isAdmin = user.role === "ADMIN";
+
   const activeUsers = (state.users || []).filter(u => u.status === 'ACTIVE').length;
   const totalPlates = getTotalConsumedPlates();
   const plateRate = getDynamicPlateRate();
 
-  document.getElementById("admin-members-count").textContent = activeUsers;
-  document.getElementById("admin-plates-count").textContent = totalPlates;
-  document.getElementById("admin-rate-display").textContent = `₹${plateRate.toFixed(2)}`;
+  document.getElementById("admin-members-count").textContent = isResidentOrCook ? "🔒" : activeUsers;
+  document.getElementById("admin-plates-count").textContent = isResidentOrCook ? "🔒" : totalPlates;
+  document.getElementById("admin-rate-display").textContent = isResidentOrCook ? "🔒" : `₹${plateRate.toFixed(2)}`;
+
+  const addUsrBtn = document.getElementById("btn-open-add-user");
+  const recPunchBtn = document.getElementById("btn-open-manual-att");
+  const resetDbBtn = document.getElementById("btn-reset-db");
+
+  if (addUsrBtn) addUsrBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
+  if (recPunchBtn) recPunchBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
+  if (resetDbBtn) resetDbBtn.style.display = isAdmin ? "inline-flex" : "none";
 
   // 1. Render Attendance & OT Report Table
   renderAttendanceReport();
 
   // 2. Render User & Role Directory
+  const uList = document.getElementById("admin-users-list");
+  if (!uList) return;
+  uList.innerHTML = "";
+
+  if (isResidentOrCook) {
+    uList.innerHTML = `
+      <div class="locked-tab-card">
+        <div class="locked-icon-bubble">🔒</div>
+        <h4 style="margin:0;">Super Admin Control Locked</h4>
+        <p class="text-sub">
+          Access Restricted: Master User Role Administration, Permissions, and System Settings are strictly protected.<br>
+          Normal employees can only view their own dashboard and perform Punch In/Out.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
   const roleFilter = state.selectedRoleFilter || "ALL";
   let filteredUsers = state.users || [];
   if (roleFilter !== "ALL") {
     filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
   }
 
-  const uList = document.getElementById("admin-users-list");
-  uList.innerHTML = "";
-
   if (filteredUsers.length === 0) {
     uList.innerHTML = `
       <div class="empty-state">
         <p>No users found for selected role.</p>
-        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to add Admins, Managers, Residents, or Cooks.</p>
+        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to register new employees with OTP verification.</p>
       </div>
     `;
     return;
@@ -696,23 +837,29 @@ function renderAdminScreen() {
     const roleBadgeClass = u.role === 'ADMIN' ? 'badge-amber' : (u.role === 'MANAGER' ? 'badge-lilac' : (u.role === 'COOK' ? 'badge-blue' : 'badge-success'));
     const isBlocked = u.status === "BLOCKED";
 
+    const canEditThisUser = isAdmin || (user.role === "MANAGER" && u.role !== "ADMIN");
+    const canDeleteThisUser = isAdmin && u.id !== state.currentUser.id && u.role !== 'ADMIN';
+
     div.innerHTML = `
       <div>
         <div style="display:flex; align-items:center; gap:8px;">
           <strong>${u.name}</strong>
           <span class="badge ${roleBadgeClass}">${u.role}</span>
           ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
+          ${u.isOtpVerified ? '<span class="badge badge-blue" style="font-size:9px;">✓ OTP VERIFIED</span>' : ''}
         </div>
         <p class="text-sub" style="margin-top:2px;">
-          Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'}
+          Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'}
         </p>
       </div>
       <div class="user-card-actions">
-        <button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ Edit</button>
-        <button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">
-          ${isBlocked ? '🔓 Unblock' : '🔒 Lock'}
-        </button>
-        ${u.id !== state.currentUser.id && u.role !== 'ADMIN' ? `
+        ${canEditThisUser ? `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ Edit</button>` : ''}
+        ${isAdmin && u.id !== state.currentUser.id ? `
+          <button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">
+            ${isBlocked ? '🔓 Unblock' : '🔒 Lock'}
+          </button>
+        ` : ''}
+        ${canDeleteThisUser ? `
           <button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')">🗑️</button>
         ` : ''}
       </div>
@@ -722,6 +869,10 @@ function renderAdminScreen() {
 }
 
 function renderAttendanceReport() {
+  const user = state.currentUser || state.users[0];
+  const isResidentOrCook = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
+  const isAdmin = user.role === "ADMIN";
+
   const today = getTodayString();
   const log = state.attendanceLog || [];
 
@@ -747,9 +898,24 @@ function renderAttendanceReport() {
   const workedHrsEl = document.getElementById("admin-att-total-worked-hrs");
   const otHrsEl = document.getElementById("admin-att-total-ot-hrs");
 
-  if (punchedTodayEl) punchedTodayEl.textContent = uniqueUsersToday;
-  if (workedHrsEl) workedHrsEl.textContent = `${todayWorkedHours.toFixed(1)}h`;
-  if (otHrsEl) otHrsEl.textContent = `${todayOtHours.toFixed(1)}h`;
+  if (punchedTodayEl) punchedTodayEl.textContent = isResidentOrCook ? "🔒" : uniqueUsersToday;
+  if (workedHrsEl) workedHrsEl.textContent = isResidentOrCook ? "🔒" : `${todayWorkedHours.toFixed(1)}h`;
+  if (otHrsEl) otHrsEl.textContent = isResidentOrCook ? "🔒" : `${todayOtHours.toFixed(1)}h`;
+
+  const tbody = document.getElementById("admin-attendance-tbody");
+  if (!tbody) return;
+
+  if (isResidentOrCook) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" class="text-center text-sub" style="padding:28px;">
+          🔒 Attendance Master Audit is locked for employee accounts.<br>
+          View your personal live punch-in status and overtime hours on the <strong>Resident Home</strong> dashboard.
+        </td>
+      </tr>
+    `;
+    return;
+  }
 
   // Populate User Filter Select
   const userSelect = document.getElementById("admin-att-filter-user");
@@ -791,9 +957,6 @@ function renderAttendanceReport() {
     filtered = filtered.filter(a => a.status === "ACTIVE");
   }
 
-  // Render Table
-  const tbody = document.getElementById("admin-attendance-tbody");
-  if (!tbody) return;
   tbody.innerHTML = "";
 
   if (filtered.length === 0) {
@@ -801,7 +964,7 @@ function renderAttendanceReport() {
       <tr>
         <td colspan="9" class="text-center text-sub" style="padding:28px;">
           No attendance punch records found for the selected filter.<br>
-          Employees can Punch In/Out from their portal, or Admin can click <strong>"+ Record Punch"</strong>.
+          Employees can Punch In/Out from their portal, or Admin/Manager can click <strong>"+ Record Punch"</strong>.
         </td>
       </tr>
     `;
@@ -848,7 +1011,7 @@ function renderAttendanceReport() {
       <td>${otBadge}</td>
       <td>${statusBadge}</td>
       <td>
-        <button class="btn btn-alert btn-sm" onclick="deleteAttendance('${att.id}')" title="Delete record">🗑️</button>
+        ${isAdmin ? `<button class="btn btn-alert btn-sm" onclick="deleteAttendance('${att.id}')" title="Delete record">🗑️</button>` : `<span class="text-sub">-</span>`}
       </td>
     `;
     tbody.appendChild(tr);
@@ -856,6 +1019,10 @@ function renderAttendanceReport() {
 }
 
 function deleteAttendance(id) {
+  if (state.currentUser.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Super Admin can delete attendance records.");
+    return;
+  }
   if (confirm("Are you sure you want to delete this attendance record?")) {
     state.attendanceLog = (state.attendanceLog || []).filter(a => a.id !== id);
     saveState();
@@ -864,6 +1031,10 @@ function deleteAttendance(id) {
 }
 
 function toggleUserStatus(userId) {
+  if (state.currentUser.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Super Admin can block or unblock users.");
+    return;
+  }
   const u = state.users.find(x => x.id === userId);
   if (u) {
     u.status = u.status === "ACTIVE" ? "BLOCKED" : "ACTIVE";
@@ -873,6 +1044,10 @@ function toggleUserStatus(userId) {
 }
 
 function deleteUser(userId) {
+  if (state.currentUser.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Super Admin can delete user accounts.");
+    return;
+  }
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
   if (confirm(`Delete user "${u.name}" permanently?`)) {
@@ -910,9 +1085,42 @@ document.querySelectorAll(".close-btn").forEach(btn => {
   });
 });
 
-// 7. Add / Edit User Form Handlers
+function resetUserModalToStep1() {
+  const step1 = document.getElementById("otp-step-1");
+  const step2 = document.getElementById("otp-step-2");
+  if (step1) step1.classList.add("active");
+  if (step2) step2.classList.remove("active");
+  const otpInput = document.getElementById("input-verify-otp");
+  if (otpInput) otpInput.value = "";
+  if (OtpAuthService.countdownInterval) {
+    clearInterval(OtpAuthService.countdownInterval);
+  }
+}
+
+function startOtpCountdown() {
+  if (OtpAuthService.countdownInterval) clearInterval(OtpAuthService.countdownInterval);
+  let seconds = 30;
+  const timerDisplay = document.getElementById("otp-timer-display");
+  const resendBtn = document.getElementById("btn-resend-otp");
+  if (resendBtn) resendBtn.disabled = true;
+
+  if (timerDisplay) timerDisplay.textContent = `Resend code in ${seconds}s`;
+  OtpAuthService.countdownInterval = setInterval(() => {
+    seconds--;
+    if (seconds <= 0) {
+      clearInterval(OtpAuthService.countdownInterval);
+      if (timerDisplay) timerDisplay.textContent = "Didn't receive code? Click resend.";
+      if (resendBtn) resendBtn.disabled = false;
+    } else {
+      if (timerDisplay) timerDisplay.textContent = `Resend code in ${seconds}s`;
+    }
+  }, 1000);
+}
+
+// 7. Add / Edit User Form Handlers with OTP Verification
 document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
-  document.getElementById("modal-user-title").textContent = "Add New User";
+  resetUserModalToStep1();
+  document.getElementById("modal-user-title").textContent = "Register New Employee / User";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
   document.getElementById("form-user-mobile").value = "";
@@ -920,11 +1128,14 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
   document.getElementById("form-user-shift").value = "OFF_DUTY";
+  const procBtn = document.getElementById("btn-proceed-otp");
+  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
   openModal("modal-user-form");
 });
 
 document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () => {
-  document.getElementById("modal-user-title").textContent = "Add New Resident";
+  resetUserModalToStep1();
+  document.getElementById("modal-user-title").textContent = "Register New Resident (OTP)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
   document.getElementById("form-user-mobile").value = "";
@@ -932,6 +1143,24 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
   document.getElementById("form-user-shift").value = "OFF_DUTY";
+  const procBtn = document.getElementById("btn-proceed-otp");
+  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
+  openModal("modal-user-form");
+});
+
+document.getElementById("btn-switch-modal-register")?.addEventListener("click", () => {
+  closeModal("modal-switch-user");
+  resetUserModalToStep1();
+  document.getElementById("modal-user-title").textContent = "Employee Self-Registration (OTP)";
+  document.getElementById("form-user-id").value = "";
+  document.getElementById("form-user-name").value = "";
+  document.getElementById("form-user-mobile").value = "";
+  document.getElementById("form-user-role").value = "RESIDENT";
+  document.getElementById("form-user-room").value = "";
+  document.getElementById("form-user-code").value = "";
+  document.getElementById("form-user-shift").value = "OFF_DUTY";
+  const procBtn = document.getElementById("btn-proceed-otp");
+  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
   openModal("modal-user-form");
 });
 
@@ -939,7 +1168,8 @@ function openEditUserModal(userId) {
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
 
-  document.getElementById("modal-user-title").textContent = "Edit User Details";
+  resetUserModalToStep1();
+  document.getElementById("modal-user-title").textContent = `Edit User: ${u.name}`;
   document.getElementById("form-user-id").value = u.id;
   document.getElementById("form-user-name").value = u.name;
   document.getElementById("form-user-mobile").value = u.mobile;
@@ -947,10 +1177,13 @@ function openEditUserModal(userId) {
   document.getElementById("form-user-room").value = u.assignedRoom || "";
   document.getElementById("form-user-code").value = u.userIdCode || "";
   document.getElementById("form-user-shift").value = u.currentShift || "OFF_DUTY";
+  const procBtn = document.getElementById("btn-proceed-otp");
+  if (procBtn) procBtn.textContent = "💾 Save User Changes";
   openModal("modal-user-form");
 }
 
-document.getElementById("btn-save-user")?.addEventListener("click", () => {
+// Step 1: Proceed to OTP or Save Direct Edit
+document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   const editId = document.getElementById("form-user-id").value;
   const name = document.getElementById("form-user-name").value.trim();
   const mobile = document.getElementById("form-user-mobile").value.trim();
@@ -959,13 +1192,22 @@ document.getElementById("btn-save-user")?.addEventListener("click", () => {
   const code = document.getElementById("form-user-code").value.trim();
   const shift = document.getElementById("form-user-shift").value;
 
-  if (!name || !mobile) {
-    alert("Please enter both Name and Mobile Number!");
+  if (!name) {
+    alert("Please enter user's Full Name!");
+    return;
+  }
+  if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
+    alert("Please enter a valid 10-digit Mobile Number (e.g. 9876543210) for OTP verification!");
     return;
   }
 
   if (editId) {
-    // Editing existing user
+    // Direct Edit Mode (Admin / Manager)
+    if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+      alert("🔒 Access Denied: Only Admin or Hostel Manager can update user details.");
+      return;
+    }
+
     const existing = state.users.find(x => x.id === editId);
     if (existing) {
       existing.name = name;
@@ -975,49 +1217,119 @@ document.getElementById("btn-save-user")?.addEventListener("click", () => {
       existing.userIdCode = code || existing.userIdCode;
       existing.currentShift = shift;
 
-      // Update current user if edited
       if (state.currentUser.id === editId) {
         state.currentUser = existing;
       }
     }
-  } else {
-    // Adding new user
-    const prefix = role === "ADMIN" ? "ADM" : (role === "MANAGER" ? "MGR" : (role === "COOK" ? "CK" : "EMP"));
-    const generatedCode = code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
-    const newUser = {
-      id: "usr_" + Date.now(),
-      name: name,
-      mobile: mobile,
-      role: role,
-      assignedRoom: room || (role === "ADMIN" ? "Office" : (role === "COOK" ? "Kitchen" : "101")),
-      userIdCode: generatedCode,
-      status: "ACTIVE",
-      currentShift: shift
-    };
-    state.users.push(newUser);
 
-    // If new user is resident, initialize today's meals based on shift
-    if (role === "RESIDENT") {
-      const isAutoOn = shift === "OFF_DUTY" || shift === "NIGHT";
-      ["LUNCH", "DINNER"].forEach(type => {
-        state.meals.push({
-          id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 4),
-          userId: newUser.id,
-          userName: newUser.name,
-          roomNumber: newUser.assignedRoom,
-          mealType: type,
-          status: isAutoOn ? "ON" : "OFF",
-          otHours: 0,
-          shiftAtTime: shift
-        });
+    saveState();
+    renderUI();
+    closeModal("modal-user-form");
+    alert(`✓ User details for "${name}" updated successfully!`);
+    return;
+  }
+
+  // New Registration Flow -> Send OTP
+  const userData = { name, mobile, role, room, code, shift };
+  const otpCode = OtpAuthService.sendOtp(userData);
+
+  // Configure Step 2 UI
+  const targetMobEl = document.getElementById("otp-target-mobile");
+  if (targetMobEl) targetMobEl.textContent = `+91 ${mobile}`;
+  const codeEl = document.getElementById("simulated-otp-code");
+  if (codeEl) codeEl.textContent = otpCode;
+  const otpInput = document.getElementById("input-verify-otp");
+  if (otpInput) otpInput.value = "";
+
+  // Switch to Step 2
+  document.getElementById("otp-step-1")?.classList.remove("active");
+  document.getElementById("otp-step-2")?.classList.add("active");
+
+  startOtpCountdown();
+});
+
+// Auto-fill OTP Helper
+document.getElementById("btn-autofill-otp")?.addEventListener("click", () => {
+  const currentOtp = OtpAuthService.activeSession ? OtpAuthService.activeSession.otp : "1234";
+  const input = document.getElementById("input-verify-otp");
+  if (input) input.value = currentOtp;
+});
+
+// Back to Step 1
+document.getElementById("btn-back-otp-step")?.addEventListener("click", () => {
+  document.getElementById("otp-step-2")?.classList.remove("active");
+  document.getElementById("otp-step-1")?.classList.add("active");
+  if (OtpAuthService.countdownInterval) clearInterval(OtpAuthService.countdownInterval);
+});
+
+// Resend OTP
+document.getElementById("btn-resend-otp")?.addEventListener("click", () => {
+  if (!OtpAuthService.activeSession) return;
+  const newOtp = OtpAuthService.sendOtp(OtpAuthService.activeSession.userData);
+  const codeEl = document.getElementById("simulated-otp-code");
+  if (codeEl) codeEl.textContent = newOtp;
+  const otpInput = document.getElementById("input-verify-otp");
+  if (otpInput) otpInput.value = "";
+  startOtpCountdown();
+  alert(`✓ New OTP sent to +91 ${OtpAuthService.activeSession.phone}! Code: ${newOtp}`);
+});
+
+// Step 2: Verify OTP & Complete Registration
+document.getElementById("btn-verify-and-register")?.addEventListener("click", () => {
+  const enteredOtp = document.getElementById("input-verify-otp")?.value.trim();
+  if (!enteredOtp) {
+    alert("Please enter the 4-digit verification code!");
+    return;
+  }
+
+  const result = OtpAuthService.verify(enteredOtp);
+  if (!result.success) {
+    alert("❌ " + result.message);
+    return;
+  }
+
+  const uData = result.userData;
+  const prefix = uData.role === "ADMIN" ? "ADM" : (uData.role === "MANAGER" ? "MGR" : (uData.role === "COOK" ? "CK" : "EMP"));
+  const generatedCode = uData.code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
+
+  const newUser = {
+    id: "usr_" + Date.now(),
+    name: uData.name,
+    mobile: uData.mobile,
+    role: uData.role,
+    assignedRoom: uData.room || (uData.role === "ADMIN" ? "Office" : (uData.role === "COOK" ? "Kitchen" : "101")),
+    userIdCode: generatedCode,
+    status: "ACTIVE",
+    currentShift: uData.shift,
+    isOtpVerified: true,
+    verifiedAt: Date.now()
+  };
+
+  state.users.push(newUser);
+
+  // If new user is resident, initialize today's meals based on shift
+  if (uData.role === "RESIDENT" || uData.role === "EMPLOYEE") {
+    const isAutoOn = uData.shift === "OFF_DUTY" || uData.shift === "NIGHT";
+    ["LUNCH", "DINNER"].forEach(type => {
+      state.meals.push({
+        id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 4),
+        userId: newUser.id,
+        userName: newUser.name,
+        roomNumber: newUser.assignedRoom,
+        mealType: type,
+        status: isAutoOn ? "ON" : "OFF",
+        otHours: 0,
+        shiftAtTime: uData.shift
       });
-    }
+    });
   }
 
   saveState();
   renderUI();
   closeModal("modal-user-form");
-  alert(editId ? "✓ User details updated!" : `✓ User "${name}" added successfully with role ${role}!`);
+  resetUserModalToStep1();
+
+  alert(`✓ Phone Verification & Registration Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) registered with role ${newUser.role}.`);
 });
 
 // 8. Add Real Expense Form Handlers
