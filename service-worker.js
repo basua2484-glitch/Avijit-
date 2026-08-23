@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hostel-manager-v2';
+const CACHE_NAME = 'hostel-manager-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -10,6 +10,8 @@ const ASSETS_TO_CACHE = [
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
   './icons/icon.svg',
+  './screenshots/screenshot-desktop.png',
+  './screenshots/screenshot-mobile.png',
   'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap'
 ];
 

@@ -9,12 +9,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Hostel Manager">
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/svg+xml" href="../icons/icon.svg">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="webapp/style.css">
 </head>
 <body>
   <div id="app">
@@ -547,7 +547,7 @@
         </div>
         <p class="text-sub">Secure Registration: Phone Number verification via OTP required for account activation.</p>
         <div class="rule-box mt-2" style="font-size:11px;" id="role-quota-info-box">
-          🛡️ <strong>Strict Role Limits:</strong> Max 2 Admins • Max 3 Managers • Unlimited Employees
+          🛡️ <strong>Strict Security:</strong> Duplicate Mobile Check Active • Admin/Manager Onboarding Only
         </div>
         <input type="hidden" id="form-user-id" value="">
 
@@ -700,15 +700,18 @@
 
         <div class="rule-box mt-3" style="font-size:11px;">
           🛡️ <strong>Access Security Rules:</strong><br>
-          • <strong>Normal Employee:</strong> Resident self-portal & Punch In/Out only. Master data editing locked.<br>
-          • <strong>Manager:</strong> Operational desk, approvals & expense recording.<br>
-          • <strong>Super Admin:</strong> Full master authority, database & user control.<br>
+          • <strong>Normal Employee:</strong> Resident self-portal & Punch In/Out only. Public self-registration is closed.<br>
+          • <strong>Manager & Super Admin:</strong> Authorized to onboard new employees with duplicate mobile check & OTP.<br>
           • <strong>Kitchen Cook:</strong> Kitchen headcount & food preparation tallies.
         </div>
 
         <button class="btn btn-secondary full-width mt-3" id="btn-switch-modal-register">
-          ➕ Register New Employee (OTP Verification)
+          ➕ Onboard New User (Admin / Manager Only)
         </button>
+
+        <div id="switch-modal-restricted-notice" class="rule-box lilac mt-3" style="font-size:11px; display:none;">
+          🔒 <strong>Onboarding Restricted:</strong> Open self-registration is disabled. Please contact your Hostel Manager or Super Admin to register your mobile number.
+        </div>
       </div>
     </div>
 
@@ -873,6 +876,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="webapp/app.js"></script>
 </body>
 </html>

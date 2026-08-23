@@ -60,6 +60,25 @@ let state = (function() {
   return JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
 })();
 
+// Helper to find active user by mobile number
+function findUserByMobile(mobile, excludeUserId = null) {
+  if (!mobile) return null;
+  const cleanMobile = String(mobile).trim().replace(/\D/g, "");
+  if (!cleanMobile) return null;
+  return (state.users || []).find(u => {
+    if (u.status === "DELETED") return false;
+    if (excludeUserId && u.id === excludeUserId) return false;
+    const uMob = String(u.mobile || "").trim().replace(/\D/g, "");
+    return uMob && uMob === cleanMobile;
+  });
+}
+
+// Check if currently authenticated user has authorization to onboard new employees/residents
+function isAuthorizedToOnboardUsers() {
+  const currentUser = state.currentUser || state.users[0];
+  return currentUser && (currentUser.role === "ADMIN" || currentUser.role === "MANAGER");
+}
+
 // Strict Role Limits (Max 2 Admin, Max 3 Manager, Unlimited Employees)
 const ROLE_LIMITS = {
   ADMIN: 2,
@@ -1273,9 +1292,13 @@ function startOtpCountdown() {
 
 // 7. Add / Edit User Form Handlers with OTP Verification & Strict Role Quotas
 document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
+  if (!isAuthorizedToOnboardUsers()) {
+    alert("🔒 Access Denied: Public registration is restricted.\n\nOnly Super Admin and Hostel Manager have authorization to onboard new employees/residents.");
+    return;
+  }
   resetUserModalToStep1();
   updateRoleQuotaUI();
-  document.getElementById("modal-user-title").textContent = "Register New Employee / User";
+  document.getElementById("modal-user-title").textContent = "Onboard New Employee / User (Admin/Manager)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
   document.getElementById("form-user-mobile").value = "";
@@ -1289,9 +1312,13 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
 });
 
 document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () => {
+  if (!isAuthorizedToOnboardUsers()) {
+    alert("🔒 Access Denied: Public registration is restricted.\n\nOnly Super Admin and Hostel Manager have authorization to onboard new employees/residents.");
+    return;
+  }
   resetUserModalToStep1();
   updateRoleQuotaUI();
-  document.getElementById("modal-user-title").textContent = "Register New Resident (OTP)";
+  document.getElementById("modal-user-title").textContent = "Onboard New Resident (Manager Onboarding)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
   document.getElementById("form-user-mobile").value = "";
@@ -1305,10 +1332,14 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
 });
 
 document.getElementById("btn-switch-modal-register")?.addEventListener("click", () => {
+  if (!isAuthorizedToOnboardUsers()) {
+    alert("🔒 Registration Restricted: Public self-registration is closed.\n\nOnly Super Admin and Hostel Manager are authorized to onboard and register new employees/residents. Please contact your Hostel Manager to register your account.");
+    return;
+  }
   closeModal("modal-switch-user");
   resetUserModalToStep1();
   updateRoleQuotaUI();
-  document.getElementById("modal-user-title").textContent = "Employee Self-Registration (OTP)";
+  document.getElementById("modal-user-title").textContent = "Onboard New Employee (Authorized Onboarding)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
   document.getElementById("form-user-mobile").value = "";
@@ -1369,7 +1400,28 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     return;
   }
 
-  // 1. Strict Role Quota Check (Max 2 Admin, Max 3 Manager, Unlimited Employees)
+  // 1. Strict Security Rule: Restrict Public Registration
+  if (!editId && !isAuthorizedToOnboardUsers()) {
+    alert("🔒 Access Denied: Public registration is restricted.\n\nOnly Super Admin and Hostel Manager have authorization to onboard new accounts.");
+    return;
+  }
+
+  // 2. Strict Security Rule: Duplicate Mobile Number Check
+  if (!editId) {
+    const existingUser = findUserByMobile(mobile);
+    if (existingUser) {
+      alert(`🚫 Number already registered. Please login instead.\n\nMobile number (+91 ${mobile}) is already registered to "${existingUser.name}" (${existingUser.role}). Duplicate registration is blocked.`);
+      return;
+    }
+  } else {
+    const existingOther = findUserByMobile(mobile, editId);
+    if (existingOther) {
+      alert(`🚫 Update Blocked: Mobile number (+91 ${mobile}) is already assigned to another user ("${existingOther.name}").`);
+      return;
+    }
+  }
+
+  // 3. Strict Role Quota Check (Max 2 Admin, Max 3 Manager, Unlimited Employees)
   const quotaCheck = checkRoleQuotaAvailable(role, editId);
   if (!quotaCheck.allowed) {
     alert(quotaCheck.message);
@@ -1471,6 +1523,18 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
 
   const uData = result.userData;
 
+  // Re-verify authorization and duplicate mobile before creation
+  if (!isAuthorizedToOnboardUsers()) {
+    alert("🔒 Access Denied: Public registration is restricted. Only Super Admin and Hostel Manager can onboard users.");
+    return;
+  }
+
+  const duplicateCheck = findUserByMobile(uData.mobile);
+  if (duplicateCheck) {
+    alert(`🚫 Number already registered. Please login instead.\n\nMobile number (+91 ${uData.mobile}) is already registered.`);
+    return;
+  }
+
   // Re-verify quota before creation
   const quotaCheck = checkRoleQuotaAvailable(uData.role);
   if (!quotaCheck.allowed) {
@@ -1518,7 +1582,7 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   closeModal("modal-user-form");
   resetUserModalToStep1();
 
-  alert(`✓ Phone Verification & Registration Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) registered with role ${newUser.role}.`);
+  alert(`✓ Phone Verification & Onboarding Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) onboarded with role ${newUser.role}.`);
 });
 
 // 8. Add Real Expense Form Handlers
@@ -1575,7 +1639,7 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
     item.innerHTML = `
       <div>
         <strong>${u.name}</strong>
-        <p class="text-sub">${u.role} • Room ${u.assignedRoom || 'N/A'}</p>
+        <p class="text-sub">${u.role} • Room ${u.assignedRoom || 'N/A'} • 📱 +91 ${u.mobile || 'N/A'}</p>
       </div>
       <span class="role-tag">${u.role}</span>
     `;
@@ -1587,6 +1651,23 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
     };
     list.appendChild(item);
   });
+
+  const regBtn = document.getElementById("btn-switch-modal-register");
+  const isAuth = isAuthorizedToOnboardUsers();
+  if (regBtn) {
+    if (isAuth) {
+      regBtn.style.display = "block";
+      regBtn.innerHTML = `➕ Onboard New User (Super Admin & Manager Only)`;
+    } else {
+      regBtn.style.display = "none";
+    }
+  }
+
+  const regRestrictedNotice = document.getElementById("switch-modal-restricted-notice");
+  if (regRestrictedNotice) {
+    regRestrictedNotice.style.display = isAuth ? "none" : "block";
+  }
+
   openModal("modal-switch-user");
 });
 
