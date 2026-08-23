@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hostel Mess & Shift Manager - Complete Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    /* =========================================================
+       Hostel Mess & Shift Manager - Clean Utility Design System
+       ========================================================= */
+    :root {
+      --bg-app: #F7F9FC;
+      --surface: #FFFFFF;
+      --surface-variant: #F1F4F9;
+      --surface-dark: #111827;
+      --border: #E1E6EF;
+      --border-light: #EEF2F6;
+      
+      --primary-blue: #005FB0;
+      --primary-blue-dark: #004585;
+      --primary-blue-light: #D1E4FF;
+      
+      --text-primary: #191C1E;
+      --text-secondary: #43474E;
+      --text-muted: #73777F;
+      --text-white: #FFFFFF;
+      
+      /* Status Colors */
+      --badge-green-bg: #D9F0CE;
+      --badge-green-text: #145214;
+      --badge-lilac-bg: #E8DEF8;
+      --badge-lilac-text: #4F378B;
+      --badge-blue-bg: #D1E4FF;
+      --badge-blue-text: #004585;
+      --badge-alert-bg: #FFDAD6;
+      --badge-alert-text: #BA1A1A;
+      
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 26px;
+      --shadow-sm: 0 1px 3px rgba(0,0,0,0.05);
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #app {
+      max-width: 560px;
+      margin: 0 auto;
+      min-height: 100vh;
+      background: var(--bg-app);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Global Header */
+    .app-header {
+      background: var(--surface);
+      border-bottom-left-radius: var(--radius-xl);
+      border-bottom-right-radius: var(--radius-xl);
+      box-shadow: var(--shadow-sm);
+      padding: 16px 20px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--primary-blue-light);
+      color: var(--primary-blue);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+    }
+
+    .user-info h2 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .user-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .role-tag {
+      background: var(--primary-blue-light);
+      color: var(--primary-blue-dark);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+    }
+
+    .icon-btn {
+      background: var(--surface-variant);
+      border: none;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .icon-btn:hover {
+      background: var(--border);
+    }
+
+    /* Navigation Bar */
+    .nav-bar {
+      display: flex;
+      gap: 6px;
+      padding: 12px 16px 4px 16px;
+      overflow-x: auto;
+    }
+
+    .nav-btn {
+      flex: 1;
+      min-width: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .nav-btn.active {
+      background: var(--primary-blue);
+      color: var(--text-white);
+      border-color: var(--primary-blue);
+    }
+
+    /* Main Container */
+    .main-container {
+      padding: 16px;
+      flex: 1;
+    }
+
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .tab-pane.active {
+      display: flex;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .card-header h3, .card-header h4 {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    /* Hero Cards */
+    .hero-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hero-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: block;
+    }
+
+    .hero-val {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary-blue);
+    }
+
+    .pill-badge {
+      background: var(--badge-green-bg);
+      color: var(--badge-green-text);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+
+    .dark-card {
+      background: var(--surface-dark);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      color: var(--text-white);
+    }
+
+    .dark-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .dark-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: #94A3B8;
+      letter-spacing: 0.5px;
+      display: block;
+    }
+
+    .dark-price {
+      font-size: 26px;
+      font-weight: 800;
+      color: #60A5FA;
+    }
+
+    .dark-right {
+      text-align: right;
+    }
+
+    .plates-count {
+      font-size: 16px;
+      font-weight: 700;
+      color: #FFFFFF;
+      display: block;
+    }
+
+    .live-dot {
+      font-size: 11px;
+      color: #34D399;
+      font-weight: 600;
+    }
+
+    /* Badges */
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 8px;
+    }
+
+    .badge-success { background: var(--badge-green-bg); color: var(--badge-green-text); }
+    .badge-lilac { background: var(--badge-lilac-bg); color: var(--badge-lilac-text); }
+    .badge-blue { background: var(--badge-blue-bg); color: var(--badge-blue-text); }
+    .badge-alert { background: var(--badge-alert-bg); color: var(--badge-alert-text); }
+    .badge-primary-light { background: var(--primary-blue-light); color: var(--primary-blue-dark); }
+
+    /* Shift Grid */
+    .shift-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .shift-btn {
+      background: var(--surface-variant);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .shift-btn .s-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+    .shift-btn .s-time { font-size: 9px; color: var(--text-muted); }
+
+    .shift-btn.active {
+      background: var(--primary-blue);
+      border-color: var(--primary-blue);
+    }
+    .shift-btn.active .s-name { color: #FFFFFF; }
+    .shift-btn.active .s-time { color: var(--primary-blue-light); }
+
+    .rule-box {
+      background: var(--surface-variant);
+      border-radius: var(--radius-md);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .rule-box.lilac { background: var(--badge-lilac-bg); color: var(--badge-lilac-text); }
+
+    /* Meal List */
+    .meal-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .meal-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface-variant);
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid transparent;
+    }
+
+    .meal-item.on {
+      border-color: #86EFAC;
+    }
+
+    .meal-info strong {
+      font-size: 14px;
+      color: var(--text-primary);
+      display: block;
+    }
+
+    .meal-info span {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .meal-toggle-btn {
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-toggle-on { background: var(--badge-green-bg); color: var(--badge-green-text); }
+    .btn-toggle-off { background: var(--badge-alert-bg); color: var(--badge-alert-text); }
+
+    /* Grids & Actions */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .action-card {
+      padding: 16px;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .action-card:active { transform: scale(0.98); }
+    .action-card.lilac { background: var(--badge-lilac-bg); color: var(--badge-lilac-text); border-color: #D8B4FE; }
+    .action-card.rose { background: var(--badge-alert-bg); color: var(--badge-alert-text); border-color: #FECDD3; }
+
+    /* Buttons */
+    .btn {
+      padding: 12px 18px;
+      border-radius: var(--radius-md);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary { background: var(--primary-blue); color: var(--text-white); }
+    .btn-primary:hover { background: var(--primary-blue-dark); }
+    .btn-secondary { background: var(--surface-variant); color: var(--primary-blue); border: 1px solid var(--border); }
+    .btn-alert { background: var(--badge-alert-text); color: var(--text-white); }
+    .full-width { width: 100%; }
+
+    /* Kitchen View */
+    .meal-selector-bar {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-chip {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+    }
+    .filter-chip strong { font-size: 13px; color: var(--text-primary); }
+    .filter-chip span { font-size: 9px; color: var(--text-muted); }
+    .filter-chip.active { background: var(--primary-blue); border-color: var(--primary-blue); }
+    .filter-chip.active strong { color: #FFFFFF; }
+    .filter-chip.active span { color: var(--primary-blue-light); }
+
+    .kitchen-hero-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin: 8px 0 4px 0;
+      color: #FFFFFF;
+    }
+
+    .kitchen-sub {
+      font-size: 11px;
+      color: #94A3B8;
+      margin-bottom: 16px;
+    }
+
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .metric-card {
+      background: #1E293B;
+      border-radius: var(--radius-md);
+      padding: 12px 6px;
+      text-align: center;
+    }
+
+    .metric-num { font-size: 22px; font-weight: 800; }
+    .metric-label { font-size: 11px; font-weight: 700; color: #FFFFFF; }
+    .metric-sub { font-size: 9px; color: #94A3B8; }
+
+    .text-success { color: #4ADE80; }
+    .text-blue { color: #60A5FA; }
+    .text-lilac { color: #C084FC; }
+    .text-alert { color: var(--badge-alert-text); }
+    .text-primary { color: var(--primary-blue); }
+    .text-white { color: #FFFFFF; }
+    .text-right { text-align: right; }
+    .text-center { text-align: center; }
+    .text-sub { font-size: 11px; color: var(--text-muted); }
+    .font-bold { font-weight: 700; }
+    .text-lg { font-size: 18px; }
+    .mt-3 { margin-top: 12px; }
+    .mt-4 { margin-top: 16px; }
+
+    /* Tables */
+    .table-responsive {
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 10px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .data-table th {
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 11px;
+    }
+
+    /* Modals */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal.active { display: flex; }
+
+    .modal-content {
+      background: var(--surface);
+      border-radius: var(--radius-xl);
+      max-width: 480px;
+      width: 100%;
+      padding: 22px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow-md);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .modal-header h3 { font-size: 17px; font-weight: 700; }
+    .close-btn { background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted); }
+
+    .account-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .account-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px;
+      background: var(--surface-variant);
+      border-radius: var(--radius-md);
+      cursor: pointer;
+      border: 1.5px solid transparent;
+    }
+    .account-item:hover, .account-item.selected {
+      border-color: var(--primary-blue);
+      background: var(--primary-blue-light);
+    }
+
+    /* Forms */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+
+    .form-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .form-group input {
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .form-group input:focus { border-color: var(--primary-blue); }
+
+    .ot-hour-picker {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .ot-chip {
+      flex: 1;
+      padding: 10px 4px;
+      background: var(--surface-variant);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .ot-chip.active { background: var(--primary-blue); color: #FFFFFF; border-color: var(--primary-blue); }
+
+    .invoice-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 12px;
+    }
+    .invoice-table th, .invoice-table td {
+      padding: 8px 4px;
+      border-bottom: 1px solid var(--border);
+    }
+    .math-explainer {
+      background: var(--surface-variant);
+      padding: 10px;
+      border-radius: var(--radius-md);
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- Top Global Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="user-badge" id="header-user-badge">
+          <div class="avatar" id="header-avatar">RK</div>
+          <div class="user-info">
+            <h2 id="header-user-name">Rahul Kumar</h2>
+            <span class="user-sub" id="header-user-role">RESIDENT • ROOM 204</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="role-tag" id="current-role-badge">RESIDENT</span>
+          <button class="icon-btn" id="btn-switch-user" title="Switch User Profile">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Bar for Portals -->
+    <nav class="nav-bar" id="portal-nav">
+      <button class="nav-btn active" data-tab="resident-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Resident Home
+      </button>
+      <button class="nav-btn" data-tab="kitchen-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        Kitchen Live
+      </button>
+      <button class="nav-btn" id="nav-manager-btn" data-tab="manager-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        Manager Ops
+      </button>
+      <button class="nav-btn" id="nav-admin-btn" data-tab="admin-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Admin Panel
+      </button>
+    </nav>
+
+    <!-- Main Container Content -->
+    <main class="main-container">
+      <!-- 1. RESIDENT SCREEN -->
+      <section id="resident-tab" class="tab-pane active">
+        <!-- Hero Shift Status Card -->
+        <div class="hero-card">
+          <div class="hero-left">
+            <span class="hero-label">CURRENT SHIFT STATUS</span>
+            <div class="hero-val" id="resident-shift-display">OFF_DUTY</div>
+          </div>
+          <div class="hero-right">
+            <span class="hero-label">MEAL LOGIC</span>
+            <div class="pill-badge" id="resident-logic-pill">Auto-ON (Night/Off)</div>
+          </div>
+        </div>
+
+        <!-- Shift Picker Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Shift Roster & Meal Logic</h3>
+            <span class="badge badge-success" id="shift-badge-indicator">OFF_DUTY</span>
+          </div>
+          <p class="card-sub">Shift change automatically recalculates your food status and kitchen headcount:</p>
+          <div class="shift-grid">
+            <button class="shift-btn" data-shift="MORNING">
+              <span class="s-name">Morning</span>
+              <span class="s-time">6 AM - 2 PM</span>
+            </button>
+            <button class="shift-btn" data-shift="EVENING">
+              <span class="s-name">Evening</span>
+              <span class="s-time">2 PM - 10 PM</span>
+            </button>
+            <button class="shift-btn" data-shift="NIGHT">
+              <span class="s-name">Night</span>
+              <span class="s-time">10 PM - 6 AM</span>
+            </button>
+            <button class="shift-btn active" data-shift="OFF_DUTY">
+              <span class="s-name">Off-Duty</span>
+              <span class="s-time">Rest Day</span>
+            </button>
+          </div>
+          <div class="rule-box" id="rule-explanation-box">
+            💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. You can skip if dining outside.
+          </div>
+        </div>
+
+        <!-- Today's Meals Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Today's Meals</h3>
+            <span class="badge badge-alert">Cut-off: 4:30 PM</span>
+          </div>
+          <div class="meal-list" id="resident-meal-list">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Quick Actions Grid -->
+        <div class="grid-2">
+          <button class="action-card lilac" id="btn-quick-late-plate">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>LATE PLATE (OT)</span>
+          </button>
+          <button class="action-card rose" id="btn-open-leave">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>MARK LEAVE (गाँव)</span>
+          </button>
+        </div>
+
+        <!-- Current Monthly Bill Card (Dark Theme) -->
+        <div class="dark-card">
+          <div class="dark-card-top">
+            <div>
+              <span class="dark-sub">CURRENT MONTHLY BILL</span>
+              <div class="dark-price" id="resident-bill-amount">₹3,450.00</div>
+            </div>
+            <div class="dark-right">
+              <span class="plates-count" id="resident-plates-count">48 Plates</span>
+              <span class="live-dot">● Live Update</span>
+            </div>
+          </div>
+          <button class="btn btn-primary full-width" id="btn-view-invoice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            View Itemized Statement
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. KITCHEN LIVE COUNTER SCREEN -->
+      <section id="kitchen-tab" class="tab-pane">
+        <div class="meal-selector-bar">
+          <button class="filter-chip active" data-meal="LUNCH">
+            <strong>Lunch</strong>
+            <span>12:00 - 2:30 PM</span>
+          </button>
+          <button class="filter-chip" data-meal="DINNER">
+            <strong>Dinner</strong>
+            <span>7:30 - 10:00 PM</span>
+          </button>
+          <button class="filter-chip" data-meal="BREAKFAST">
+            <strong>Breakfast</strong>
+            <span>7:00 - 9:00 AM</span>
+          </button>
+        </div>
+
+        <!-- Kitchen Target Number Hero -->
+        <div class="dark-card text-center">
+          <span class="badge badge-primary-light">LIVE KITCHEN TARGET</span>
+          <h1 class="kitchen-hero-title" id="kitchen-total-count">LUNCH: 42 TOTAL PLATES</h1>
+          <p class="kitchen-sub">रसोईया खुराक टारगेट (Real-time zero-waste automated tally)</p>
+
+          <div class="breakdown-grid">
+            <div class="metric-card">
+              <div class="metric-num text-success" id="k-metric-normal">34</div>
+              <div class="metric-label">Normal Dining</div>
+              <div class="metric-sub">हॉल में खाना</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num text-blue" id="k-metric-tiffins">5</div>
+              <div class="metric-label">Pack Tiffins</div>
+              <div class="metric-sub">ड्यूटी साइट (OT)</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num text-lilac" id="k-metric-late">3</div>
+              <div class="metric-label">Late Covered</div>
+              <div class="metric-sub">ढक कर रखें (OT)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Guest Adder -->
+        <div class="card flex-between">
+          <div>
+            <h4>Unplanned / Guest Meal</h4>
+            <span class="text-sub">आपातकालीन या गेस्ट प्लेट जोड़ें</span>
+          </div>
+          <button class="btn btn-secondary" id="btn-open-guest-modal">+ Add Plates</button>
+        </div>
+
+        <!-- Kitchen Roster Table -->
+        <div class="card">
+          <div class="card-header">
+            <h4>Live Resident Kitchen Roster</h4>
+            <span class="text-sub" id="kitchen-roster-count">10 entries</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Resident</th>
+                  <th>Room</th>
+                  <th>Shift / OT</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="kitchen-roster-tbody">
+                <!-- Dynamically filled -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. MANAGER OPERATIONS SCREEN -->
+      <section id="manager-tab" class="tab-pane">
+        <div class="dark-card">
+          <div class="card-header">
+            <div>
+              <span class="dark-sub">HOSTEL OPERATIONS DESK</span>
+              <h2 class="text-white">Manager Portal</h2>
+            </div>
+            <span class="role-tag">MANAGER</span>
+          </div>
+          <div class="grid-2 mt-3">
+            <div>
+              <span class="dark-sub">TOTAL RESIDENTS</span>
+              <div class="text-white font-bold text-lg" id="mgr-active-count">10 Active</div>
+            </div>
+            <div>
+              <span class="dark-sub">PENDING LEAVES</span>
+              <div class="text-lilac font-bold text-lg" id="mgr-pending-count">2 Requests</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Leave Approvals -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Pending Leave Requests (गाँव / छुट्टी)</h3>
+          </div>
+          <div id="manager-leaves-list">
+            <!-- Dynamically filled -->
+          </div>
+        </div>
+
+        <!-- Active Residents Directory -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Hostel Residents Roster</h3>
+          </div>
+          <div class="resident-list" id="manager-resident-list">
+            <!-- Dynamically filled -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. ADMIN MASTER CONTROL SCREEN -->
+      <section id="admin-tab" class="tab-pane">
+        <div class="dark-card">
+          <span class="badge badge-primary-light">👑 SUPER ADMIN MASTER CONTROL</span>
+          <div class="grid-3 mt-3">
+            <div>
+              <span class="dark-sub">TOTAL MEMBERS</span>
+              <div class="text-white font-bold text-lg" id="admin-members-count">10</div>
+            </div>
+            <div>
+              <span class="dark-sub">TOTAL PLATES</span>
+              <div class="text-blue font-bold text-lg" id="admin-plates-count">480</div>
+            </div>
+            <div>
+              <span class="dark-sub">PLATE RATE</span>
+              <div class="text-success font-bold text-lg" id="admin-rate-display">₹42.50</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Access & Replacement Panel -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>User Management & Access Control</h3>
+              <p class="text-sub">1-Tap Lock (Revoke), Replace Manager, Transfer Room</p>
+            </div>
+            <button class="btn btn-secondary" id="btn-open-replace-mgr">Replace Manager</button>
+          </div>
+          <div class="user-management-list" id="admin-users-list">
+            <!-- Dynamically filled -->
+          </div>
+        </div>
+
+        <!-- Grocery & Utility Bill Form (1-Click Auto Bill Generator) -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Grocery & Utility Bills (मासिक खर्च गणना)</h3>
+          </div>
+          <p class="text-sub">महीने के कुल खर्चे दर्ज करें और 1-Click में सभी का बिल ऑटो-कैलकुलेट करें:</p>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Grocery & Fuel Total (₹)</label>
+              <input type="number" id="adm-grocery" value="20400">
+            </div>
+            <div class="form-group">
+              <label>Electricity Bill (₹)</label>
+              <input type="number" id="adm-electric" value="4500">
+            </div>
+            <div class="form-group">
+              <label>Water Bill (₹)</label>
+              <input type="number" id="adm-water" value="1200">
+            </div>
+            <div class="form-group">
+              <label>Cook / Staff Salary (₹)</label>
+              <input type="number" id="adm-salary" value="12000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Room Rent / Maintenance Per Person (₹)</label>
+            <input type="number" id="adm-rent" value="1500">
+          </div>
+          <button class="btn btn-primary full-width mt-3" id="btn-calc-bills">
+            ⚡ 1-Click Generate & Lock Monthly Bills
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- MODALS -->
+    <!-- 1. Switch User Modal -->
+    <div class="modal" id="modal-switch-user">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Select / Switch User</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Choose an account to test role-based access:</p>
+        <div class="account-list" id="switch-account-list">
+          <!-- Dynamically filled -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Itemized Invoice Modal -->
+    <div class="modal" id="modal-invoice">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Itemized Statement Breakdown</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">100% Transparent Auto-Accounting</p>
+        <div class="invoice-table-wrap">
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th>Expense Item</th>
+                <th>Details</th>
+                <th class="text-right">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-breakdown-tbody">
+              <!-- Dynamically filled -->
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="2">Total Amount Payable</th>
+                <th class="text-right text-primary" id="invoice-modal-total">₹3,450.00</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="math-explainer">
+          <strong>Auto-Accounting Math:</strong><br>
+          • Plate Rate = Grocery / Total Consumed Plates<br>
+          • Utilities = Headcount share based on active stay days<br>
+          • Total = (Plates × Rate) + Electricity + Water + Cook + Rent
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-pay-invoice">Pay Now (UPI / NetBanking)</button>
+      </div>
+    </div>
+
+    <!-- 3. Overtime / Late Plate Dialog -->
+    <div class="modal" id="modal-ot">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Request Overtime Meal</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Select OT Hours:</p>
+        <div class="ot-hour-picker">
+          <button class="ot-chip" data-hours="1">1h</button>
+          <button class="ot-chip active" data-hours="2">2h</button>
+          <button class="ot-chip" data-hours="3">3h</button>
+          <button class="ot-chip" data-hours="4">4h</button>
+          <button class="ot-chip" data-hours="6">6h</button>
+          <button class="ot-chip" data-hours="8">8h</button>
+        </div>
+        <div class="rule-box lilac mt-3" id="ot-explanation">
+          🍲 <strong>Short OT (2h):</strong> Kitchen will pack a <strong>Late Plate</strong> (ढक कर रखा जाएगा).
+        </div>
+        <button class="btn btn-primary full-width mt-4" id="btn-confirm-ot">Confirm OT Meal</button>
+      </div>
+    </div>
+
+    <!-- 4. Leave Dialog -->
+    <div class="modal" id="modal-leave">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Mark On Leave (गाँव / छुट्टी)</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Meals during leave days are automatically cancelled to guarantee zero wastage.</p>
+        <div class="form-group mt-3">
+          <label>Start Date</label>
+          <input type="date" id="leave-start" value="2026-08-25">
+        </div>
+        <div class="form-group">
+          <label>End Date</label>
+          <input type="date" id="leave-end" value="2026-08-30">
+        </div>
+        <div class="form-group">
+          <label>Reason (कारण)</label>
+          <input type="text" id="leave-reason" value="गाँव जा रहा हूँ (Going Home)">
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-submit-leave">Submit Leave Request</button>
+      </div>
+    </div>
+
+    <!-- 5. Guest Plates Dialog -->
+    <div class="modal" id="modal-guest">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Add Guest / Emergency Plates</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="form-group mt-3">
+          <label>Plates Count</label>
+          <input type="number" id="guest-count" value="2" min="1" max="20">
+        </div>
+        <div class="form-group">
+          <label>Note / Reference</label>
+          <input type="text" id="guest-note" value="Late visitors">
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-confirm-guest">Add to Live Counter</button>
+      </div>
+    </div>
+
+    <!-- 6. Replace Manager Dialog -->
+    <div class="modal" id="modal-replace-mgr">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Replace Hostel Manager</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub text-alert">Replacing manager will instantly revoke the previous manager's permissions.</p>
+        <div class="form-group mt-3">
+          <label>New Manager Name</label>
+          <input type="text" id="new-mgr-name" placeholder="e.g. Anand Sharma">
+        </div>
+        <div class="form-group">
+          <label>Mobile Number</label>
+          <input type="tel" id="new-mgr-mobile" placeholder="e.g. 9876543210">
+        </div>
+        <div class="form-group">
+          <label>Assigned Office / Room</label>
+          <input type="text" id="new-mgr-room" placeholder="e.g. 101">
+        </div>
+        <button class="btn btn-alert full-width mt-3" id="btn-confirm-replace-mgr">Replace & Revoke Old Access</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================================================
+       Complete Client-Side JS State Engine (Self-Contained)
+       ========================================================= */
+    const INITIAL_STATE = {
+      currentUser: {
+        id: "usr_101",
+        name: "Rahul Kumar",
+        mobile: "9876543210",
+        role: "RESIDENT",
+        assignedRoom: "204",
+        userIdCode: "EMP_101",
+        status: "ACTIVE",
+        currentShift: "OFF_DUTY"
+      },
+      users: [
+        { id: "usr_101", name: "Rahul Kumar", mobile: "9876543210", role: "RESIDENT", assignedRoom: "204", userIdCode: "EMP_101", status: "ACTIVE", currentShift: "OFF_DUTY" },
+        { id: "usr_102", name: "Amit Sharma", mobile: "9876543211", role: "RESIDENT", assignedRoom: "205", userIdCode: "EMP_102", status: "ACTIVE", currentShift: "MORNING" },
+        { id: "usr_103", name: "Vikram Singh", mobile: "9876543212", role: "MANAGER", assignedRoom: "101", userIdCode: "MGR_001", status: "ACTIVE", currentShift: "OFF_DUTY" },
+        { id: "usr_104", name: "Suresh Sharma", mobile: "9876543213", role: "ADMIN", assignedRoom: "Admin Block", userIdCode: "ADM_001", status: "ACTIVE", currentShift: "OFF_DUTY" },
+        { id: "usr_105", name: "Ramesh Chef", mobile: "9876543214", role: "COOK", assignedRoom: "Kitchen", userIdCode: "CK_001", status: "ACTIVE", currentShift: "OFF_DUTY" },
+        { id: "usr_106", name: "Deepak Verma", mobile: "9876543215", role: "RESIDENT", assignedRoom: "208", userIdCode: "EMP_106", status: "ACTIVE", currentShift: "NIGHT" },
+        { id: "usr_107", name: "Pooja Patel", mobile: "9876543216", role: "RESIDENT", assignedRoom: "301", userIdCode: "EMP_107", status: "ACTIVE", currentShift: "EVENING" }
+      ],
+      meals: [
+        { id: "m1", userId: "usr_101", userName: "Rahul Kumar", roomNumber: "204", mealType: "LUNCH", status: "ON", otHours: 0, shiftAtTime: "OFF_DUTY" },
+        { id: "m2", userId: "usr_101", userName: "Rahul Kumar", roomNumber: "204", mealType: "DINNER", status: "ON", otHours: 0, shiftAtTime: "OFF_DUTY" },
+        { id: "m3", userId: "usr_102", userName: "Amit Sharma", roomNumber: "205", mealType: "LUNCH", status: "PACK_TIFFIN", otHours: 4, shiftAtTime: "MORNING" },
+        { id: "m4", userId: "usr_106", userName: "Deepak Verma", roomNumber: "208", mealType: "LUNCH", status: "ON", otHours: 0, shiftAtTime: "NIGHT" },
+        { id: "m5", userId: "usr_107", userName: "Pooja Patel", roomNumber: "301", mealType: "DINNER", status: "LATE_COVERED", otHours: 2, shiftAtTime: "EVENING" }
+      ],
+      pendingLeaves: [
+        { id: "lev_1", userId: "usr_106", userName: "Deepak Verma", startDate: "2026-08-26", endDate: "2026-08-30", totalDays: 5, reason: "गाँव में पूजा (Festival)" },
+        { id: "lev_2", userId: "usr_102", userName: "Amit Sharma", startDate: "2026-09-01", endDate: "2026-09-04", totalDays: 4, reason: "Home visit" }
+      ],
+      expenses: {
+        grocery: 20400,
+        electric: 4500,
+        water: 1200,
+        cookSalary: 12000,
+        roomRent: 1500,
+        totalPlates: 480
+      },
+      selectedOtHours: 2,
+      activeKitchenMeal: "LUNCH"
+    };
+
+    let state = JSON.parse(localStorage.getItem("hostel_mess_state")) || INITIAL_STATE;
+
+    function saveState() {
+      localStorage.setItem("hostel_mess_state", JSON.stringify(state));
+    }
+
+    const navBtns = document.querySelectorAll(".nav-btn");
+    const tabPanes = document.querySelectorAll(".tab-pane");
+
+    navBtns.forEach(btn => {
+      btn.addEventListener("click", () => {
+        const targetTab = btn.getAttribute("data-tab");
+        navBtns.forEach(b => b.classList.remove("active"));
+        tabPanes.forEach(p => p.classList.remove("active"));
+
+        btn.classList.add("active");
+        document.getElementById(targetTab)?.classList.add("active");
+        renderUI();
+      });
+    });
+
+    function renderUI() {
+      renderHeader();
+      renderResidentScreen();
+      renderKitchenScreen();
+      renderManagerScreen();
+      renderAdminScreen();
+    }
+
+    function renderHeader() {
+      const user = state.currentUser;
+      document.getElementById("header-avatar").textContent = user.name.split(" ").map(n => n[0]).join("");
+      document.getElementById("header-user-name").textContent = user.name;
+      document.getElementById("header-user-role").textContent = `${user.role} • ROOM ${user.assignedRoom}`;
+      document.getElementById("current-role-badge").textContent = user.role;
+
+      const mgrBtn = document.getElementById("nav-manager-btn");
+      const admBtn = document.getElementById("nav-admin-btn");
+      if (user.role === "RESIDENT") {
+        mgrBtn.style.opacity = "0.4";
+        admBtn.style.opacity = "0.4";
+      } else if (user.role === "MANAGER") {
+        mgrBtn.style.opacity = "1";
+        admBtn.style.opacity = "0.4";
+      } else if (user.role === "ADMIN") {
+        mgrBtn.style.opacity = "1";
+        admBtn.style.opacity = "1";
+      }
+    }
+
+    function renderResidentScreen() {
+      const user = state.currentUser;
+      document.getElementById("resident-shift-display").textContent = user.currentShift;
+      document.getElementById("shift-badge-indicator").textContent = user.currentShift;
+
+      const isAutoOn = user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT";
+      const pill = document.getElementById("resident-logic-pill");
+      pill.textContent = isAutoOn ? "Auto-ON (Night/Off)" : "Auto-OFF (Day Shift)";
+      pill.className = `pill-badge ${isAutoOn ? "badge-success" : "badge-alert"}`;
+
+      const ruleBox = document.getElementById("rule-explanation-box");
+      ruleBox.innerHTML = isAutoOn
+        ? "💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. Tiffin auto-packed if OT ≥ 4h."
+        : "⚠️ <strong>Rule:</strong> Day Shifts (Morning/Evening) are <strong>Auto-OFF</strong>. Toggle ON before cut-off to eat.";
+
+      document.querySelectorAll(".shift-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-shift") === user.currentShift);
+      });
+
+      const userMeals = state.meals.filter(m => m.userId === user.id);
+      const listEl = document.getElementById("resident-meal-list");
+      listEl.innerHTML = "";
+
+      const defaultMeals = [
+        { type: "LUNCH", time: "12:00 PM - 2:30 PM", cutOff: "Cut-off: 8:30 AM" },
+        { type: "DINNER", time: "7:30 PM - 10:00 PM", cutOff: "Cut-off: 4:30 PM" }
+      ];
+
+      defaultMeals.forEach(dm => {
+        const existing = userMeals.find(m => m.mealType === dm.type);
+        const status = existing ? existing.status : (isAutoOn ? "ON" : "OFF");
+        const isOn = status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED";
+
+        const item = document.createElement("div");
+        item.className = `meal-item ${isOn ? "on" : ""}`;
+        item.innerHTML = `
+          <div class="meal-info">
+            <strong>${dm.type} (${status})</strong>
+            <span>${dm.time} • ${dm.cutOff}</span>
+          </div>
+          <button class="meal-toggle-btn ${isOn ? "btn-toggle-on" : "btn-toggle-off"}" onclick="toggleMeal('${dm.type}')">
+            ${isOn ? "✓ Eating (Meal ON)" : "✕ Skip (Meal OFF)"}
+          </button>
+        `;
+        listEl.appendChild(item);
+      });
+
+      const plateRate = state.expenses.grocery / (state.expenses.totalPlates || 1);
+      const activeCount = state.users.filter(u => u.status === "ACTIVE").length || 1;
+      const userPlates = 48;
+      const myMealShare = userPlates * plateRate;
+      const myElectShare = state.expenses.electric / activeCount;
+      const myWaterShare = state.expenses.water / activeCount;
+      const myCookShare = state.expenses.cookSalary / activeCount;
+      const myTotalBill = myMealShare + myElectShare + myWaterShare + myCookShare + state.expenses.roomRent;
+
+      document.getElementById("resident-bill-amount").textContent = `₹${myTotalBill.toFixed(2)}`;
+    }
+
+    function toggleMeal(mealType) {
+      const user = state.currentUser;
+      let meal = state.meals.find(m => m.userId === user.id && m.mealType === mealType);
+      if (meal) {
+        meal.status = meal.status === "OFF" ? "ON" : "OFF";
+        meal.otHours = 0;
+      } else {
+        state.meals.push({
+          id: "m_" + Date.now(),
+          userId: user.id,
+          userName: user.name,
+          roomNumber: user.assignedRoom,
+          mealType: mealType,
+          status: "OFF",
+          otHours: 0,
+          shiftAtTime: user.currentShift
+        });
+      }
+      saveState();
+      renderUI();
+    }
+
+    function setShift(shift) {
+      state.currentUser.currentShift = shift;
+      const isAutoOn = shift === "OFF_DUTY" || shift === "NIGHT";
+      
+      ["LUNCH", "DINNER"].forEach(type => {
+        let meal = state.meals.find(m => m.userId === state.currentUser.id && m.mealType === type);
+        if (!meal) {
+          state.meals.push({
+            id: "m_" + Date.now() + "_" + type,
+            userId: state.currentUser.id,
+            userName: state.currentUser.name,
+            roomNumber: state.currentUser.assignedRoom,
+            mealType: type,
+            status: isAutoOn ? "ON" : "OFF",
+            otHours: 0,
+            shiftAtTime: shift
+          });
+        } else {
+          meal.status = isAutoOn ? "ON" : "OFF";
+          meal.shiftAtTime = shift;
+        }
+      });
+
+      saveState();
+      renderUI();
+    }
+
+    document.querySelectorAll(".shift-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        setShift(btn.getAttribute("data-shift"));
+      });
+    });
+
+    function renderKitchenScreen() {
+      const activeMeal = state.activeKitchenMeal;
+      const filteredMeals = state.meals.filter(m => m.mealType === activeMeal && m.status !== "OFF");
+
+      const normal = filteredMeals.filter(m => m.status === "ON").length + 30;
+      const tiffins = filteredMeals.filter(m => m.status === "PACK_TIFFIN").length + 5;
+      const late = filteredMeals.filter(m => m.status === "LATE_COVERED").length + 3;
+      const total = normal + tiffins + late;
+
+      document.getElementById("kitchen-total-count").textContent = `${activeMeal}: ${total} TOTAL PLATES`;
+      document.getElementById("k-metric-normal").textContent = normal;
+      document.getElementById("k-metric-tiffins").textContent = tiffins;
+      document.getElementById("k-metric-late").textContent = late;
+      document.getElementById("kitchen-roster-count").textContent = `${filteredMeals.length + 5} entries`;
+
+      const tbody = document.getElementById("kitchen-roster-tbody");
+      tbody.innerHTML = "";
+
+      state.users.forEach(u => {
+        const meal = state.meals.find(m => m.userId === u.id && m.mealType === activeMeal);
+        const status = meal ? meal.status : "ON";
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td><strong>${u.name}</strong></td>
+          <td>Room ${u.assignedRoom}</td>
+          <td>${u.currentShift} ${meal && meal.otHours ? `(OT ${meal.otHours}h)` : ""}</td>
+          <td><span class="badge ${status === 'ON' ? 'badge-success' : status === 'PACK_TIFFIN' ? 'badge-blue' : 'badge-lilac'}">${status}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.querySelectorAll(".filter-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".filter-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        state.activeKitchenMeal = chip.getAttribute("data-meal");
+        renderKitchenScreen();
+      });
+    });
+
+    function renderManagerScreen() {
+      document.getElementById("mgr-active-count").textContent = `${state.users.filter(u => u.status === 'ACTIVE').length} Active`;
+      document.getElementById("mgr-pending-count").textContent = `${state.pendingLeaves.length} Requests`;
+
+      const leavesContainer = document.getElementById("manager-leaves-list");
+      leavesContainer.innerHTML = "";
+
+      if (state.pendingLeaves.length === 0) {
+        leavesContainer.innerHTML = `<p class="text-sub">No pending leave requests.</p>`;
+      } else {
+        state.pendingLeaves.forEach(lev => {
+          const item = document.createElement("div");
+          item.className = "card mt-3 flex-between";
+          item.innerHTML = `
+            <div>
+              <strong>${lev.userName}</strong>
+              <p class="text-sub">${lev.startDate} to ${lev.endDate} (${lev.totalDays}d) - ${lev.reason}</p>
+            </div>
+            <div style="display:flex; gap:6px; margin-top:6px;">
+              <button class="btn btn-secondary" onclick="processLeave('${lev.id}', true)">Approve</button>
+              <button class="btn btn-alert" onclick="processLeave('${lev.id}', false)">Reject</button>
+            </div>
+          `;
+          leavesContainer.appendChild(item);
+        });
+      }
+
+      const rList = document.getElementById("manager-resident-list");
+      rList.innerHTML = "";
+      state.users.forEach(u => {
+        const div = document.createElement("div");
+        div.className = "account-item";
+        div.innerHTML = `
+          <div>
+            <strong>${u.name} (Room ${u.assignedRoom})</strong>
+            <p class="text-sub">${u.userIdCode} • ${u.mobile}</p>
+          </div>
+          <span class="role-tag">${u.currentShift}</span>
+        `;
+        rList.appendChild(div);
+      });
+    }
+
+    function processLeave(id, approve) {
+      state.pendingLeaves = state.pendingLeaves.filter(l => l.id !== id);
+      saveState();
+      renderUI();
+      alert(approve ? "Leave Approved. Meals automatically cancelled for leave period!" : "Leave Rejected.");
+    }
+
+    function renderAdminScreen() {
+      const activeUsers = state.users.filter(u => u.status === 'ACTIVE').length;
+      const plateRate = state.expenses.grocery / (state.expenses.totalPlates || 1);
+
+      document.getElementById("admin-members-count").textContent = activeUsers;
+      document.getElementById("admin-plates-count").textContent = state.expenses.totalPlates;
+      document.getElementById("admin-rate-display").textContent = `₹${plateRate.toFixed(2)}`;
+
+      const uList = document.getElementById("admin-users-list");
+      uList.innerHTML = "";
+
+      state.users.forEach(u => {
+        const div = document.createElement("div");
+        div.className = "account-item";
+        div.innerHTML = `
+          <div>
+            <strong>${u.name} <span class="role-tag">${u.role}</span></strong>
+            <p class="text-sub">Room ${u.assignedRoom} • ${u.mobile} • ${u.status}</p>
+          </div>
+          <button class="btn btn-secondary" onclick="toggleUserStatus('${u.id}')">
+            ${u.status === 'ACTIVE' ? '🔒 Lock' : '🔓 Unlock'}
+          </button>
+        `;
+        uList.appendChild(div);
+      });
+    }
+
+    function toggleUserStatus(userId) {
+      const u = state.users.find(x => x.id === userId);
+      if (u) {
+        u.status = u.status === "ACTIVE" ? "BLOCKED" : "ACTIVE";
+        saveState();
+        renderUI();
+      }
+    }
+
+    document.getElementById("btn-calc-bills")?.addEventListener("click", () => {
+      state.expenses.grocery = parseFloat(document.getElementById("adm-grocery").value) || 20400;
+      state.expenses.electric = parseFloat(document.getElementById("adm-electric").value) || 4500;
+      state.expenses.water = parseFloat(document.getElementById("adm-water").value) || 1200;
+      state.expenses.cookSalary = parseFloat(document.getElementById("adm-salary").value) || 12000;
+      state.expenses.roomRent = parseFloat(document.getElementById("adm-rent").value) || 1500;
+
+      saveState();
+      renderUI();
+      alert("✓ Monthly Bills Generated successfully with 3-Step Transparent Auto-Accounting!");
+    });
+
+    function openModal(id) {
+      document.getElementById(id)?.classList.add("active");
+    }
+    function closeModal(id) {
+      document.getElementById(id)?.classList.remove("active");
+    }
+    document.querySelectorAll(".close-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.target.closest(".modal")?.classList.remove("active");
+      });
+    });
+
+    document.getElementById("btn-switch-user")?.addEventListener("click", () => {
+      const list = document.getElementById("switch-account-list");
+      list.innerHTML = "";
+      state.users.forEach(u => {
+        const item = document.createElement("div");
+        item.className = `account-item ${state.currentUser.id === u.id ? "selected" : ""}`;
+        item.innerHTML = `
+          <div>
+            <strong>${u.name}</strong>
+            <p class="text-sub">${u.role} • Room ${u.assignedRoom}</p>
+          </div>
+          <span class="role-tag">${u.role}</span>
+        `;
+        item.onclick = () => {
+          state.currentUser = u;
+          saveState();
+          renderUI();
+          closeModal("modal-switch-user");
+        };
+        list.appendChild(item);
+      });
+      openModal("modal-switch-user");
+    });
+
+    document.getElementById("btn-view-invoice")?.addEventListener("click", () => {
+      const activeCount = state.users.filter(u => u.status === "ACTIVE").length || 1;
+      const plateRate = state.expenses.grocery / (state.expenses.totalPlates || 1);
+      const userPlates = 48;
+      const mealCost = userPlates * plateRate;
+      const elecShare = state.expenses.electric / activeCount;
+      const waterShare = state.expenses.water / activeCount;
+      const cookShare = state.expenses.cookSalary / activeCount;
+      const rent = state.expenses.roomRent;
+      const total = mealCost + elecShare + waterShare + cookShare + rent;
+
+      const tbody = document.getElementById("invoice-breakdown-tbody");
+      tbody.innerHTML = `
+        <tr><td>Mess Grocery Share</td><td>${userPlates} plates × ₹${plateRate.toFixed(2)}</td><td class="text-right">₹${mealCost.toFixed(2)}</td></tr>
+        <tr><td>Electricity Share</td><td>1/${activeCount}th of ₹${state.expenses.electric}</td><td class="text-right">₹${elecShare.toFixed(2)}</td></tr>
+        <tr><td>Water Utility Share</td><td>1/${activeCount}th of ₹${state.expenses.water}</td><td class="text-right">₹${waterShare.toFixed(2)}</td></tr>
+        <tr><td>Cook / Staff Salary</td><td>1/${activeCount}th of ₹${state.expenses.cookSalary}</td><td class="text-right">₹${cookShare.toFixed(2)}</td></tr>
+        <tr><td>Room Rent / Maint.</td><td>Standard Monthly</td><td class="text-right">₹${rent.toFixed(2)}</td></tr>
+      `;
+      document.getElementById("invoice-modal-total").textContent = `₹${total.toFixed(2)}`;
+      openModal("modal-invoice");
+    });
+
+    document.getElementById("btn-quick-late-plate")?.addEventListener("click", () => {
+      openModal("modal-ot");
+    });
+
+    document.querySelectorAll(".ot-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        document.querySelectorAll(".ot-chip").forEach(c => c.classList.remove("active"));
+        chip.classList.add("active");
+        const hours = parseInt(chip.getAttribute("data-hours"));
+        state.selectedOtHours = hours;
+        const expl = document.getElementById("ot-explanation");
+        expl.innerHTML = hours >= 4
+          ? `🍱 <strong>Long OT (${hours}h):</strong> Kitchen will <strong>Pack Tiffin</strong> for your work site.`
+          : `🍲 <strong>Short OT (${hours}h):</strong> Kitchen will pack a <strong>Late Plate</strong> (ढक कर रखा जाएगा).`;
+      });
+    });
+
+    document.getElementById("btn-confirm-ot")?.addEventListener("click", () => {
+      const user = state.currentUser;
+      const hours = state.selectedOtHours || 2;
+      const status = hours >= 4 ? "PACK_TIFFIN" : "LATE_COVERED";
+      
+      let meal = state.meals.find(m => m.userId === user.id && m.mealType === "DINNER");
+      if (meal) {
+        meal.status = status;
+        meal.otHours = hours;
+      } else {
+        state.meals.push({
+          id: "m_" + Date.now(),
+          userId: user.id,
+          userName: user.name,
+          roomNumber: user.assignedRoom,
+          mealType: "DINNER",
+          status: status,
+          otHours: hours,
+          shiftAtTime: user.currentShift
+        });
+      }
+      saveState();
+      renderUI();
+      closeModal("modal-ot");
+      alert(`✓ OT Meal recorded (${status}) for Dinner!`);
+    });
+
+    document.getElementById("btn-open-leave")?.addEventListener("click", () => openModal("modal-leave"));
+    document.getElementById("btn-submit-leave")?.addEventListener("click", () => {
+      const start = document.getElementById("leave-start").value;
+      const end = document.getElementById("leave-end").value;
+      const reason = document.getElementById("leave-reason").value;
+
+      state.pendingLeaves.push({
+        id: "lev_" + Date.now(),
+        userId: state.currentUser.id,
+        userName: state.currentUser.name,
+        startDate: start,
+        endDate: end,
+        totalDays: 5,
+        reason: reason
+      });
+
+      saveState();
+      renderUI();
+      closeModal("modal-leave");
+      alert("Leave application submitted to Manager!");
+    });
+
+    document.getElementById("btn-open-guest-modal")?.addEventListener("click", () => openModal("modal-guest"));
+    document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
+      const count = parseInt(document.getElementById("guest-count").value) || 2;
+      alert(`✓ Added +${count} Guest plates to ${state.activeKitchenMeal} counter!`);
+      closeModal("modal-guest");
+    });
+
+    document.getElementById("btn-open-replace-mgr")?.addEventListener("click", () => openModal("modal-replace-mgr"));
+    document.getElementById("btn-confirm-replace-mgr")?.addEventListener("click", () => {
+      const name = document.getElementById("new-mgr-name").value;
+      const mobile = document.getElementById("new-mgr-mobile").value;
+      const room = document.getElementById("new-mgr-room").value;
+
+      if (!name || !mobile) {
+        alert("Please enter manager name and mobile!");
+        return;
+      }
+
+      state.users.forEach(u => {
+        if (u.role === "MANAGER") {
+          u.role = "RESIDENT";
+          u.status = "BLOCKED";
+        }
+      });
+
+      state.users.push({
+        id: "usr_" + Date.now(),
+        name: name,
+        mobile: mobile,
+        role: "MANAGER",
+        assignedRoom: room || "101",
+        userIdCode: "MGR_NEW",
+        status: "ACTIVE",
+        currentShift: "OFF_DUTY"
+      });
+
+      saveState();
+      renderUI();
+      closeModal("modal-replace-mgr");
+      alert("✓ Previous manager access revoked. New manager activated!");
+    });
+
+    // Boot
+    renderUI();
+  </script>
+</body>
+</html>
