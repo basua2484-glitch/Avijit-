@@ -60,6 +60,76 @@ let state = (function() {
   return JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
 })();
 
+// Strict Role Limits (Max 2 Admin, Max 3 Manager, Unlimited Employees)
+const ROLE_LIMITS = {
+  ADMIN: 2,
+  MANAGER: 3,
+  RESIDENT: Infinity,
+  EMPLOYEE: Infinity,
+  COOK: Infinity
+};
+
+function getRoleCount(role) {
+  const normRole = (role === "EMPLOYEE") ? "RESIDENT" : role;
+  return (state.users || []).filter(u => {
+    const uRole = (u.role === "EMPLOYEE") ? "RESIDENT" : u.role;
+    return uRole === normRole && u.status !== "DELETED";
+  }).length;
+}
+
+function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
+  const normRole = (targetRole === "EMPLOYEE") ? "RESIDENT" : targetRole;
+  const limit = ROLE_LIMITS[normRole] || Infinity;
+  if (limit === Infinity) return { allowed: true };
+
+  // If editing an existing user and their role isn't changing, quota doesn't increase
+  if (currentUserId) {
+    const existing = (state.users || []).find(u => u.id === currentUserId);
+    if (existing) {
+      const existingNormRole = (existing.role === "EMPLOYEE") ? "RESIDENT" : existing.role;
+      if (existingNormRole === normRole) {
+        return { allowed: true };
+      }
+    }
+  }
+
+  const currentCount = getRoleCount(normRole);
+  if (currentCount >= limit) {
+    const roleName = normRole === "ADMIN" ? "Super Admin" : "Hostel Manager";
+    return {
+      allowed: false,
+      message: `🚫 Registration Blocked: Maximum ${limit} ${roleName} accounts are allowed in the system. Currently registered: ${currentCount}/${limit}.\n\nPlease select Resident/Employee (Unlimited) or another available role.`
+    };
+  }
+  return { allowed: true };
+}
+
+function updateRoleQuotaUI() {
+  const adminCount = getRoleCount("ADMIN");
+  const mgrCount = getRoleCount("MANAGER");
+  const resCount = getRoleCount("RESIDENT");
+
+  const quotaBox = document.getElementById("role-quota-info-box");
+  if (quotaBox) {
+    quotaBox.innerHTML = `🛡️ <strong>System Role Quotas:</strong> Super Admin: <b>${adminCount}/2</b> ${adminCount >= 2 ? '(FULL 🔒)' : ''} • Hostel Manager: <b>${mgrCount}/3</b> ${mgrCount >= 3 ? '(FULL 🔒)' : ''} • Employees: <b>${resCount} (Unlimited)</b>`;
+  }
+
+  const roleSelect = document.getElementById("form-user-role");
+  if (roleSelect) {
+    Array.from(roleSelect.options).forEach(opt => {
+      if (opt.value === "ADMIN") {
+        opt.textContent = `Super Admin (व्यवस्थापक - Max 2 | Current: ${adminCount}/2 ${adminCount >= 2 ? '🔒 Full' : '✓ Available'})`;
+      } else if (opt.value === "MANAGER") {
+        opt.textContent = `Hostel Manager (प्रबंधक - Max 3 | Current: ${mgrCount}/3 ${mgrCount >= 3 ? '🔒 Full' : '✓ Available'})`;
+      } else if (opt.value === "RESIDENT") {
+        opt.textContent = `Hostel Resident / Employee (रहवासी - Unlimited)`;
+      } else if (opt.value === "COOK") {
+        opt.textContent = `Kitchen Cook (रसोईया - Unlimited)`;
+      }
+    });
+  }
+}
+
 // OTP Verification Service (Mock/Demo + Production Extensible Architecture)
 const OtpAuthService = {
   activeSession: null,
@@ -695,6 +765,10 @@ function renderExpenseScreen() {
     const card = document.createElement("div");
     const catClass = (exp.category || "other").toLowerCase();
     card.className = `expense-entry-card ${catClass}`;
+
+    const isKitchenExp = exp.category === "GROCERY" || exp.category === "COOK_SALARY";
+    const canDeleteThisExp = isAdmin || (user.role === "MANAGER" && isKitchenExp);
+
     card.innerHTML = `
       <div>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -707,7 +781,7 @@ function renderExpenseScreen() {
       </div>
       <div style="text-align:right; display:flex; align-items:center; gap:10px;">
         <span style="font-size:16px; font-weight:800; color:var(--text-primary);">₹${parseFloat(exp.amount).toFixed(2)}</span>
-        ${!isNormalEmployee ? `<button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>` : ''}
+        ${canDeleteThisExp ? `<button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>` : (user.role === "MANAGER" ? `<span class="text-sub" style="font-size:11px;">👁️ View Only</span>` : '')}
       </div>
     `;
     container.appendChild(card);
@@ -737,15 +811,35 @@ function getCategoryBadgeClass(cat) {
 }
 
 function deleteExpense(id) {
-  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
-    alert("🔒 Access Denied: Only Admin and Manager can delete expense entries.");
+  const user = state.currentUser || state.users[0];
+  const exp = (state.expensesLog || []).find(e => e.id === id);
+  if (!exp) return;
+
+  if (user.role === "ADMIN") {
+    if (confirm(`Delete expense "${exp.description}" (₹${exp.amount})?`)) {
+      state.expensesLog = state.expensesLog.filter(e => e.id !== id);
+      saveState();
+      renderUI();
+    }
     return;
   }
-  if (confirm("Are you sure you want to delete this expense entry?")) {
-    state.expensesLog = state.expensesLog.filter(e => e.id !== id);
-    saveState();
-    renderUI();
+
+  if (user.role === "MANAGER") {
+    const isKitchenExp = exp.category === "GROCERY" || exp.category === "COOK_SALARY";
+    if (isKitchenExp) {
+      if (confirm(`Delete Kitchen/Grocery expense "${exp.description}" (₹${exp.amount})?`)) {
+        state.expensesLog = state.expensesLog.filter(e => e.id !== id);
+        saveState();
+        renderUI();
+      }
+      return;
+    } else {
+      alert("🔒 Restricted Access: Hostel Manager can only delete Cook/Kitchen/Grocery related expenses. Utility and other system expenses are View-Only.");
+      return;
+    }
   }
+
+  alert("🔒 Access Denied: Only Super Admin and Hostel Manager can delete expenses.");
 }
 
 // Expense Category Filter Chips
@@ -776,6 +870,7 @@ function renderAdminScreen() {
   const user = state.currentUser || state.users[0];
   const isResidentOrCook = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
   const isAdmin = user.role === "ADMIN";
+  const isManager = user.role === "MANAGER";
 
   const activeUsers = (state.users || []).filter(u => u.status === 'ACTIVE').length;
   const totalPlates = getTotalConsumedPlates();
@@ -788,10 +883,12 @@ function renderAdminScreen() {
   const addUsrBtn = document.getElementById("btn-open-add-user");
   const recPunchBtn = document.getElementById("btn-open-manual-att");
   const resetDbBtn = document.getElementById("btn-reset-db");
+  const dbControlsCard = document.getElementById("admin-db-controls-card");
 
   if (addUsrBtn) addUsrBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
   if (recPunchBtn) recPunchBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
   if (resetDbBtn) resetDbBtn.style.display = isAdmin ? "inline-flex" : "none";
+  if (dbControlsCard) dbControlsCard.style.display = isAdmin ? "block" : "none";
 
   // 1. Render Attendance & OT Report Table
   renderAttendanceReport();
@@ -837,8 +934,48 @@ function renderAdminScreen() {
     const roleBadgeClass = u.role === 'ADMIN' ? 'badge-amber' : (u.role === 'MANAGER' ? 'badge-lilac' : (u.role === 'COOK' ? 'badge-blue' : 'badge-success'));
     const isBlocked = u.status === "BLOCKED";
 
-    const canEditThisUser = isAdmin || (user.role === "MANAGER" && u.role !== "ADMIN");
-    const canDeleteThisUser = isAdmin && u.id !== state.currentUser.id && u.role !== 'ADMIN';
+    const isMe = user.id === u.id;
+    const isCook = u.role === "COOK";
+
+    let canEdit = false;
+    let canDelete = false;
+    let canLock = false;
+
+    if (isAdmin) {
+      // Super Admin: full access to view, edit, delete, lock/unlock all
+      canEdit = true;
+      canLock = !isMe;
+      canDelete = !isMe && u.role !== 'ADMIN';
+    } else if (isManager) {
+      // Hostel Manager: restricted access (edit self/Cook, delete Cook only; rest View Only)
+      if (isMe) {
+        canEdit = true;
+        canLock = false;
+        canDelete = false;
+      } else if (isCook) {
+        canEdit = true;
+        canLock = false;
+        canDelete = true;
+      } else {
+        canEdit = false;
+        canLock = false;
+        canDelete = false;
+      }
+    }
+
+    let actionsHtml = "";
+    if (canEdit) {
+      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ ${isMe ? 'My Profile' : 'Edit'}</button>`;
+    }
+    if (canLock) {
+      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
+    }
+    if (canDelete) {
+      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Delete User">🗑️</button>`;
+    }
+    if (!canEdit && !canLock && !canDelete) {
+      actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
+    }
 
     div.innerHTML = `
       <div>
@@ -853,15 +990,7 @@ function renderAdminScreen() {
         </p>
       </div>
       <div class="user-card-actions">
-        ${canEditThisUser ? `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ Edit</button>` : ''}
-        ${isAdmin && u.id !== state.currentUser.id ? `
-          <button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">
-            ${isBlocked ? '🔓 Unblock' : '🔒 Lock'}
-          </button>
-        ` : ''}
-        ${canDeleteThisUser ? `
-          <button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')">🗑️</button>
-        ` : ''}
+        ${actionsHtml}
       </div>
     `;
     uList.appendChild(div);
@@ -1044,22 +1173,47 @@ function toggleUserStatus(userId) {
 }
 
 function deleteUser(userId) {
-  if (state.currentUser.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Super Admin can delete user accounts.");
-    return;
-  }
+  const current = state.currentUser || state.users[0];
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
-  if (confirm(`Delete user "${u.name}" permanently?`)) {
-    state.users = state.users.filter(x => x.id !== userId);
-    state.meals = state.meals.filter(m => m.userId !== userId);
-    state.pendingLeaves = state.pendingLeaves.filter(l => l.userId !== userId);
-    if (state.currentUser.id === userId) {
-      state.currentUser = state.users[0];
+
+  if (current.role === "ADMIN") {
+    if (u.id === current.id) {
+      alert("Cannot delete your own active Super Admin account!");
+      return;
     }
-    saveState();
-    renderUI();
+    if (confirm(`Delete user "${u.name}" (${u.role}) permanently?`)) {
+      state.users = state.users.filter(x => x.id !== userId);
+      state.meals = (state.meals || []).filter(m => m.userId !== userId);
+      state.pendingLeaves = (state.pendingLeaves || []).filter(l => l.userId !== userId);
+      state.attendanceLog = (state.attendanceLog || []).filter(a => a.userId !== userId);
+      if (state.currentUser.id === userId) {
+        state.currentUser = state.users[0];
+      }
+      saveState();
+      renderUI();
+      alert(`✓ User "${u.name}" deleted.`);
+    }
+    return;
   }
+
+  if (current.role === "MANAGER") {
+    if (u.role === "COOK") {
+      if (confirm(`Delete Kitchen Cook "${u.name}" permanently?`)) {
+        state.users = state.users.filter(x => x.id !== userId);
+        state.meals = (state.meals || []).filter(m => m.userId !== userId);
+        saveState();
+        renderUI();
+        alert(`✓ Cook "${u.name}" deleted.`);
+      }
+      return;
+    } else {
+      alert("🔒 Restricted Access: Hostel Manager can only delete Kitchen/Cook staff. All other employee and system accounts are View-Only.");
+      return;
+    }
+  }
+
+  alert("🔒 Access Denied: Only Super Admin can delete user accounts.");
 }
 
 // Role Filter Buttons
@@ -1117,9 +1271,10 @@ function startOtpCountdown() {
   }, 1000);
 }
 
-// 7. Add / Edit User Form Handlers with OTP Verification
+// 7. Add / Edit User Form Handlers with OTP Verification & Strict Role Quotas
 document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   resetUserModalToStep1();
+  updateRoleQuotaUI();
   document.getElementById("modal-user-title").textContent = "Register New Employee / User";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
@@ -1135,6 +1290,7 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
 
 document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () => {
   resetUserModalToStep1();
+  updateRoleQuotaUI();
   document.getElementById("modal-user-title").textContent = "Register New Resident (OTP)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
@@ -1151,6 +1307,7 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
 document.getElementById("btn-switch-modal-register")?.addEventListener("click", () => {
   closeModal("modal-switch-user");
   resetUserModalToStep1();
+  updateRoleQuotaUI();
   document.getElementById("modal-user-title").textContent = "Employee Self-Registration (OTP)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
@@ -1168,7 +1325,18 @@ function openEditUserModal(userId) {
   const u = state.users.find(x => x.id === userId);
   if (!u) return;
 
+  const current = state.currentUser || state.users[0];
+  if (current.role !== "ADMIN") {
+    const isMe = current.id === u.id;
+    const isCook = u.role === "COOK";
+    if (!isMe && !isCook) {
+      alert("🔒 Restricted Access: Hostel Manager can only edit their own profile and Cook/Kitchen staff. Other employee records are View-Only.");
+      return;
+    }
+  }
+
   resetUserModalToStep1();
+  updateRoleQuotaUI();
   document.getElementById("modal-user-title").textContent = `Edit User: ${u.name}`;
   document.getElementById("form-user-id").value = u.id;
   document.getElementById("form-user-name").value = u.name;
@@ -1201,11 +1369,24 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     return;
   }
 
+  // 1. Strict Role Quota Check (Max 2 Admin, Max 3 Manager, Unlimited Employees)
+  const quotaCheck = checkRoleQuotaAvailable(role, editId);
+  if (!quotaCheck.allowed) {
+    alert(quotaCheck.message);
+    return;
+  }
+
   if (editId) {
     // Direct Edit Mode (Admin / Manager)
-    if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
-      alert("🔒 Access Denied: Only Admin or Hostel Manager can update user details.");
-      return;
+    const current = state.currentUser || state.users[0];
+    if (current.role !== "ADMIN") {
+      const isMe = current.id === editId;
+      const existingUser = state.users.find(x => x.id === editId);
+      const isCook = existingUser && existingUser.role === "COOK";
+      if (!isMe && !isCook) {
+        alert("🔒 Restricted Access: Hostel Manager can only edit their own profile and Cook/Kitchen staff.");
+        return;
+      }
     }
 
     const existing = state.users.find(x => x.id === editId);
@@ -1289,6 +1470,14 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   }
 
   const uData = result.userData;
+
+  // Re-verify quota before creation
+  const quotaCheck = checkRoleQuotaAvailable(uData.role);
+  if (!quotaCheck.allowed) {
+    alert(quotaCheck.message);
+    return;
+  }
+
   const prefix = uData.role === "ADMIN" ? "ADM" : (uData.role === "MANAGER" ? "MGR" : (uData.role === "COOK" ? "CK" : "EMP"));
   const generatedCode = uData.code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
 
@@ -1769,9 +1958,13 @@ document.getElementById("btn-save-manual-att")?.addEventListener("click", () => 
   alert(`✓ Attendance recorded for ${user.name} on ${date}!\nTotal: ${totalWorked.toFixed(2)}h (${regular.toFixed(2)}h Standard + ${ot.toFixed(2)}h OT).`);
 });
 
-// 15. Reset Database Handler
+// 15. Reset Database Handler (Super Admin Only)
 document.getElementById("btn-reset-db")?.addEventListener("click", () => {
-  if (confirm("Are you sure you want to reset all data? This will clear all entries and initialize with a clean Super Admin.")) {
+  if (state.currentUser.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Super Admin has master authority to reset all local data.");
+    return;
+  }
+  if (confirm("⚠️ Super Admin Master Action: Are you sure you want to reset all local data? This will clear all attendance punches, custom expenses, leaves, and custom users, and initialize with clean Super Admin settings.")) {
     state = JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
     saveState();
     renderUI();

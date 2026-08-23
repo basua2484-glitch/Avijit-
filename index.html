@@ -514,10 +514,10 @@
           </div>
         </div>
 
-        <!-- Quick Clear / Reset Database Option -->
-        <div class="card">
+        <!-- Quick Clear / Reset Database Option (Super Admin Only) -->
+        <div class="card" id="admin-db-controls-card">
           <div class="card-header">
-            <h4>Database & System Controls</h4>
+            <h4>Database & System Controls (Super Admin Only)</h4>
           </div>
           <p class="text-sub">System data is saved locally in your browser storage. You can clear and start fresh anytime.</p>
           <div class="mt-2">
@@ -539,6 +539,9 @@
           <button class="close-btn">&times;</button>
         </div>
         <p class="text-sub">Secure Registration: Phone Number verification via OTP required for account activation.</p>
+        <div class="rule-box mt-2" style="font-size:11px;" id="role-quota-info-box">
+          🛡️ <strong>Strict Role Limits:</strong> Max 2 Admins • Max 3 Managers • Unlimited Employees
+        </div>
         <input type="hidden" id="form-user-id" value="">
 
         <!-- STEP 1: Registration Details & Phone Input -->
