@@ -79,9 +79,9 @@ function isAuthorizedToOnboardUsers() {
   return currentUser && (currentUser.role === "ADMIN" || currentUser.role === "MANAGER");
 }
 
-// Strict Role Limits (Max 2 Admin, Max 3 Manager, Unlimited Employees)
+// Strict Role Limits (Max 1 Admin, Max 3 Manager, Unlimited Employees)
 const ROLE_LIMITS = {
-  ADMIN: 2,
+  ADMIN: 1,
   MANAGER: 3,
   RESIDENT: Infinity,
   EMPLOYEE: Infinity,
@@ -117,7 +117,7 @@ function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
     const roleName = normRole === "ADMIN" ? "Super Admin" : "Hostel Manager";
     return {
       allowed: false,
-      message: `🚫 Registration Blocked: Maximum ${limit} ${roleName} accounts are allowed in the system. Currently registered: ${currentCount}/${limit}.\n\nPlease select Resident/Employee (Unlimited) or another available role.`
+      message: `🚫 Registration Blocked: Maximum ${limit} ${roleName} account${limit === 1 ? '' : 's'} allowed in the system. Currently registered: ${currentCount}/${limit}.\n\nPlease select Resident/Employee (Unlimited) or another available role.`
     };
   }
   return { allowed: true };
@@ -130,14 +130,14 @@ function updateRoleQuotaUI() {
 
   const quotaBox = document.getElementById("role-quota-info-box");
   if (quotaBox) {
-    quotaBox.innerHTML = `🛡️ <strong>System Role Quotas:</strong> Super Admin: <b>${adminCount}/2</b> ${adminCount >= 2 ? '(FULL 🔒)' : ''} • Hostel Manager: <b>${mgrCount}/3</b> ${mgrCount >= 3 ? '(FULL 🔒)' : ''} • Employees: <b>${resCount} (Unlimited)</b>`;
+    quotaBox.innerHTML = `🛡️ <strong>System Role Quotas:</strong> Super Admin: <b>${adminCount}/1</b> ${adminCount >= 1 ? '(FULL 🔒)' : ''} • Hostel Manager: <b>${mgrCount}/3</b> ${mgrCount >= 3 ? '(FULL 🔒)' : ''} • Employees: <b>${resCount} (Unlimited)</b>`;
   }
 
   const roleSelect = document.getElementById("form-user-role");
   if (roleSelect) {
     Array.from(roleSelect.options).forEach(opt => {
       if (opt.value === "ADMIN") {
-        opt.textContent = `Super Admin (व्यवस्थापक - Max 2 | Current: ${adminCount}/2 ${adminCount >= 2 ? '🔒 Full' : '✓ Available'})`;
+        opt.textContent = `Super Admin (व्यवस्थापक - Max 1 | Current: ${adminCount}/1 ${adminCount >= 1 ? '🔒 Full' : '✓ Available'})`;
       } else if (opt.value === "MANAGER") {
         opt.textContent = `Hostel Manager (प्रबंधक - Max 3 | Current: ${mgrCount}/3 ${mgrCount >= 3 ? '🔒 Full' : '✓ Available'})`;
       } else if (opt.value === "RESIDENT") {
@@ -313,21 +313,82 @@ function getDynamicPlateRate() {
   return Math.round((expenses.GROCERY / totalPlates) * 100) / 100;
 }
 
-// Navigation & Tab Switching
+// Navigation & Tab Switching with Clean URL & Hash Routing
 const navBtns = document.querySelectorAll(".nav-btn");
 const tabPanes = document.querySelectorAll(".tab-pane");
+
+const TAB_HASH_MAP = {
+  "resident": "resident-tab",
+  "kitchen": "kitchen-tab",
+  "manager": "manager-tab",
+  "expense": "expense-tab",
+  "expenses": "expense-tab",
+  "admin": "admin-tab"
+};
+
+const TAB_ID_TO_HASH = {
+  "resident-tab": "resident",
+  "kitchen-tab": "kitchen",
+  "manager-tab": "manager",
+  "expense-tab": "expense",
+  "admin-tab": "admin"
+};
+
+function switchTab(targetTabId, updateUrlHash = true) {
+  const targetEl = document.getElementById(targetTabId);
+  if (!targetEl) return;
+
+  navBtns.forEach(b => {
+    if (b.getAttribute("data-tab") === targetTabId) {
+      b.classList.add("active");
+    } else {
+      b.classList.remove("active");
+    }
+  });
+
+  tabPanes.forEach(p => {
+    if (p.id === targetTabId) {
+      p.classList.add("active");
+    } else {
+      p.classList.remove("active");
+    }
+  });
+
+  if (updateUrlHash && window.history && window.history.replaceState) {
+    const slug = TAB_ID_TO_HASH[targetTabId] || "resident";
+    const cleanPath = window.location.pathname.replace(/\/index\.html\/?$/, '/') || '/';
+    window.history.replaceState(null, '', cleanPath + '#' + slug);
+  }
+
+  renderUI();
+}
+
+function handleUrlRouting() {
+  // 1. Clean /index.html from URL path if present to keep clean root domain
+  if (window.location.pathname.endsWith('/index.html')) {
+    const cleanPath = window.location.pathname.replace(/\/index\.html\/?$/, '/') || '/';
+    window.history.replaceState(null, '', cleanPath + window.location.search + window.location.hash);
+  }
+
+  // 2. Resolve target tab from hash
+  const rawHash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
+  if (rawHash && TAB_HASH_MAP[rawHash]) {
+    switchTab(TAB_HASH_MAP[rawHash], false);
+  }
+}
 
 navBtns.forEach(btn => {
   btn.addEventListener("click", () => {
     const targetTab = btn.getAttribute("data-tab");
-    navBtns.forEach(b => b.classList.remove("active"));
-    tabPanes.forEach(p => p.classList.remove("active"));
-
-    btn.classList.add("active");
-    const targetEl = document.getElementById(targetTab);
-    if (targetEl) targetEl.classList.add("active");
-    renderUI();
+    switchTab(targetTab, true);
   });
+});
+
+window.addEventListener("hashchange", () => {
+  const rawHash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
+  if (rawHash && TAB_HASH_MAP[rawHash]) {
+    switchTab(TAB_HASH_MAP[rawHash], false);
+  }
 });
 
 // Primary UI Render Dispatcher
@@ -2053,8 +2114,9 @@ document.getElementById("btn-reset-db")?.addEventListener("click", () => {
   }
 });
 
-// Initial boot render
+// Initial boot render & routing
 renderUI();
+handleUrlRouting();
 
 // 16. Progressive Web App (PWA) Service Worker Registration & Offline Support
 if ('serviceWorker' in navigator) {

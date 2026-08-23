@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hostel-manager-v3';
+const CACHE_NAME = 'hostel-manager-v4';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -46,10 +46,38 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// 3. Fetch Event: Stale-While-Revalidate / Cache-First with Network Fallback
+// 3. Fetch Event: Stale-While-Revalidate / Cache-First with Safe Fallback
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests
   if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+
+  // For navigation requests, always prioritize delivering the clean single-page app root
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          const rootCached = await caches.match('./');
+          if (rootCached) return rootCached;
+          const indexCached = await caches.match('./index.html');
+          if (indexCached) return indexCached;
+          return new Response('Offline - Hostel Manager', { headers: { 'Content-Type': 'text/html' } });
+        })
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
@@ -64,13 +92,7 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => {
-          // Fallback to cached version or index.html if navigating
-          if (event.request.mode === 'navigate') {
-            return caches.match('./index.html') || cachedResponse;
-          }
-          return cachedResponse;
-        });
+        .catch(() => cachedResponse);
 
       return cachedResponse || fetchPromise;
     })
