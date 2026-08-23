@@ -25,6 +25,7 @@ const CLEAN_INITIAL_STATE = {
       currentShift: "OFF_DUTY"
     }
   ],
+  attendanceLog: [], // Real Attendance & OT Log
   meals: [],
   pendingLeaves: [],
   expensesLog: [], // Real actual expenses ledger
@@ -32,7 +33,10 @@ const CLEAN_INITIAL_STATE = {
   activeKitchenMeal: "LUNCH",
   selectedOtHours: 2,
   selectedRoleFilter: "ALL",
-  selectedExpenseCategoryFilter: "ALL"
+  selectedExpenseCategoryFilter: "ALL",
+  selectedAttendanceDateFilter: "ALL",
+  selectedAttendanceUserFilter: "ALL",
+  selectedAttendanceTypeFilter: "ALL"
 };
 
 // Load or initialize state from LocalStorage
@@ -41,9 +45,13 @@ let state = (function() {
     const saved = localStorage.getItem("hostel_mess_state_v2");
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Ensure expensesLog and users exist
+      // Ensure arrays exist
+      if (!parsed.attendanceLog) parsed.attendanceLog = [];
       if (!parsed.expensesLog) parsed.expensesLog = [];
       if (!parsed.users || parsed.users.length === 0) parsed.users = CLEAN_INITIAL_STATE.users;
+      if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
+      if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
+      if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
       return parsed;
     }
   } catch (e) {
@@ -60,6 +68,72 @@ function getTodayString() {
   const d = new Date();
   return d.toISOString().split("T")[0];
 }
+
+// Attendance & Duty Hours (8h Standard Shift + OT) Calculation Helpers
+function formatTimeAMPM(dateObj) {
+  if (!dateObj) return "--:--";
+  const d = (dateObj instanceof Date) ? dateObj : new Date(dateObj);
+  if (isNaN(d.getTime())) return "--:--";
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+function formatTimeShort(dateObj) {
+  if (!dateObj) return "--:--";
+  const d = (dateObj instanceof Date) ? dateObj : new Date(dateObj);
+  if (isNaN(d.getTime())) return "--:--";
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function calculateDutyShift(inTimestamp, outTimestamp) {
+  const diffMs = outTimestamp - inTimestamp;
+  const totalHours = Math.max(0, diffMs / (1000 * 60 * 60));
+  const roundedTotal = Math.round(totalHours * 100) / 100;
+  const regularHours = Math.min(roundedTotal, 8.00);
+  const otHours = Math.max(0, Math.round((roundedTotal - 8.00) * 100) / 100);
+  return {
+    totalHours: roundedTotal,
+    regularHours: regularHours,
+    otHours: otHours
+  };
+}
+
+function getActivePunch(userId) {
+  return (state.attendanceLog || []).find(a => a.userId === userId && a.status === "ACTIVE");
+}
+
+function getTodayUserPunches(userId) {
+  const today = getTodayString();
+  return (state.attendanceLog || []).filter(a => a.userId === userId && a.date === today);
+}
+
+// Live Digital Clock & Real-time Duty Counter
+function updateLiveClock() {
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' });
+
+  const clockTimeEl = document.getElementById("resident-clock-time");
+  const clockDateEl = document.getElementById("resident-clock-date");
+  if (clockTimeEl) clockTimeEl.textContent = timeStr;
+  if (clockDateEl) clockDateEl.textContent = dateStr;
+
+  // If currentUser has an active shift running, update live counter
+  const user = state.currentUser || state.users[0];
+  if (user) {
+    const activePunch = getActivePunch(user.id);
+    if (activePunch) {
+      const calc = calculateDutyShift(activePunch.punchInTimestamp, now.getTime());
+      const totalEl = document.getElementById("duty-total-hours");
+      const otEl = document.getElementById("duty-ot-hours");
+      if (totalEl) totalEl.textContent = `${calc.totalHours.toFixed(2)}h`;
+      if (otEl) {
+        otEl.textContent = `${calc.otHours.toFixed(2)}h OT`;
+        otEl.style.color = calc.otHours > 0 ? "#F59E0B" : "#94A3B8";
+      }
+    }
+  }
+}
+setInterval(updateLiveClock, 1000);
 
 // Global Calculations from Real Expense Ledger & Meals
 function calculateExpenseTotals() {
@@ -164,6 +238,81 @@ function renderHeader() {
 // 2. Resident Screen Rendering
 function renderResidentScreen() {
   const user = state.currentUser || state.users[0];
+
+  // 1. Render Live Attendance & OT Status for Current User
+  const activePunch = getActivePunch(user.id);
+  const todayPunches = getTodayUserPunches(user.id);
+  const lastPunch = todayPunches[todayPunches.length - 1];
+
+  const pulseDot = document.getElementById("resident-pulse-dot");
+  const statusBadge = document.getElementById("resident-punch-status-badge");
+  const statusText = document.getElementById("resident-punch-status-text");
+  const btnPunchIn = document.getElementById("btn-employee-punch-in");
+  const btnPunchOut = document.getElementById("btn-employee-punch-out");
+  const inTimeEl = document.getElementById("duty-in-time");
+  const outTimeEl = document.getElementById("duty-out-time");
+  const totalHoursEl = document.getElementById("duty-total-hours");
+  const otHoursEl = document.getElementById("duty-ot-hours");
+
+  if (activePunch) {
+    if (pulseDot) pulseDot.className = "live-pulse-dot";
+    if (statusBadge) {
+      statusBadge.textContent = "ON DUTY (ACTIVE)";
+      statusBadge.className = "badge badge-success";
+    }
+    if (statusText) statusText.textContent = `Shift Active since ${activePunch.punchInTime}`;
+    if (btnPunchIn) btnPunchIn.disabled = true;
+    if (btnPunchOut) btnPunchOut.disabled = false;
+    if (inTimeEl) inTimeEl.textContent = activePunch.punchInTime;
+    if (outTimeEl) outTimeEl.textContent = "Active...";
+
+    const calc = calculateDutyShift(activePunch.punchInTimestamp, Date.now());
+    if (totalHoursEl) totalHoursEl.textContent = `${calc.totalHours.toFixed(2)}h`;
+    if (otHoursEl) {
+      otHoursEl.textContent = `${calc.otHours.toFixed(2)}h OT`;
+      otHoursEl.style.color = calc.otHours > 0 ? "#F59E0B" : "#94A3B8";
+    }
+  } else if (lastPunch && lastPunch.status === "COMPLETED") {
+    if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
+    if (statusBadge) {
+      statusBadge.textContent = "SHIFT COMPLETED";
+      statusBadge.className = "badge badge-blue";
+    }
+    if (statusText) statusText.textContent = `Shift Finished: ${lastPunch.totalWorkedHours.toFixed(2)}h (${lastPunch.otHours.toFixed(2)}h OT)`;
+    if (btnPunchIn) {
+      btnPunchIn.disabled = false;
+      btnPunchIn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Punch In (Next Shift)`;
+    }
+    if (btnPunchOut) btnPunchOut.disabled = true;
+    if (inTimeEl) inTimeEl.textContent = lastPunch.punchInTime;
+    if (outTimeEl) outTimeEl.textContent = lastPunch.punchOutTime;
+    if (totalHoursEl) totalHoursEl.textContent = `${lastPunch.totalWorkedHours.toFixed(2)}h`;
+    if (otHoursEl) {
+      otHoursEl.textContent = `${lastPunch.otHours.toFixed(2)}h OT`;
+      otHoursEl.style.color = lastPunch.otHours > 0 ? "#F59E0B" : "#94A3B8";
+    }
+  } else {
+    if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
+    if (statusBadge) {
+      statusBadge.textContent = "NOT PUNCHED IN";
+      statusBadge.className = "badge badge-alert";
+    }
+    if (statusText) statusText.textContent = "No active duty punch for today";
+    if (btnPunchIn) {
+      btnPunchIn.disabled = false;
+      btnPunchIn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Punch In (Start Duty)`;
+    }
+    if (btnPunchOut) btnPunchOut.disabled = true;
+    if (inTimeEl) inTimeEl.textContent = "--:--";
+    if (outTimeEl) outTimeEl.textContent = "--:--";
+    if (totalHoursEl) totalHoursEl.textContent = "0.0h";
+    if (otHoursEl) {
+      otHoursEl.textContent = "0.0h OT";
+      otHoursEl.style.color = "#94A3B8";
+    }
+  }
+
+  // 2. Render Shift & Meal Logic
   document.getElementById("resident-shift-display").textContent = user.currentShift || "OFF_DUTY";
   document.getElementById("shift-badge-indicator").textContent = user.currentShift || "OFF_DUTY";
 
@@ -508,7 +657,7 @@ document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
   alert("✓ Standard Monthly Room Rent updated to ₹" + val);
 });
 
-// 6. Admin Screen Rendering (User & Role Management CRUD)
+// 6. Admin Screen Rendering (User & Role Management CRUD + Attendance & OT Report)
 function renderAdminScreen() {
   const activeUsers = (state.users || []).filter(u => u.status === 'ACTIVE').length;
   const totalPlates = getTotalConsumedPlates();
@@ -518,6 +667,10 @@ function renderAdminScreen() {
   document.getElementById("admin-plates-count").textContent = totalPlates;
   document.getElementById("admin-rate-display").textContent = `₹${plateRate.toFixed(2)}`;
 
+  // 1. Render Attendance & OT Report Table
+  renderAttendanceReport();
+
+  // 2. Render User & Role Directory
   const roleFilter = state.selectedRoleFilter || "ALL";
   let filteredUsers = state.users || [];
   if (roleFilter !== "ALL") {
@@ -566,6 +719,148 @@ function renderAdminScreen() {
     `;
     uList.appendChild(div);
   });
+}
+
+function renderAttendanceReport() {
+  const today = getTodayString();
+  const log = state.attendanceLog || [];
+
+  // Metrics for Today
+  const todayPunches = log.filter(a => a.date === today);
+  const uniqueUsersToday = new Set(todayPunches.map(a => a.userId)).size;
+  
+  let todayWorkedHours = 0;
+  let todayOtHours = 0;
+
+  todayPunches.forEach(a => {
+    if (a.status === "ACTIVE") {
+      const calc = calculateDutyShift(a.punchInTimestamp, Date.now());
+      todayWorkedHours += calc.totalHours;
+      todayOtHours += calc.otHours;
+    } else {
+      todayWorkedHours += (a.totalWorkedHours || 0);
+      todayOtHours += (a.otHours || 0);
+    }
+  });
+
+  const punchedTodayEl = document.getElementById("admin-att-punched-today");
+  const workedHrsEl = document.getElementById("admin-att-total-worked-hrs");
+  const otHrsEl = document.getElementById("admin-att-total-ot-hrs");
+
+  if (punchedTodayEl) punchedTodayEl.textContent = uniqueUsersToday;
+  if (workedHrsEl) workedHrsEl.textContent = `${todayWorkedHours.toFixed(1)}h`;
+  if (otHrsEl) otHrsEl.textContent = `${todayOtHours.toFixed(1)}h`;
+
+  // Populate User Filter Select
+  const userSelect = document.getElementById("admin-att-filter-user");
+  if (userSelect) {
+    const currentVal = state.selectedAttendanceUserFilter || "ALL";
+    userSelect.innerHTML = `<option value="ALL">All Employees</option>`;
+    (state.users || []).forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u.id;
+      opt.textContent = `${u.name} (${u.role} - Room ${u.assignedRoom || '101'})`;
+      if (u.id === currentVal) opt.selected = true;
+      userSelect.appendChild(opt);
+    });
+  }
+
+  // Filter Attendance Log
+  let filtered = log.slice().reverse();
+
+  // Date Filter
+  if (state.selectedAttendanceDateFilter && state.selectedAttendanceDateFilter !== "ALL") {
+    filtered = filtered.filter(a => a.date === state.selectedAttendanceDateFilter);
+  }
+
+  // User Filter
+  if (state.selectedAttendanceUserFilter && state.selectedAttendanceUserFilter !== "ALL") {
+    filtered = filtered.filter(a => a.userId === state.selectedAttendanceUserFilter);
+  }
+
+  // Type / OT Filter
+  if (state.selectedAttendanceTypeFilter === "OT_ONLY") {
+    filtered = filtered.filter(a => {
+      if (a.status === "ACTIVE") {
+        const calc = calculateDutyShift(a.punchInTimestamp, Date.now());
+        return calc.otHours > 0;
+      }
+      return (a.otHours || 0) > 0;
+    });
+  } else if (state.selectedAttendanceTypeFilter === "ACTIVE_ONLY") {
+    filtered = filtered.filter(a => a.status === "ACTIVE");
+  }
+
+  // Render Table
+  const tbody = document.getElementById("admin-attendance-tbody");
+  if (!tbody) return;
+  tbody.innerHTML = "";
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" class="text-center text-sub" style="padding:28px;">
+          No attendance punch records found for the selected filter.<br>
+          Employees can Punch In/Out from their portal, or Admin can click <strong>"+ Record Punch"</strong>.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  filtered.forEach(att => {
+    const tr = document.createElement("tr");
+    const isActive = att.status === "ACTIVE";
+    let worked = att.totalWorkedHours || 0;
+    let regular = att.regularHours || 0;
+    let ot = att.otHours || 0;
+
+    if (isActive) {
+      const calc = calculateDutyShift(att.punchInTimestamp, Date.now());
+      worked = calc.totalHours;
+      regular = calc.regularHours;
+      ot = calc.otHours;
+    }
+
+    const otBadge = ot > 0
+      ? `<span class="ot-highlight-badge">+${ot.toFixed(2)}h OT</span>`
+      : `<span class="text-sub">0.0h</span>`;
+
+    const statusBadge = isActive
+      ? `<span class="badge badge-success">🟢 On Duty</span>`
+      : `<span class="badge badge-blue">🔵 Completed</span>`;
+
+    const outDisplay = isActive ? `<span class="text-success font-bold">Active Live</span>` : (att.punchOutTime || "--:--");
+
+    tr.innerHTML = `
+      <td>
+        <strong>${att.date}</strong>
+        <div class="text-sub">${att.shiftType || 'Normal Shift'}</div>
+      </td>
+      <td>
+        <strong>${att.userName}</strong>
+        <div class="text-sub">${att.userRole || 'RESIDENT'} • Room ${att.assignedRoom || '101'} • ${att.userIdCode || ''}</div>
+      </td>
+      <td><span class="font-mono">${att.punchInTime || '--:--'}</span></td>
+      <td><span class="font-mono">${outDisplay}</span></td>
+      <td><strong class="font-mono">${worked.toFixed(2)} hrs</strong></td>
+      <td><span class="text-sub font-mono">${regular.toFixed(2)} hrs</span></td>
+      <td>${otBadge}</td>
+      <td>${statusBadge}</td>
+      <td>
+        <button class="btn btn-alert btn-sm" onclick="deleteAttendance('${att.id}')" title="Delete record">🗑️</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function deleteAttendance(id) {
+  if (confirm("Are you sure you want to delete this attendance record?")) {
+    state.attendanceLog = (state.attendanceLog || []).filter(a => a.id !== id);
+    saveState();
+    renderUI();
+  }
 }
 
 function toggleUserStatus(userId) {
@@ -941,13 +1236,234 @@ document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
   alert(`✓ Added +${count} guest plates to ${state.activeKitchenMeal} counter!`);
 });
 
-// 14. Reset Database Handler
+// 14. Attendance & Overtime (OT) Module Event Listeners
+// Employee Punch In
+document.getElementById("btn-employee-punch-in")?.addEventListener("click", () => {
+  const user = state.currentUser || state.users[0];
+  const active = getActivePunch(user.id);
+  if (active) {
+    alert("⚠️ You already have an active duty shift running! Please punch out before starting a new shift.");
+    return;
+  }
+
+  const now = new Date();
+  const newRecord = {
+    id: "att_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+    userId: user.id,
+    userName: user.name,
+    userRole: user.role,
+    assignedRoom: user.assignedRoom || "101",
+    userIdCode: user.userIdCode || "EMP",
+    shiftType: user.currentShift || "MORNING",
+    date: getTodayString(),
+    punchInTime: formatTimeAMPM(now),
+    punchInTimestamp: now.getTime(),
+    punchOutTime: null,
+    punchOutTimestamp: null,
+    totalWorkedHours: 0,
+    regularHours: 0,
+    otHours: 0,
+    status: "ACTIVE",
+    note: "Live Punch In"
+  };
+
+  if (!state.attendanceLog) state.attendanceLog = [];
+  state.attendanceLog.push(newRecord);
+  saveState();
+  renderUI();
+  alert(`✓ Punch In recorded at ${formatTimeShort(now)}!\nDuty shift started. Standard shift is 8.0 hours; extra time will be auto-calculated as Overtime (OT).`);
+});
+
+// Employee Punch Out
+document.getElementById("btn-employee-punch-out")?.addEventListener("click", () => {
+  const user = state.currentUser || state.users[0];
+  const active = getActivePunch(user.id);
+  if (!active) {
+    alert("⚠️ No active punch-in found for today.");
+    return;
+  }
+
+  const now = new Date();
+  const calc = calculateDutyShift(active.punchInTimestamp, now.getTime());
+
+  active.punchOutTime = formatTimeAMPM(now);
+  active.punchOutTimestamp = now.getTime();
+  active.totalWorkedHours = calc.totalHours;
+  active.regularHours = calc.regularHours;
+  active.otHours = calc.otHours;
+  active.status = "COMPLETED";
+
+  saveState();
+  renderUI();
+
+  const otMsg = calc.otHours > 0
+    ? `\n⚡ Overtime: +${calc.otHours.toFixed(2)} OT Hours recorded!`
+    : `\nStandard shift (8h) completed.`;
+
+  alert(`✓ Punch Out recorded at ${formatTimeShort(now)}!\nTotal Worked: ${calc.totalHours.toFixed(2)} hrs (Standard: ${calc.regularHours.toFixed(2)}h)${otMsg}`);
+});
+
+// Attendance Report Filters
+document.getElementById("admin-att-filter-date")?.addEventListener("change", (e) => {
+  state.selectedAttendanceDateFilter = e.target.value || "ALL";
+  document.getElementById("btn-att-filter-all-dates")?.classList.remove("active");
+  document.getElementById("btn-att-filter-today")?.classList.remove("active");
+  renderAttendanceReport();
+});
+
+document.getElementById("btn-att-filter-all-dates")?.addEventListener("click", () => {
+  document.getElementById("btn-att-filter-all-dates")?.classList.add("active");
+  document.getElementById("btn-att-filter-today")?.classList.remove("active");
+  const dateInput = document.getElementById("admin-att-filter-date");
+  if (dateInput) dateInput.value = "";
+  state.selectedAttendanceDateFilter = "ALL";
+  renderAttendanceReport();
+});
+
+document.getElementById("btn-att-filter-today")?.addEventListener("click", () => {
+  document.getElementById("btn-att-filter-all-dates")?.classList.remove("active");
+  document.getElementById("btn-att-filter-today")?.classList.add("active");
+  const today = getTodayString();
+  const dateInput = document.getElementById("admin-att-filter-date");
+  if (dateInput) dateInput.value = today;
+  state.selectedAttendanceDateFilter = today;
+  renderAttendanceReport();
+});
+
+document.getElementById("admin-att-filter-user")?.addEventListener("change", (e) => {
+  state.selectedAttendanceUserFilter = e.target.value;
+  renderAttendanceReport();
+});
+
+document.getElementById("admin-att-filter-type")?.addEventListener("change", (e) => {
+  state.selectedAttendanceTypeFilter = e.target.value;
+  renderAttendanceReport();
+});
+
+// Manual Attendance Modal Handlers
+document.getElementById("btn-open-manual-att")?.addEventListener("click", () => {
+  const userSelect = document.getElementById("man-att-user");
+  if (userSelect) {
+    userSelect.innerHTML = "";
+    (state.users || []).forEach(u => {
+      const opt = document.createElement("option");
+      opt.value = u.id;
+      opt.textContent = `${u.name} (${u.role} • Room ${u.assignedRoom || '101'})`;
+      userSelect.appendChild(opt);
+    });
+  }
+
+  document.getElementById("man-att-date").value = getTodayString();
+  document.getElementById("man-att-in-time").value = "08:00";
+  document.getElementById("man-att-out-time").value = "17:00";
+  document.getElementById("man-att-shift").value = "MORNING";
+  document.getElementById("man-att-note").value = "";
+  updateManualAttendancePreview();
+  openModal("modal-manual-attendance");
+});
+
+function updateManualAttendancePreview() {
+  const inVal = document.getElementById("man-att-in-time")?.value || "08:00";
+  const outVal = document.getElementById("man-att-out-time")?.value || "17:00";
+
+  const inParts = inVal.split(":").map(Number);
+  const outParts = outVal.split(":").map(Number);
+
+  let inMinutes = inParts[0] * 60 + inParts[1];
+  let outMinutes = outParts[0] * 60 + outParts[1];
+
+  if (outMinutes < inMinutes) {
+    outMinutes += 24 * 60; // Cross midnight
+  }
+
+  const totalHrs = Math.max(0, (outMinutes - inMinutes) / 60);
+  const roundedTotal = Math.round(totalHrs * 100) / 100;
+  const regular = Math.min(roundedTotal, 8.00);
+  const ot = Math.max(0, Math.round((roundedTotal - 8.00) * 100) / 100);
+
+  const prevBox = document.getElementById("man-att-preview-calc");
+  if (prevBox) {
+    prevBox.innerHTML = `⏱️ <strong>Shift Calculation:</strong> In: ${inVal} → Out: ${outVal} = <strong>${roundedTotal.toFixed(2)} hrs</strong> (${regular.toFixed(2)}h Standard + <span style="color:#B45309; font-weight:800;">${ot.toFixed(2)}h OT</span>)`;
+  }
+}
+
+document.getElementById("man-att-in-time")?.addEventListener("input", updateManualAttendancePreview);
+document.getElementById("man-att-out-time")?.addEventListener("input", updateManualAttendancePreview);
+
+document.getElementById("btn-save-manual-att")?.addEventListener("click", () => {
+  const userId = document.getElementById("man-att-user").value;
+  const date = document.getElementById("man-att-date").value || getTodayString();
+  const inVal = document.getElementById("man-att-in-time").value || "08:00";
+  const outVal = document.getElementById("man-att-out-time").value;
+  const shift = document.getElementById("man-att-shift").value;
+  const note = document.getElementById("man-att-note").value.trim();
+
+  const user = (state.users || []).find(u => u.id === userId);
+  if (!user) {
+    alert("Please select an employee!");
+    return;
+  }
+
+  const inParts = inVal.split(":").map(Number);
+  const dIn = new Date(`${date}T${inVal}:00`);
+  const inTs = isNaN(dIn.getTime()) ? Date.now() : dIn.getTime();
+
+  let outTs = null;
+  let outTimeFormatted = null;
+  let totalWorked = 0;
+  let regular = 0;
+  let ot = 0;
+  let status = "ACTIVE";
+
+  if (outVal) {
+    let dOut = new Date(`${date}T${outVal}:00`);
+    if (dOut.getTime() < inTs) {
+      dOut = new Date(dOut.getTime() + 24 * 3600 * 1000);
+    }
+    outTs = dOut.getTime();
+    outTimeFormatted = formatTimeAMPM(dOut);
+    const calc = calculateDutyShift(inTs, outTs);
+    totalWorked = calc.totalHours;
+    regular = calc.regularHours;
+    ot = calc.otHours;
+    status = "COMPLETED";
+  }
+
+  const newRecord = {
+    id: "att_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+    userId: user.id,
+    userName: user.name,
+    userRole: user.role,
+    assignedRoom: user.assignedRoom || "101",
+    userIdCode: user.userIdCode || "EMP",
+    shiftType: shift,
+    date: date,
+    punchInTime: formatTimeAMPM(dIn),
+    punchInTimestamp: inTs,
+    punchOutTime: outTimeFormatted,
+    punchOutTimestamp: outTs,
+    totalWorkedHours: totalWorked,
+    regularHours: regular,
+    otHours: ot,
+    status: status,
+    note: note || "Manual Admin Entry"
+  };
+
+  if (!state.attendanceLog) state.attendanceLog = [];
+  state.attendanceLog.push(newRecord);
+  saveState();
+  renderUI();
+  closeModal("modal-manual-attendance");
+  alert(`✓ Attendance recorded for ${user.name} on ${date}!\nTotal: ${totalWorked.toFixed(2)}h (${regular.toFixed(2)}h Standard + ${ot.toFixed(2)}h OT).`);
+});
+
+// 15. Reset Database Handler
 document.getElementById("btn-reset-db")?.addEventListener("click", () => {
   if (confirm("Are you sure you want to reset all data? This will clear all entries and initialize with a clean Super Admin.")) {
     state = JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
     saveState();
     renderUI();
-    alert("✓ Database reset cleanly! You can now add real users and actual expenses.");
+    alert("✓ Database reset cleanly! You can now add real users, actual expenses, and attendance punches.");
   }
 });
 
