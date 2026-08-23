@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hostel Mess & Shift Manager - Web App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Top Global Header -->
+    <header class="app-header">
+      <div class="header-content">
+        <div class="user-badge" id="header-user-badge">
+          <div class="avatar" id="header-avatar">RK</div>
+          <div class="user-info">
+            <h2 id="header-user-name">Rahul Kumar</h2>
+            <span class="user-sub" id="header-user-role">EMPLOYEE • ROOM 204</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <span class="role-tag" id="current-role-badge">RESIDENT</span>
+          <button class="icon-btn" id="btn-switch-user" title="Switch User">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Navigation Bar for Portals -->
+    <nav class="nav-bar" id="portal-nav">
+      <button class="nav-btn active" data-tab="resident-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Resident Home
+      </button>
+      <button class="nav-btn" data-tab="kitchen-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        Kitchen Live
+      </button>
+      <button class="nav-btn" id="nav-manager-btn" data-tab="manager-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        Manager Ops
+      </button>
+      <button class="nav-btn" id="nav-admin-btn" data-tab="admin-tab">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Admin Panel
+      </button>
+    </nav>
+
+    <!-- Main Container Content -->
+    <main class="main-container">
+      <!-- 1. RESIDENT SCREEN -->
+      <section id="resident-tab" class="tab-pane active">
+        <!-- Hero Shift Status Card -->
+        <div class="hero-card">
+          <div class="hero-left">
+            <span class="hero-label">CURRENT SHIFT STATUS</span>
+            <div class="hero-val" id="resident-shift-display">OFF_DUTY</div>
+          </div>
+          <div class="hero-right">
+            <span class="hero-label">MEAL LOGIC</span>
+            <div class="pill-badge" id="resident-logic-pill">Auto-ON (Night/Off)</div>
+          </div>
+        </div>
+
+        <!-- Shift Picker Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Shift Roster & Meal Logic</h3>
+            <span class="badge badge-success" id="shift-badge-indicator">OFF_DUTY</span>
+          </div>
+          <p class="card-sub">Shift change automatically recalculates your food status and kitchen headcount:</p>
+          <div class="shift-grid">
+            <button class="shift-btn" data-shift="MORNING">
+              <span class="s-name">Morning</span>
+              <span class="s-time">6 AM - 2 PM</span>
+            </button>
+            <button class="shift-btn" data-shift="EVENING">
+              <span class="s-name">Evening</span>
+              <span class="s-time">2 PM - 10 PM</span>
+            </button>
+            <button class="shift-btn" data-shift="NIGHT">
+              <span class="s-name">Night</span>
+              <span class="s-time">10 PM - 6 AM</span>
+            </button>
+            <button class="shift-btn active" data-shift="OFF_DUTY">
+              <span class="s-name">Off-Duty</span>
+              <span class="s-time">Rest Day</span>
+            </button>
+          </div>
+          <div class="rule-box" id="rule-explanation-box">
+            💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. You can skip if dining outside.
+          </div>
+        </div>
+
+        <!-- Today's Meals Card -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Today's Meals</h3>
+            <span class="badge badge-alert">Cut-off: 4:30 PM</span>
+          </div>
+          <div class="meal-list" id="resident-meal-list">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+
+        <!-- Quick Actions Grid -->
+        <div class="grid-2">
+          <button class="action-card lilac" id="btn-quick-late-plate">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>LATE PLATE (OT)</span>
+          </button>
+          <button class="action-card rose" id="btn-open-leave">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <span>MARK LEAVE (गाँव)</span>
+          </button>
+        </div>
+
+        <!-- Current Monthly Bill Card (Dark Theme) -->
+        <div class="dark-card">
+          <div class="dark-card-top">
+            <div>
+              <span class="dark-sub">CURRENT MONTHLY BILL</span>
+              <div class="dark-price" id="resident-bill-amount">₹3,450.00</div>
+            </div>
+            <div class="dark-right">
+              <span class="plates-count" id="resident-plates-count">48 Plates</span>
+              <span class="live-dot">● Live Update</span>
+            </div>
+          </div>
+          <button class="btn btn-primary full-width" id="btn-view-invoice">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            View Itemized Statement
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. KITCHEN LIVE COUNTER SCREEN -->
+      <section id="kitchen-tab" class="tab-pane">
+        <div class="meal-selector-bar">
+          <button class="filter-chip active" data-meal="LUNCH">
+            <strong>Lunch</strong>
+            <span>12:00 - 2:30 PM</span>
+          </button>
+          <button class="filter-chip" data-meal="DINNER">
+            <strong>Dinner</strong>
+            <span>7:30 - 10:00 PM</span>
+          </button>
+          <button class="filter-chip" data-meal="BREAKFAST">
+            <strong>Breakfast</strong>
+            <span>7:00 - 9:00 AM</span>
+          </button>
+        </div>
+
+        <!-- Kitchen Target Number Hero -->
+        <div class="dark-card text-center">
+          <span class="badge badge-primary-light">LIVE KITCHEN TARGET</span>
+          <h1 class="kitchen-hero-title" id="kitchen-total-count">LUNCH: 42 TOTAL PLATES</h1>
+          <p class="kitchen-sub">रसोईया खुराक टारगेट (Real-time zero-waste automated tally)</p>
+
+          <div class="breakdown-grid">
+            <div class="metric-card">
+              <div class="metric-num text-success" id="k-metric-normal">34</div>
+              <div class="metric-label">Normal Dining</div>
+              <div class="metric-sub">हॉल में खाना</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num text-blue" id="k-metric-tiffins">5</div>
+              <div class="metric-label">Pack Tiffins</div>
+              <div class="metric-sub">ड्यूटी साइट (OT)</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-num text-lilac" id="k-metric-late">3</div>
+              <div class="metric-label">Late Covered</div>
+              <div class="metric-sub">ढक कर रखें (OT)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Guest Adder -->
+        <div class="card flex-between">
+          <div>
+            <h4>Unplanned / Guest Meal</h4>
+            <span class="text-sub">आपातकालीन या गेस्ट प्लेट जोड़ें</span>
+          </div>
+          <button class="btn btn-secondary" id="btn-open-guest-modal">+ Add Plates</button>
+        </div>
+
+        <!-- Kitchen Roster Table -->
+        <div class="card">
+          <div class="card-header">
+            <h4>Live Resident Kitchen Roster</h4>
+            <span class="text-sub" id="kitchen-roster-count">10 entries</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Resident</th>
+                  <th>Room</th>
+                  <th>Shift / OT</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="kitchen-roster-tbody">
+                <!-- Populated via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. MANAGER OPERATIONS SCREEN -->
+      <section id="manager-tab" class="tab-pane">
+        <div class="dark-card">
+          <div class="card-header">
+            <div>
+              <span class="dark-sub">HOSTEL OPERATIONS DESK</span>
+              <h2 class="text-white">Manager Portal</h2>
+            </div>
+            <span class="role-tag">MANAGER</span>
+          </div>
+          <div class="grid-2 mt-3">
+            <div>
+              <span class="dark-sub">TOTAL RESIDENTS</span>
+              <div class="text-white font-bold text-lg" id="mgr-active-count">10 Active</div>
+            </div>
+            <div>
+              <span class="dark-sub">PENDING LEAVES</span>
+              <div class="text-lilac font-bold text-lg" id="mgr-pending-count">2 Requests</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Leave Approvals -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Pending Leave Requests (गाँव / छुट्टी)</h3>
+          </div>
+          <div id="manager-leaves-list">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Active Residents Directory -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Hostel Residents Roster</h3>
+          </div>
+          <div class="resident-list" id="manager-resident-list">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. ADMIN MASTER CONTROL SCREEN -->
+      <section id="admin-tab" class="tab-pane">
+        <div class="dark-card">
+          <span class="badge badge-primary-light">👑 SUPER ADMIN MASTER CONTROL</span>
+          <div class="grid-3 mt-3">
+            <div>
+              <span class="dark-sub">TOTAL MEMBERS</span>
+              <div class="text-white font-bold text-lg" id="admin-members-count">10</div>
+            </div>
+            <div>
+              <span class="dark-sub">TOTAL PLATES</span>
+              <div class="text-blue font-bold text-lg" id="admin-plates-count">480</div>
+            </div>
+            <div>
+              <span class="dark-sub">PLATE RATE</span>
+              <div class="text-success font-bold text-lg" id="admin-rate-display">₹42.50</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- User Access & Replacement Panel -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <h3>User Management & Access Control</h3>
+              <p class="text-sub">1-Tap Lock (Revoke), Replace Manager, Transfer Room</p>
+            </div>
+            <button class="btn btn-secondary" id="btn-open-replace-mgr">Replace Manager</button>
+          </div>
+          <div class="user-management-list" id="admin-users-list">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Grocery & Utility Bill Form (1-Click Auto Bill Generator) -->
+        <div class="card">
+          <div class="card-header">
+            <h3>Grocery & Utility Bills (मासिक खर्च गणना)</h3>
+          </div>
+          <p class="text-sub">महीने के कुल खर्चे दर्ज करें और 1-Click में सभी का बिल ऑटो-कैलकुलेट करें:</p>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Grocery & Fuel Total (₹)</label>
+              <input type="number" id="adm-grocery" value="20400">
+            </div>
+            <div class="form-group">
+              <label>Electricity Bill (₹)</label>
+              <input type="number" id="adm-electric" value="4500">
+            </div>
+            <div class="form-group">
+              <label>Water Bill (₹)</label>
+              <input type="number" id="adm-water" value="1200">
+            </div>
+            <div class="form-group">
+              <label>Cook / Staff Salary (₹)</label>
+              <input type="number" id="adm-salary" value="12000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Room Rent / Maintenance Per Person (₹)</label>
+            <input type="number" id="adm-rent" value="1500">
+          </div>
+          <button class="btn btn-primary full-width mt-3" id="btn-calc-bills">
+            ⚡ 1-Click Generate & Lock Monthly Bills
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- MODALS -->
+    <!-- 1. Switch User Modal -->
+    <div class="modal" id="modal-switch-user">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Select / Switch User</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Choose an account to test role-based access:</p>
+        <div class="account-list" id="switch-account-list">
+          <!-- Populated via JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Itemized Invoice Modal -->
+    <div class="modal" id="modal-invoice">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Itemized Statement Breakdown</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">100% Transparent Auto-Accounting</p>
+        <div class="invoice-table-wrap">
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th>Expense Item</th>
+                <th>Details</th>
+                <th class="text-right">Amount (₹)</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-breakdown-tbody">
+              <!-- Populated via JS -->
+            </tbody>
+            <tfoot>
+              <tr>
+                <th colspan="2">Total Amount Payable</th>
+                <th class="text-right text-primary" id="invoice-modal-total">₹3,450.00</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        <div class="math-explainer">
+          <strong>Auto-Accounting Math:</strong><br>
+          • Plate Rate = Grocery / Total Consumed Plates<br>
+          • Utilities = Headcount share based on active stay days<br>
+          • Total = (Plates × Rate) + Electricity + Water + Cook + Rent
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-pay-invoice">Pay Now (UPI / NetBanking)</button>
+      </div>
+    </div>
+
+    <!-- 3. Overtime / Late Plate Dialog -->
+    <div class="modal" id="modal-ot">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Request Overtime Meal</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Select OT Hours:</p>
+        <div class="ot-hour-picker">
+          <button class="ot-chip" data-hours="1">1h</button>
+          <button class="ot-chip active" data-hours="2">2h</button>
+          <button class="ot-chip" data-hours="3">3h</button>
+          <button class="ot-chip" data-hours="4">4h</button>
+          <button class="ot-chip" data-hours="6">6h</button>
+          <button class="ot-chip" data-hours="8">8h</button>
+        </div>
+        <div class="rule-box lilac mt-3" id="ot-explanation">
+          🍲 <strong>Short OT (2h):</strong> Kitchen will pack a <strong>Late Plate</strong> (ढक कर रखा जाएगा).
+        </div>
+        <button class="btn btn-primary full-width mt-4" id="btn-confirm-ot">Confirm OT Meal</button>
+      </div>
+    </div>
+
+    <!-- 4. Leave Dialog -->
+    <div class="modal" id="modal-leave">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Mark On Leave (गाँव / छुट्टी)</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">Meals during leave days are automatically cancelled to guarantee zero wastage.</p>
+        <div class="form-group mt-3">
+          <label>Start Date</label>
+          <input type="date" id="leave-start" value="2026-08-25">
+        </div>
+        <div class="form-group">
+          <label>End Date</label>
+          <input type="date" id="leave-end" value="2026-08-30">
+        </div>
+        <div class="form-group">
+          <label>Reason (कारण)</label>
+          <input type="text" id="leave-reason" value="गाँव जा रहा हूँ (Going Home)">
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-submit-leave">Submit Leave Request</button>
+      </div>
+    </div>
+
+    <!-- 5. Guest Plates Dialog -->
+    <div class="modal" id="modal-guest">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Add Guest / Emergency Plates</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <div class="form-group mt-3">
+          <label>Plates Count</label>
+          <input type="number" id="guest-count" value="2" min="1" max="20">
+        </div>
+        <div class="form-group">
+          <label>Note / Reference</label>
+          <input type="text" id="guest-note" value="Late visitors">
+        </div>
+        <button class="btn btn-primary full-width mt-3" id="btn-confirm-guest">Add to Live Counter</button>
+      </div>
+    </div>
+
+    <!-- 6. Replace Manager Dialog -->
+    <div class="modal" id="modal-replace-mgr">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Replace Hostel Manager</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub text-alert">Replacing manager will instantly revoke the previous manager's permissions.</p>
+        <div class="form-group mt-3">
+          <label>New Manager Name</label>
+          <input type="text" id="new-mgr-name" placeholder="e.g. Anand Sharma">
+        </div>
+        <div class="form-group">
+          <label>Mobile Number</label>
+          <input type="tel" id="new-mgr-mobile" placeholder="e.g. 9876543210">
+        </div>
+        <div class="form-group">
+          <label>Assigned Office / Room</label>
+          <input type="text" id="new-mgr-room" placeholder="e.g. 101">
+        </div>
+        <button class="btn btn-alert full-width mt-3" id="btn-confirm-replace-mgr">Replace & Revoke Old Access</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
