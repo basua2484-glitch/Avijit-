@@ -1138,4 +1138,185 @@ body {
 .role-permission-pill.resident { background: #E0F2FE; color: #0369A1; }
 .role-permission-pill.cook { background: #DCFCE7; color: #15803D; }
 
+/* Leave Lockout & View-Only Mode Styles */
+.leave-lockout-banner {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
+  border: 2px solid #F59E0B;
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.15);
+  animation: pulse-border 2s infinite alternate;
+}
+
+@keyframes pulse-border {
+  0% { border-color: #F59E0B; }
+  100% { border-color: #D97706; }
+}
+
+.leave-lockout-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.leave-lockout-icon {
+  font-size: 24px;
+}
+
+.leave-lockout-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: #92400E;
+}
+
+.leave-lockout-desc {
+  font-size: 12px;
+  color: #78350F;
+  line-height: 1.4;
+}
+
+.btn-resume-leave {
+  background: #059669;
+  color: #FFFFFF;
+  border: none;
+  font-weight: 700;
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  box-shadow: 0 2px 6px rgba(5, 150, 105, 0.2);
+}
+
+.btn-resume-leave:hover {
+  background: #047857;
+  transform: translateY(-1px);
+}
+
+.btn-disabled-lockout {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+  pointer-events: auto !important;
+}
+
+.meal-item.locked-leave {
+  background: #F8FAFC;
+  border-color: #E2E8F0;
+  opacity: 0.7;
+}
+
+.badge-pending {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+}
+
+.badge-approved {
+  background: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #BBF7D0;
+}
+
+.badge-rejected {
+  background: #FEE2E2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+}
+
+.badge-leave {
+  background: #FEF3C7;
+  color: #B45309;
+  font-weight: 800;
+}
+
+/* Approval Card Styles */
+.approval-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-top: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.approval-card:hover {
+  border-color: var(--primary-blue);
+  box-shadow: var(--shadow-sm);
+}
+
+.approval-card.leave-resume {
+  border-left: 4px solid #059669;
+  background: #F0FDF4;
+}
+
+.approval-card.leave-start {
+  border-left: 4px solid #F59E0B;
+  background: #FFFBEB;
+}
+
+.approval-card.expense-pending {
+  border-left: 4px solid #2563EB;
+  background: #F8FAFC;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.btn-approve {
+  background: #059669;
+  color: #FFFFFF;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-approve:hover { background: #047857; }
+
+.btn-reject {
+  background: #DC2626;
+  color: #FFFFFF;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-reject:hover { background: #B91C1C; }
+
+.expense-entry-card.pending {
+  border-left: 4px solid #F59E0B;
+  background: #FFFDF5;
+}
+
+.expense-entry-card.rejected {
+  opacity: 0.6;
+  border-left: 4px solid #EF4444;
+  text-decoration: line-through;
+}
+
+
 

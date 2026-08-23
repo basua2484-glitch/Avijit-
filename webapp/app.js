@@ -274,7 +274,7 @@ function updateLiveClock() {
 }
 setInterval(updateLiveClock, 1000);
 
-// Global Calculations from Real Expense Ledger & Meals
+// Global Calculations from Real Expense Ledger & Meals (Strictly counts only APPROVED expenses)
 function calculateExpenseTotals() {
   const totals = {
     GROCERY: 0,
@@ -287,6 +287,9 @@ function calculateExpenseTotals() {
   };
 
   (state.expensesLog || []).forEach(exp => {
+    // Zero Fraud Rule: Count only APPROVED expenses (or legacy entries with no status)
+    if (exp.status && exp.status !== "APPROVED") return;
+
     const amt = parseFloat(exp.amount) || 0;
     if (totals[exp.category] !== undefined) {
       totals[exp.category] += amt;
@@ -440,9 +443,58 @@ function renderHeader() {
   }
 }
 
-// 2. Resident Screen Rendering
+// Helper to check if a user is currently ON LEAVE
+function isUserOnLeave(u) {
+  const user = u || state.currentUser || state.users[0];
+  return user && user.status === "ON_LEAVE";
+}
+
+// 2. Resident Screen Rendering (with Leave Lockout & View-Only Mode)
 function renderResidentScreen() {
   const user = state.currentUser || state.users[0];
+  const onLeave = isUserOnLeave(user);
+
+  // Dynamic Leave Lockout Banner Container
+  const lockoutContainer = document.getElementById("resident-leave-lockout-container");
+  if (lockoutContainer) {
+    if (onLeave) {
+      lockoutContainer.innerHTML = `
+        <div class="leave-lockout-banner">
+          <div class="leave-lockout-header">
+            <span class="leave-lockout-icon">🏖️</span>
+            <div>
+              <div class="leave-lockout-title">LEAVE LOCKOUT ACTIVE: VIEW-ONLY MODE</div>
+              <div class="badge badge-leave" style="margin-top:2px;">STATUS: ON LEAVE (गाँव / छुट्टी पर)</div>
+            </div>
+          </div>
+          <p class="leave-lockout-desc">
+            आप वर्तमान में छुट्टी (On Leave) पर हैं। आपका <strong>Meal Booking (नाश्ता/दोपहर/रात का खाना)</strong>, <strong>Duty Attendance (Punch In/Out)</strong> और <strong>Shift Roster</strong> पूर्णतः लॉक/फ़्रीज़ है।
+          </p>
+          <div class="mt-3" style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn-resume-leave" id="btn-banner-resume-leave">
+              🏡 Request Leave End / Return to Duty (गाँव से वापसी की अर्जी)
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-banner-add-purchase" style="background:#FFFFFF; color:#1E293B; font-weight:700;">
+              🛒 Add Mess Purchase
+            </button>
+          </div>
+        </div>
+      `;
+      // Wire banner action buttons
+      document.getElementById("btn-banner-resume-leave")?.addEventListener("click", () => {
+        document.getElementById("leave-end-return-date").value = getTodayString();
+        openModal("modal-leave-end");
+      });
+      document.getElementById("btn-banner-add-purchase")?.addEventListener("click", () => {
+        document.getElementById("exp-form-date").value = getTodayString();
+        document.getElementById("exp-form-amount").value = "";
+        document.getElementById("exp-form-note").value = "";
+        openModal("modal-add-expense");
+      });
+    } else {
+      lockoutContainer.innerHTML = "";
+    }
+  }
 
   // 1. Render Live Attendance & OT Status for Current User
   const activePunch = getActivePunch(user.id);
@@ -459,15 +511,47 @@ function renderResidentScreen() {
   const totalHoursEl = document.getElementById("duty-total-hours");
   const otHoursEl = document.getElementById("duty-ot-hours");
 
-  if (activePunch) {
+  if (onLeave) {
+    if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
+    if (statusBadge) {
+      statusBadge.textContent = "🏖️ ON LEAVE (FROZEN)";
+      statusBadge.className = "badge badge-leave";
+    }
+    if (statusText) statusText.textContent = "Duty Punch In/Out is locked while on leave";
+    if (btnPunchIn) {
+      btnPunchIn.disabled = true;
+      btnPunchIn.className = "btn btn-primary full-width btn-disabled-lockout";
+      btnPunchIn.innerHTML = `🔒 Punch In (Frozen - On Leave)`;
+    }
+    if (btnPunchOut) {
+      btnPunchOut.disabled = true;
+      btnPunchOut.className = "btn btn-secondary full-width btn-disabled-lockout";
+      btnPunchOut.innerHTML = `🔒 Punch Out (Frozen)`;
+    }
+    if (inTimeEl) inTimeEl.textContent = "On Leave";
+    if (outTimeEl) outTimeEl.textContent = "On Leave";
+    if (totalHoursEl) totalHoursEl.textContent = "0.0h";
+    if (otHoursEl) {
+      otHoursEl.textContent = "Locked";
+      otHoursEl.style.color = "#94A3B8";
+    }
+  } else if (activePunch) {
     if (pulseDot) pulseDot.className = "live-pulse-dot";
     if (statusBadge) {
       statusBadge.textContent = "ON DUTY (ACTIVE)";
       statusBadge.className = "badge badge-success";
     }
     if (statusText) statusText.textContent = `Shift Active since ${activePunch.punchInTime}`;
-    if (btnPunchIn) btnPunchIn.disabled = true;
-    if (btnPunchOut) btnPunchOut.disabled = false;
+    if (btnPunchIn) {
+      btnPunchIn.disabled = true;
+      btnPunchIn.className = "btn btn-primary full-width";
+      btnPunchIn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Punch In (Active)`;
+    }
+    if (btnPunchOut) {
+      btnPunchOut.disabled = false;
+      btnPunchOut.className = "btn btn-secondary full-width";
+      btnPunchOut.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg> Punch Out`;
+    }
     if (inTimeEl) inTimeEl.textContent = activePunch.punchInTime;
     if (outTimeEl) outTimeEl.textContent = "Active...";
 
@@ -486,9 +570,14 @@ function renderResidentScreen() {
     if (statusText) statusText.textContent = `Shift Finished: ${lastPunch.totalWorkedHours.toFixed(2)}h (${lastPunch.otHours.toFixed(2)}h OT)`;
     if (btnPunchIn) {
       btnPunchIn.disabled = false;
+      btnPunchIn.className = "btn btn-primary full-width";
       btnPunchIn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Punch In (Next Shift)`;
     }
-    if (btnPunchOut) btnPunchOut.disabled = true;
+    if (btnPunchOut) {
+      btnPunchOut.disabled = true;
+      btnPunchOut.className = "btn btn-secondary full-width";
+      btnPunchOut.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg> Punch Out`;
+    }
     if (inTimeEl) inTimeEl.textContent = lastPunch.punchInTime;
     if (outTimeEl) outTimeEl.textContent = lastPunch.punchOutTime;
     if (totalHoursEl) totalHoursEl.textContent = `${lastPunch.totalWorkedHours.toFixed(2)}h`;
@@ -505,9 +594,14 @@ function renderResidentScreen() {
     if (statusText) statusText.textContent = "No active duty punch for today";
     if (btnPunchIn) {
       btnPunchIn.disabled = false;
+      btnPunchIn.className = "btn btn-primary full-width";
       btnPunchIn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg> Punch In (Start Duty)`;
     }
-    if (btnPunchOut) btnPunchOut.disabled = true;
+    if (btnPunchOut) {
+      btnPunchOut.disabled = true;
+      btnPunchOut.className = "btn btn-secondary full-width";
+      btnPunchOut.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg> Punch Out`;
+    }
     if (inTimeEl) inTimeEl.textContent = "--:--";
     if (outTimeEl) outTimeEl.textContent = "--:--";
     if (totalHoursEl) totalHoursEl.textContent = "0.0h";
@@ -518,26 +612,46 @@ function renderResidentScreen() {
   }
 
   // 2. Render Shift & Meal Logic
-  document.getElementById("resident-shift-display").textContent = user.currentShift || "OFF_DUTY";
-  document.getElementById("shift-badge-indicator").textContent = user.currentShift || "OFF_DUTY";
+  const shiftDisplay = document.getElementById("resident-shift-display");
+  const shiftIndicator = document.getElementById("shift-badge-indicator");
+  if (shiftDisplay) shiftDisplay.textContent = onLeave ? `${user.currentShift || "OFF_DUTY"} (LOCKED)` : (user.currentShift || "OFF_DUTY");
+  if (shiftIndicator) shiftIndicator.textContent = onLeave ? "ON LEAVE" : (user.currentShift || "OFF_DUTY");
 
-  const isAutoOn = user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT";
+  const isAutoOn = !onLeave && (user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT");
   const pill = document.getElementById("resident-logic-pill");
   if (pill) {
-    pill.textContent = isAutoOn ? "Auto-ON (Night/Off)" : "Auto-OFF (Day Shift)";
-    pill.className = `pill-badge ${isAutoOn ? "badge-success" : "badge-alert"}`;
+    if (onLeave) {
+      pill.textContent = "🔒 View-Only Mode";
+      pill.className = "pill-badge badge-leave";
+    } else {
+      pill.textContent = isAutoOn ? "Auto-ON (Night/Off)" : "Auto-OFF (Day Shift)";
+      pill.className = `pill-badge ${isAutoOn ? "badge-success" : "badge-alert"}`;
+    }
   }
 
   const ruleBox = document.getElementById("rule-explanation-box");
   if (ruleBox) {
-    ruleBox.innerHTML = isAutoOn
-      ? "💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. You can skip if dining outside."
-      : "⚠️ <strong>Rule:</strong> Day Shifts (Morning/Evening) are <strong>Auto-OFF</strong>. Toggle ON before cut-off to eat.";
+    if (onLeave) {
+      ruleBox.innerHTML = "🏖️ <strong>ON LEAVE ACTIVE:</strong> You are on leave. Meals, shifts, and attendance are completely frozen. Click <strong>'Request Leave End'</strong> upon return.";
+    } else {
+      ruleBox.innerHTML = isAutoOn
+        ? "💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. You can skip if dining outside."
+        : "⚠️ <strong>Rule:</strong> Day Shifts (Morning/Evening) are <strong>Auto-OFF</strong>. Toggle ON before cut-off to eat.";
+    }
   }
 
-  // Update shift buttons active state
+  // Update shift buttons active and disabled state
   document.querySelectorAll(".shift-btn").forEach(btn => {
     btn.classList.toggle("active", btn.getAttribute("data-shift") === user.currentShift);
+    if (onLeave) {
+      btn.classList.add("btn-disabled-lockout");
+      btn.style.opacity = "0.5";
+      btn.style.cursor = "not-allowed";
+    } else {
+      btn.classList.remove("btn-disabled-lockout");
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+    }
   });
 
   // Render Resident Meals
@@ -552,28 +666,38 @@ function renderResidentScreen() {
 
   defaultMeals.forEach(dm => {
     let existing = userMeals.find(m => m.mealType === dm.type);
-    let status = existing ? existing.status : (isAutoOn ? "ON" : "OFF");
-    let isOn = status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED";
+    let status = onLeave ? "OFF (LEAVE)" : (existing ? existing.status : (isAutoOn ? "ON" : "OFF"));
+    let isOn = !onLeave && (status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED");
 
     const item = document.createElement("div");
-    item.className = `meal-item ${isOn ? "on" : ""}`;
+    item.className = `meal-item ${isOn ? "on" : ""} ${onLeave ? "locked-leave-item" : ""}`;
     item.innerHTML = `
       <div class="meal-info">
         <strong>${dm.type} (${status})</strong>
         <span>${dm.time} • ${dm.cutOff}</span>
       </div>
-      <button class="meal-toggle-btn ${isOn ? "btn-toggle-on" : "btn-toggle-off"}" onclick="toggleMeal('${dm.type}')">
-        ${isOn ? "✓ Eating (Meal ON)" : "✕ Skip (Meal OFF)"}
+      <button class="meal-toggle-btn ${isOn ? "btn-toggle-on" : "btn-toggle-off"} ${onLeave ? "btn-disabled-lockout" : ""}" 
+              ${onLeave ? 'disabled title="Locked while ON LEAVE"' : `onclick="toggleMeal('${dm.type}')"`}>
+        ${onLeave ? "🔒 Locked (On Leave)" : (isOn ? "✓ Eating (Meal ON)" : "✕ Skip (Meal OFF)")}
       </button>
     `;
     listEl.appendChild(item);
   });
 
-  // Calculate live dynamic bill based on ACTUAL expenses
+  // Update quick leave button text based on status
+  const qLeaveBtn = document.getElementById("btn-quick-leave-request");
+  if (qLeaveBtn) {
+    if (onLeave) {
+      qLeaveBtn.innerHTML = `🏡 Return from Leave (गाँव से वापसी)`;
+    } else {
+      qLeaveBtn.innerHTML = `🏖️ Request Leave (गाँव / छुट्टी)`;
+    }
+  }
+
+  // Calculate live dynamic bill based on ACTUAL approved expenses
   const expTotals = calculateExpenseTotals();
-  const totalPlates = getTotalConsumedPlates();
   const plateRate = getDynamicPlateRate();
-  const myPlatesCount = userMeals.filter(m => m.status === "ON" || m.status === "PACK_TIFFIN" || m.status === "LATE_COVERED").length;
+  const myPlatesCount = onLeave ? 0 : userMeals.filter(m => m.status === "ON" || m.status === "PACK_TIFFIN" || m.status === "LATE_COVERED").length;
 
   const activeResidents = (state.users || []).filter(u => u.status === "ACTIVE" && u.role === "RESIDENT").length || 
                           (state.users || []).filter(u => u.status === "ACTIVE").length || 1;
@@ -592,6 +716,11 @@ function renderResidentScreen() {
 
 function toggleMeal(mealType) {
   const user = state.currentUser;
+  if (isUserOnLeave(user)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. All meal bookings are frozen in View-Only mode.");
+    return;
+  }
+
   let meal = state.meals.find(m => m.userId === user.id && m.mealType === mealType);
   if (meal) {
     meal.status = (meal.status === "OFF" || meal.status === "SKIP") ? "ON" : "OFF";
@@ -613,6 +742,11 @@ function toggleMeal(mealType) {
 }
 
 function setShift(shift) {
+  if (isUserOnLeave(state.currentUser)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Shift modifications are frozen.");
+    return;
+  }
+
   state.currentUser.currentShift = shift;
   // Update in users list
   const u = state.users.find(x => x.id === state.currentUser.id);
@@ -647,6 +781,10 @@ function setShift(shift) {
 // Shift button listeners
 document.querySelectorAll(".shift-btn").forEach(btn => {
   btn.addEventListener("click", () => {
+    if (isUserOnLeave(state.currentUser)) {
+      alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Shift changes are locked.");
+      return;
+    }
     setShift(btn.getAttribute("data-shift"));
   });
 });
@@ -699,18 +837,24 @@ document.querySelectorAll(".filter-chip").forEach(chip => {
   });
 });
 
-// 4. Manager Operations Screen
+// 4. Manager Operations Screen (Leaves Approvals + Mess Expense Approvals)
 function renderManagerScreen() {
   const user = state.currentUser || state.users[0];
   const isNormalEmployee = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
 
   const leavesContainer = document.getElementById("manager-leaves-list");
+  const pendingExpContainer = document.getElementById("manager-pending-expenses-list");
   const rList = document.getElementById("manager-resident-list");
   const addResBtn = document.getElementById("btn-mgr-add-resident");
+
+  const pendingLeaves = (state.pendingLeaves || []);
+  const pendingExpenses = (state.expensesLog || []).filter(e => e.status === "PENDING");
 
   if (isNormalEmployee) {
     document.getElementById("mgr-active-count").textContent = "🔒 Locked";
     document.getElementById("mgr-pending-count").textContent = "🔒 Locked";
+    const mgrExpCount = document.getElementById("mgr-pending-expenses-count");
+    if (mgrExpCount) mgrExpCount.textContent = "🔒 Locked";
     if (addResBtn) addResBtn.style.display = "none";
 
     if (leavesContainer) {
@@ -719,11 +863,14 @@ function renderManagerScreen() {
           <div class="locked-icon-bubble">🔒</div>
           <h4 style="margin:0;">Manager Operations Portal Locked</h4>
           <p class="text-sub">
-            Access Restricted: Only Super Admin and Hostel Manager can view, approve leave requests, and manage employee records.<br>
-            Normal employees can use the <strong>Resident Home</strong> and <strong>Kitchen Live</strong> dashboards.
+            Access Restricted: Only Super Admin and Hostel Manager can view, approve leave requests, and approve purchase expenses.<br>
+            Normal employees can submit requests from the <strong>Resident Home</strong> and <strong>Expense Ledger</strong>.
           </p>
         </div>
       `;
+    }
+    if (pendingExpContainer) {
+      pendingExpContainer.innerHTML = `<div class="text-sub text-center" style="padding:16px;">Expense Approvals are restricted to Admin & Manager.</div>`;
     }
     if (rList) {
       rList.innerHTML = `<div class="text-sub text-center" style="padding:16px;">Resident Master Roster is restricted to Admin & Manager.</div>`;
@@ -733,67 +880,225 @@ function renderManagerScreen() {
 
   if (addResBtn) addResBtn.style.display = "inline-flex";
   const activeResidents = state.users.filter(u => u.status === 'ACTIVE' && (u.role === 'RESIDENT' || u.role === 'EMPLOYEE'));
-  document.getElementById("mgr-active-count").textContent = `${activeResidents.length} Active`;
-  document.getElementById("mgr-pending-count").textContent = `${(state.pendingLeaves || []).length} Requests`;
+  const onLeaveResidents = state.users.filter(u => u.status === 'ON_LEAVE' && (u.role === 'RESIDENT' || u.role === 'EMPLOYEE'));
 
+  document.getElementById("mgr-active-count").textContent = `${activeResidents.length} Active (${onLeaveResidents.length} On Leave)`;
+  document.getElementById("mgr-pending-count").textContent = `${pendingLeaves.length} Requests`;
+  const mgrExpCount = document.getElementById("mgr-pending-expenses-count");
+  if (mgrExpCount) mgrExpCount.textContent = `${pendingExpenses.length} Pending`;
+
+  const leavesBadge = document.getElementById("mgr-leaves-badge");
+  if (leavesBadge) leavesBadge.textContent = `${pendingLeaves.length} Pending`;
+  const expBadge = document.getElementById("mgr-expenses-badge");
+  if (expBadge) expBadge.textContent = `${pendingExpenses.length} Pending`;
+
+  // 1. Pending Leave & Return Requests
   leavesContainer.innerHTML = "";
-
-  if (!state.pendingLeaves || state.pendingLeaves.length === 0) {
-    leavesContainer.innerHTML = `<div class="empty-state">No pending leave requests.</div>`;
+  if (pendingLeaves.length === 0) {
+    leavesContainer.innerHTML = `<div class="empty-state">No pending leave or return requests.</div>`;
   } else {
-    state.pendingLeaves.forEach(lev => {
+    pendingLeaves.forEach(lev => {
+      const isReturn = lev.type === "LEAVE_END";
       const item = document.createElement("div");
-      item.className = "card mt-3 flex-between";
-      item.innerHTML = `
-        <div>
-          <strong>${lev.userName}</strong>
-          <p class="text-sub">${lev.startDate} to ${lev.endDate} (${lev.totalDays}d) - ${lev.reason}</p>
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-primary btn-sm" onclick="processLeave('${lev.id}', true)">Approve</button>
-          <button class="btn btn-alert btn-sm" onclick="processLeave('${lev.id}', false)">Reject</button>
-        </div>
-      `;
+      item.className = "approval-card pending";
+      
+      if (isReturn) {
+        item.innerHTML = `
+          <div class="approval-card-info">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-success">🏡 RETURN TO DUTY REQUEST</span>
+              <span class="text-sub">${new Date(lev.createdAt || Date.now()).toLocaleDateString()}</span>
+            </div>
+            <strong style="font-size:15px; margin-top:4px; display:block;">${lev.userName} (Room ${lev.userRoom || '101'})</strong>
+            <p class="text-sub" style="margin-top:2px;">
+              Requested Return Date: <strong>${lev.returnDate || 'Today'}</strong> • Resuming Shift: <strong>${lev.resumingShift || 'MORNING'}</strong>
+            </p>
+            <p style="font-size:12px; color:#475569; margin-top:4px;">Note: "${lev.reason || 'Ready for duty'}"</p>
+          </div>
+          <div class="approval-card-actions">
+            <button class="btn btn-success btn-sm" onclick="processLeave('${lev.id}', true)">✓ Approve Return (Unlock)</button>
+            <button class="btn btn-alert btn-sm" onclick="processLeave('${lev.id}', false)">✕ Reject</button>
+          </div>
+        `;
+      } else {
+        item.innerHTML = `
+          <div class="approval-card-info">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-leave">🏖️ LEAVE APPLICATION</span>
+              <span class="text-sub">${new Date(lev.createdAt || Date.now()).toLocaleDateString()}</span>
+            </div>
+            <strong style="font-size:15px; margin-top:4px; display:block;">${lev.userName} (Room ${lev.userRoom || '101'})</strong>
+            <p class="text-sub" style="margin-top:2px;">
+              Leave Period: <strong>${lev.startDate} to ${lev.endDate}</strong> (${lev.totalDays || 1} days)
+            </p>
+            <p style="font-size:12px; color:#475569; margin-top:4px;">Reason: "${lev.reason || 'Personal / Village'}"</p>
+          </div>
+          <div class="approval-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="processLeave('${lev.id}', true)">✓ Approve Leave (Lock)</button>
+            <button class="btn btn-alert btn-sm" onclick="processLeave('${lev.id}', false)">✕ Reject</button>
+          </div>
+        `;
+      }
       leavesContainer.appendChild(item);
     });
   }
 
-  // Resident Directory
-  rList.innerHTML = "";
+  // 2. Pending Mess / Grocery Expense Approvals
+  if (pendingExpContainer) {
+    pendingExpContainer.innerHTML = "";
+    if (pendingExpenses.length === 0) {
+      pendingExpContainer.innerHTML = `<div class="empty-state">No pending mess purchase requests. Zero awaiting approval.</div>`;
+    } else {
+      pendingExpenses.forEach(exp => {
+        const item = document.createElement("div");
+        item.className = "approval-card pending";
+        item.innerHTML = `
+          <div class="approval-card-info">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge ${getCategoryBadgeClass(exp.category)}">${formatCategoryName(exp.category)}</span>
+              <span class="badge badge-pending">⏳ PENDING APPROVAL</span>
+              <span class="text-sub">${exp.date}</span>
+            </div>
+            <strong style="font-size:15px; margin-top:4px; display:block;">${exp.description}</strong>
+            <p class="text-sub" style="margin-top:2px;">
+              Submitted by: <strong>${exp.recordedBy}</strong> • Payment: ${exp.paymentMode || 'UPI'}
+            </p>
+          </div>
+          <div class="approval-card-actions">
+            <div class="approval-price font-mono">₹${parseFloat(exp.amount).toFixed(2)}</div>
+            <div style="display:flex; gap:6px; margin-top:4px;">
+              <button class="btn btn-success btn-sm" onclick="processExpense('${exp.id}', true)">✓ Approve</button>
+              <button class="btn btn-alert btn-sm" onclick="processExpense('${exp.id}', false)">✕ Reject</button>
+            </div>
+          </div>
+        `;
+        pendingExpContainer.appendChild(item);
+      });
+    }
+  }
 
-  if (activeResidents.length === 0) {
+  // 3. Resident Directory
+  rList.innerHTML = "";
+  const allHostelResidents = state.users.filter(u => u.role === 'RESIDENT' || u.role === 'EMPLOYEE');
+  if (allHostelResidents.length === 0) {
     rList.innerHTML = `<div class="empty-state">No residents added yet. Click "+ New Resident" to register members with OTP verification.</div>`;
   } else {
-    activeResidents.forEach(u => {
+    allHostelResidents.forEach(u => {
       const div = document.createElement("div");
       div.className = "account-item";
+      const isOnLeave = u.status === "ON_LEAVE";
+      const statusPill = isOnLeave 
+        ? `<span class="badge badge-leave">🏖️ ON LEAVE</span>` 
+        : (u.status === "BLOCKED" ? `<span class="badge badge-alert">BLOCKED</span>` : `<span class="badge badge-success">ACTIVE</span>`);
+
       div.innerHTML = `
         <div>
-          <strong>${u.name} (Room ${u.assignedRoom || '101'})</strong>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <strong>${u.name} (Room ${u.assignedRoom || '101'})</strong>
+            ${statusPill}
+          </div>
           <p class="text-sub">${u.userIdCode || 'EMP'} • 📱 +91 ${u.mobile} ${u.isOtpVerified ? '• <span class="text-success font-bold">✓ OTP Verified</span>' : ''}</p>
         </div>
-        <span class="role-tag">${u.currentShift || 'OFF_DUTY'}</span>
+        <span class="role-tag">${isOnLeave ? 'LOCKED' : (u.currentShift || 'OFF_DUTY')}</span>
       `;
       rList.appendChild(div);
     });
   }
 }
 
+// Process Leave Start & Leave End Requests
 function processLeave(id, approve) {
   if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
     alert("🔒 Access Denied: Only Super Admin and Hostel Manager can approve or reject leaves.");
     return;
   }
+
+  const lev = (state.pendingLeaves || []).find(l => l.id === id);
+  if (!lev) return;
+
   state.pendingLeaves = state.pendingLeaves.filter(l => l.id !== id);
+
+  if (approve) {
+    const isReturn = lev.type === "LEAVE_END";
+    const targetUser = state.users.find(u => u.id === lev.userId);
+
+    if (isReturn) {
+      // Return to Duty Approved: Unlock user
+      if (targetUser) {
+        targetUser.status = "ACTIVE";
+        if (lev.resumingShift) targetUser.currentShift = lev.resumingShift;
+      }
+      if (state.currentUser.id === lev.userId) {
+        state.currentUser.status = "ACTIVE";
+        if (lev.resumingShift) state.currentUser.currentShift = lev.resumingShift;
+      }
+      alert(`✓ Duty Return Approved for ${lev.userName}!\nEmployee status restored to ACTIVE and all permissions (Meals, Punch In/Out, Shifts) are UNLOCKED.`);
+    } else {
+      // Leave Start Approved: Set user ON_LEAVE and Freeze permissions
+      if (targetUser) {
+        targetUser.status = "ON_LEAVE";
+      }
+      if (state.currentUser.id === lev.userId) {
+        state.currentUser.status = "ON_LEAVE";
+      }
+      // Auto-turn OFF meals to prevent food wastage
+      (state.meals || []).forEach(m => {
+        if (m.userId === lev.userId) {
+          m.status = "OFF";
+        }
+      });
+      // Complete any running duty punch
+      const activePunch = getActivePunch(lev.userId);
+      if (activePunch) {
+        const now = Date.now();
+        const calc = calculateDutyShift(activePunch.punchInTimestamp, now);
+        activePunch.punchOutTime = formatTimeAMPM(now);
+        activePunch.punchOutTimestamp = now;
+        activePunch.totalWorkedHours = calc.totalHours;
+        activePunch.regularHours = calc.regularHours;
+        activePunch.otHours = calc.otHours;
+        activePunch.status = "COMPLETED";
+      }
+      alert(`✓ Leave Approved for ${lev.userName}!\nEmployee status set to 'ON LEAVE'. Meals, Duty Attendance, and update controls are now FROZEN in View-Only mode.`);
+    }
+  } else {
+    alert(`Leave / Return request for ${lev.userName} has been Rejected.`);
+  }
+
   saveState();
   renderUI();
-  alert(approve ? "✓ Leave Approved! Meals automatically locked for the duration." : "Leave Request Rejected.");
 }
 
-// 5. Expense Ledger Screen (Actual Expenses Tracking & Role Security)
+// Process Mess Purchase / Expense Requests (Approve / Reject)
+function processExpense(id, approve) {
+  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+    alert("🔒 Access Denied: Only Super Admin and Hostel Manager can approve or reject expense submissions.");
+    return;
+  }
+
+  const exp = (state.expensesLog || []).find(e => e.id === id);
+  if (!exp) return;
+
+  if (approve) {
+    exp.status = "APPROVED";
+    exp.approvedBy = state.currentUser.name;
+    exp.approvedAt = Date.now();
+    alert(`✓ Expense Approved!\n₹${parseFloat(exp.amount).toFixed(2)} for "${exp.description}" is now officially recorded in the Hostel Ledger and Dynamic Plate Rate calculations.`);
+  } else {
+    exp.status = "REJECTED";
+    exp.approvedBy = state.currentUser.name;
+    exp.approvedAt = Date.now();
+    alert(`✕ Expense Rejected: ₹${parseFloat(exp.amount).toFixed(2)} for "${exp.description}" has been rejected and will NOT be added to calculations.`);
+  }
+
+  saveState();
+  renderUI();
+}
+
+// 5. Expense Ledger Screen (Actual Expenses Tracking & Approval Workflow)
 function renderExpenseScreen() {
   const user = state.currentUser || state.users[0];
-  const isNormalEmployee = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
+  const isManagerOrAdmin = user.role === "ADMIN" || user.role === "MANAGER";
 
   const expTotals = calculateExpenseTotals();
   const dynamicRate = getDynamicPlateRate();
@@ -806,15 +1111,21 @@ function renderExpenseScreen() {
   const settingRentInput = document.getElementById("setting-room-rent");
   const saveRentBtn = document.getElementById("btn-save-room-rent");
 
-  if (isNormalEmployee) {
-    if (addExpBtn) addExpBtn.style.display = "none";
+  if (!isManagerOrAdmin) {
+    if (addExpBtn) {
+      addExpBtn.style.display = "inline-flex";
+      addExpBtn.textContent = "+ Submit Mess Purchase";
+    }
     if (settingRentInput) {
       settingRentInput.value = state.roomRentPerPerson || 1500;
       settingRentInput.disabled = true;
     }
     if (saveRentBtn) saveRentBtn.style.display = "none";
   } else {
-    if (addExpBtn) addExpBtn.style.display = "inline-flex";
+    if (addExpBtn) {
+      addExpBtn.style.display = "inline-flex";
+      addExpBtn.textContent = "+ Add Mess Purchase / Expense";
+    }
     if (settingRentInput && !settingRentInput.matches(":focus")) {
       settingRentInput.value = state.roomRentPerPerson || 1500;
       settingRentInput.disabled = false;
@@ -822,9 +1133,62 @@ function renderExpenseScreen() {
     if (saveRentBtn) saveRentBtn.style.display = "inline-flex";
   }
 
+  // 1. Pending Approvals Panel in Expense Tab
+  const pendingPanel = document.getElementById("expense-pending-approvals-panel");
+  const pendingListEl = document.getElementById("expense-tab-pending-list");
+  const pendingBadgeEl = document.getElementById("exp-tab-pending-count-badge");
+
+  const pendingExpenses = (state.expensesLog || []).filter(e => e.status === "PENDING");
+  if (pendingBadgeEl) pendingBadgeEl.textContent = `${pendingExpenses.length} Pending`;
+
+  if (pendingPanel && pendingListEl) {
+    if (pendingExpenses.length === 0) {
+      pendingListEl.innerHTML = `
+        <div class="empty-state" style="padding:16px;">
+          ✓ All mess purchases have been reviewed. Zero pending approvals.
+        </div>
+      `;
+    } else {
+      pendingListEl.innerHTML = "";
+      pendingExpenses.forEach(exp => {
+        const item = document.createElement("div");
+        item.className = "approval-card pending";
+        item.innerHTML = `
+          <div class="approval-card-info">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge ${getCategoryBadgeClass(exp.category)}">${formatCategoryName(exp.category)}</span>
+              <span class="badge badge-pending">⏳ PENDING APPROVAL</span>
+              <span class="text-sub">${exp.date}</span>
+            </div>
+            <strong style="font-size:15px; margin-top:4px; display:block;">${exp.description}</strong>
+            <p class="text-sub" style="margin-top:2px;">
+              Submitted by: <strong>${exp.recordedBy}</strong> • Payment: ${exp.paymentMode || 'UPI'}
+            </p>
+          </div>
+          <div class="approval-card-actions">
+            <div class="approval-price font-mono">₹${parseFloat(exp.amount).toFixed(2)}</div>
+            ${isManagerOrAdmin ? `
+              <div style="display:flex; gap:6px; margin-top:4px;">
+                <button class="btn btn-success btn-sm" onclick="processExpense('${exp.id}', true)">✓ Approve</button>
+                <button class="btn btn-alert btn-sm" onclick="processExpense('${exp.id}', false)">✕ Reject</button>
+              </div>
+            ` : `<span class="badge badge-pending" style="font-size:10px;">Awaiting Manager/Admin</span>`}
+          </div>
+        `;
+        pendingListEl.appendChild(item);
+      });
+    }
+  }
+
+  // 2. Filter & Render Full Expense Log
   const categoryFilter = state.selectedExpenseCategoryFilter || "ALL";
   let entries = state.expensesLog || [];
-  if (categoryFilter !== "ALL") {
+
+  if (categoryFilter === "APPROVED") {
+    entries = entries.filter(e => !e.status || e.status === "APPROVED");
+  } else if (categoryFilter === "PENDING") {
+    entries = entries.filter(e => e.status === "PENDING");
+  } else if (categoryFilter !== "ALL") {
     entries = entries.filter(e => e.category === categoryFilter);
   }
 
@@ -834,8 +1198,8 @@ function renderExpenseScreen() {
   if (entries.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <p>No expenses recorded yet.</p>
-        <p class="text-sub mt-1">${isNormalEmployee ? 'No expense logs available.' : 'Click <strong>"+ Add Real Expense"</strong> to log grocery, electricity, cook salary, etc.'}</p>
+        <p>No expenses found for this filter.</p>
+        <p class="text-sub mt-1">Click <strong>"+ Add Mess Purchase / Expense"</strong> to submit entries.</p>
       </div>
     `;
     return;
@@ -844,24 +1208,48 @@ function renderExpenseScreen() {
   entries.slice().reverse().forEach(exp => {
     const card = document.createElement("div");
     const catClass = (exp.category || "other").toLowerCase();
-    card.className = `expense-entry-card ${catClass}`;
+    const status = exp.status || "APPROVED";
+    card.className = `expense-entry-card ${catClass} ${status === 'PENDING' ? 'pending-border' : (status === 'REJECTED' ? 'rejected-border' : '')}`;
 
     const isKitchenExp = exp.category === "GROCERY" || exp.category === "COOK_SALARY";
-    const canDeleteThisExp = isAdmin || (user.role === "MANAGER" && isKitchenExp);
+    const canDeleteThisExp = user.role === "ADMIN" || (user.role === "MANAGER" && isKitchenExp);
+
+    const statusBadge = status === "APPROVED"
+      ? `<span class="badge badge-success">✓ APPROVED</span>`
+      : (status === "PENDING"
+          ? `<span class="badge badge-pending">⏳ PENDING APPROVAL</span>`
+          : `<span class="badge badge-rejected">✕ REJECTED</span>`);
+
+    let approvalActions = "";
+    if (status === "PENDING" && isManagerOrAdmin) {
+      approvalActions = `
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-success btn-sm" onclick="processExpense('${exp.id}', true)" title="Approve expense">✓ Approve</button>
+          <button class="btn btn-alert btn-sm" onclick="processExpense('${exp.id}', false)" title="Reject expense">✕ Reject</button>
+        </div>
+      `;
+    }
 
     card.innerHTML = `
       <div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="badge ${getCategoryBadgeClass(exp.category)}">${formatCategoryName(exp.category)}</span>
+          ${statusBadge}
           <span class="text-sub">${exp.date}</span>
           <span class="text-sub">• ${exp.paymentMode || 'UPI'}</span>
         </div>
-        <p style="font-size:13px; font-weight:600; margin-top:4px; color:var(--text-primary);">${exp.description}</p>
-        <p class="text-sub">Logged by: ${exp.recordedBy || 'Admin'}</p>
+        <p style="font-size:14px; font-weight:700; margin-top:4px; color:var(--text-primary);">${exp.description}</p>
+        <p class="text-sub" style="font-size:12px;">
+          Submitted by: <strong>${exp.recordedBy || 'Admin'}</strong>
+          ${exp.approvedBy ? ` • <span style="color:#059669; font-weight:600;">Approved by ${exp.approvedBy}</span>` : ''}
+        </p>
       </div>
-      <div style="text-align:right; display:flex; align-items:center; gap:10px;">
+      <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <span style="font-size:16px; font-weight:800; color:var(--text-primary);">₹${parseFloat(exp.amount).toFixed(2)}</span>
-        ${canDeleteThisExp ? `<button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>` : (user.role === "MANAGER" ? `<span class="text-sub" style="font-size:11px;">👁️ View Only</span>` : '')}
+        <div style="display:flex; align-items:center; gap:6px;">
+          ${approvalActions}
+          ${canDeleteThisExp ? `<button class="btn btn-alert btn-sm" onclick="deleteExpense('${exp.id}')" title="Delete Expense">🗑️</button>` : ''}
+        </div>
       </div>
     `;
     container.appendChild(card);
@@ -1646,7 +2034,7 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   alert(`✓ Phone Verification & Onboarding Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) onboarded with role ${newUser.role}.`);
 });
 
-// 8. Add Real Expense Form Handlers
+// 8. Add Real Expense Form Handlers (Mess / Grocery Expense Workflow)
 document.getElementById("btn-open-add-expense")?.addEventListener("click", () => {
   document.getElementById("exp-form-date").value = getTodayString();
   document.getElementById("exp-form-amount").value = "";
@@ -1666,18 +2054,27 @@ document.getElementById("btn-save-expense")?.addEventListener("click", () => {
     return;
   }
   if (!note) {
-    alert("Please enter a description / bill voucher note!");
+    alert("Please enter an item name / bill voucher description!");
     return;
   }
 
+  const user = state.currentUser || state.users[0];
+  const isManagerOrAdmin = user && (user.role === "ADMIN" || user.role === "MANAGER");
+  const initialStatus = isManagerOrAdmin ? "APPROVED" : "PENDING";
+
   const newExpense = {
-    id: "exp_" + Date.now(),
+    id: "exp_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
     date: date,
     category: category,
     amount: amount,
     description: note,
     paymentMode: mode,
-    recordedBy: state.currentUser ? state.currentUser.name : "Admin",
+    recordedBy: user ? user.name : "Admin",
+    recordedById: user ? user.id : "usr_admin",
+    recordedByRole: user ? user.role : "RESIDENT",
+    status: initialStatus,
+    approvedBy: isManagerOrAdmin ? (user ? user.name : "Admin") : null,
+    approvedAt: isManagerOrAdmin ? Date.now() : null,
     createdAt: Date.now()
   };
 
@@ -1687,7 +2084,12 @@ document.getElementById("btn-save-expense")?.addEventListener("click", () => {
   saveState();
   renderUI();
   closeModal("modal-add-expense");
-  alert(`✓ Recorded actual expense of ₹${amount.toFixed(2)} under ${formatCategoryName(category)}!`);
+
+  if (initialStatus === "PENDING") {
+    alert(`✓ Mess purchase request of ₹${amount.toFixed(2)} ("${note}") submitted for approval!\n\nStatus: PENDING. It has been routed to the Hostel Manager & Super Admin dashboard. Once approved, it will be added to the hostel ledger and plate rate calculations.`);
+  } else {
+    alert(`✓ Recorded and approved actual expense of ₹${amount.toFixed(2)} under ${formatCategoryName(category)}!`);
+  }
 });
 
 // 9. Switch User Modal Handlers
@@ -1786,7 +2188,14 @@ document.getElementById("btn-view-invoice")?.addEventListener("click", () => {
 });
 
 // 11. Overtime / Late Plate Handlers
-document.getElementById("btn-quick-late-plate")?.addEventListener("click", () => openModal("modal-ot"));
+document.getElementById("btn-quick-late-plate")?.addEventListener("click", () => {
+  if (isUserOnLeave(state.currentUser)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Overtime meal requests are locked in View-Only mode.");
+    return;
+  }
+  openModal("modal-ot");
+});
+
 document.querySelectorAll(".ot-chip").forEach(chip => {
   chip.addEventListener("click", () => {
     document.querySelectorAll(".ot-chip").forEach(c => c.classList.remove("active"));
@@ -1802,6 +2211,11 @@ document.querySelectorAll(".ot-chip").forEach(chip => {
 
 document.getElementById("btn-confirm-ot")?.addEventListener("click", () => {
   const user = state.currentUser;
+  if (isUserOnLeave(user)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Overtime meal requests are frozen.");
+    return;
+  }
+
   const hours = state.selectedOtHours || 2;
   const status = hours >= 4 ? "PACK_TIFFIN" : "LATE_COVERED";
   
@@ -1827,38 +2241,115 @@ document.getElementById("btn-confirm-ot")?.addEventListener("click", () => {
   alert(`✓ Overtime Dinner Meal recorded (${status})!`);
 });
 
-// 12. Leave Submission Handlers
-document.getElementById("btn-open-leave")?.addEventListener("click", () => {
-  document.getElementById("leave-start").value = getTodayString();
-  document.getElementById("leave-end").value = getTodayString();
-  openModal("modal-leave");
+// Quick Action Bar Handlers in Resident Screen
+document.getElementById("btn-quick-add-purchase")?.addEventListener("click", () => {
+  document.getElementById("exp-form-date").value = getTodayString();
+  document.getElementById("exp-form-amount").value = "";
+  document.getElementById("exp-form-note").value = "";
+  openModal("modal-add-expense");
 });
 
+document.getElementById("btn-quick-leave-request")?.addEventListener("click", () => {
+  const user = state.currentUser || state.users[0];
+  if (isUserOnLeave(user)) {
+    document.getElementById("leave-end-return-date").value = getTodayString();
+    openModal("modal-leave-end");
+  } else {
+    document.getElementById("leave-start").value = getTodayString();
+    document.getElementById("leave-end").value = getTodayString();
+    openModal("modal-leave");
+  }
+});
+
+// 12. Leave Submission Handlers (Leave Start & Leave End Requests)
+document.getElementById("btn-open-leave")?.addEventListener("click", () => {
+  const user = state.currentUser || state.users[0];
+  if (isUserOnLeave(user)) {
+    document.getElementById("leave-end-return-date").value = getTodayString();
+    openModal("modal-leave-end");
+  } else {
+    document.getElementById("leave-start").value = getTodayString();
+    document.getElementById("leave-end").value = getTodayString();
+    openModal("modal-leave");
+  }
+});
+
+// Submit Leave Application (Leave Start)
 document.getElementById("btn-submit-leave")?.addEventListener("click", () => {
-  const start = document.getElementById("leave-start").value;
-  const end = document.getElementById("leave-end").value;
-  const reason = document.getElementById("leave-reason").value || "Home visit";
+  const user = state.currentUser || state.users[0];
+  const start = document.getElementById("leave-start").value || getTodayString();
+  const end = document.getElementById("leave-end").value || getTodayString();
+  const reason = document.getElementById("leave-reason").value.trim() || "Village / Family Visit";
+
+  const d1 = new Date(start);
+  const d2 = new Date(end);
+  const diffTime = Math.max(0, d2 - d1);
+  const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
   if (!state.pendingLeaves) state.pendingLeaves = [];
   state.pendingLeaves.push({
-    id: "lev_" + Date.now(),
-    userId: state.currentUser.id,
-    userName: state.currentUser.name,
+    id: "lev_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+    type: "LEAVE_START",
+    userId: user.id,
+    userName: user.name,
+    userRole: user.role,
+    userRoom: user.assignedRoom || "101",
     startDate: start,
     endDate: end,
-    totalDays: 3,
-    reason: reason
+    totalDays: totalDays,
+    reason: reason,
+    status: "PENDING",
+    createdAt: Date.now()
   });
 
   saveState();
   renderUI();
   closeModal("modal-leave");
-  alert("✓ Leave application submitted to Manager for approval!");
+  alert(`✓ Leave application submitted to Manager/Admin!\n\nLeave Dates: ${start} to ${end} (${totalDays} days).\nOnce approved, your status will switch to 'ON LEAVE' and meal bookings will be locked to prevent wastage.`);
+});
+
+// Submit Return to Duty Request (Leave End)
+document.getElementById("btn-submit-leave-end")?.addEventListener("click", () => {
+  const user = state.currentUser || state.users[0];
+  const returnDate = document.getElementById("leave-end-return-date").value || getTodayString();
+  const resumingShift = document.getElementById("leave-end-shift").value || "MORNING";
+  const note = document.getElementById("leave-end-note").value.trim() || "Returned from leave, ready for duty";
+
+  if (!state.pendingLeaves) state.pendingLeaves = [];
+  state.pendingLeaves.push({
+    id: "lev_end_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+    type: "LEAVE_END",
+    userId: user.id,
+    userName: user.name,
+    userRole: user.role,
+    userRoom: user.assignedRoom || "101",
+    returnDate: returnDate,
+    resumingShift: resumingShift,
+    reason: note,
+    status: "PENDING",
+    createdAt: Date.now()
+  });
+
+  saveState();
+  renderUI();
+  closeModal("modal-leave-end");
+  alert(`✓ Duty Return Request submitted to Manager/Admin!\n\nReturn Date: ${returnDate} (Shift: ${resumingShift}).\nOnce approved by the Hostel Manager/Super Admin, your permissions (Punch In/Out, Meal booking, Shifts) will be fully restored.`);
 });
 
 // 13. Guest Plates Handlers
-document.getElementById("btn-open-guest-modal")?.addEventListener("click", () => openModal("modal-guest"));
+document.getElementById("btn-open-guest-modal")?.addEventListener("click", () => {
+  if (isUserOnLeave(state.currentUser)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Guest meals cannot be requested.");
+    return;
+  }
+  openModal("modal-guest");
+});
+
 document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
+  if (isUserOnLeave(state.currentUser)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Guest meals cannot be added.");
+    return;
+  }
   const count = parseInt(document.getElementById("guest-count").value) || 2;
   const note = document.getElementById("guest-note").value || "Guests";
   for (let i = 0; i < count; i++) {
@@ -1883,6 +2374,11 @@ document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
 // Employee Punch In
 document.getElementById("btn-employee-punch-in")?.addEventListener("click", () => {
   const user = state.currentUser || state.users[0];
+  if (isUserOnLeave(user)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Duty Punch In is blocked until Manager/Admin approves your return request.");
+    return;
+  }
+
   const active = getActivePunch(user.id);
   if (active) {
     alert("⚠️ You already have an active duty shift running! Please punch out before starting a new shift.");
@@ -1920,6 +2416,11 @@ document.getElementById("btn-employee-punch-in")?.addEventListener("click", () =
 // Employee Punch Out
 document.getElementById("btn-employee-punch-out")?.addEventListener("click", () => {
   const user = state.currentUser || state.users[0];
+  if (isUserOnLeave(user)) {
+    alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Duty Punch Out is blocked in View-Only mode.");
+    return;
+  }
+
   const active = getActivePunch(user.id);
   if (!active) {
     alert("⚠️ No active punch-in found for today.");
