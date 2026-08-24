@@ -127,6 +127,21 @@ body {
   display: inline-block;
 }
 
+.role-pill {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 12px;
+  letter-spacing: 0.5px;
+  display: inline-block;
+  text-transform: uppercase;
+}
+.role-pill.super_admin { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+.role-pill.admin { background: #E0E7FF; color: #3730A3; border: 1px solid #C7D2FE; }
+.role-pill.manager { background: #F3E8FF; color: #6B21A8; border: 1px solid #E9D5FF; }
+.role-pill.resident, .role-pill.employee, .role-pill.staff { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+.role-pill.cook { background: #E0F2FE; color: #075985; border: 1px solid #BAE6FD; }
+
 .icon-btn {
   background: var(--surface-variant);
   border: none;
@@ -1437,6 +1452,76 @@ body {
   align-items: center;
 }
 
+/* Role Selector on Approval Card */
+.pending-role-select {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #CBD5E1;
+  font-size: 11px;
+  font-weight: 700;
+  background: #F8FAFC;
+  color: #0F172A;
+  outline: none;
+}
 
+.pending-role-select:focus {
+  border-color: var(--primary-blue);
+  background: #FFFFFF;
+}
 
+/* Full Screen Pending Approval Blocking Screen */
+.pending-blocker-screen {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
 
+.pending-blocker-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-top: 6px solid #F59E0B;
+  border-radius: var(--radius-xl);
+  padding: 28px 24px;
+  max-width: 480px;
+  width: 100%;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.pending-blocker-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.pending-blocker-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0F172A;
+  margin-bottom: 6px;
+}
+
+.pending-blocker-badge {
+  display: inline-block;
+  background: #FEF3C7;
+  color: #92400E;
+  border: 1px solid #FDE68A;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.pending-user-details-box {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  text-align: left;
+  margin: 16px 0;
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.6;
+}

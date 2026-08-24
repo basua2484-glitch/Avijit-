@@ -585,9 +585,10 @@
             </div>
             <div class="role-filter-bar">
               <button class="filter-btn active" data-role-filter="ALL">All</button>
+              <button class="filter-btn" data-role-filter="SUPER_ADMIN">Super Admin</button>
               <button class="filter-btn" data-role-filter="ADMIN">Admin</button>
               <button class="filter-btn" data-role-filter="MANAGER">Manager</button>
-              <button class="filter-btn" data-role-filter="RESIDENT">Residents</button>
+              <button class="filter-btn" data-role-filter="RESIDENT">Employees</button>
               <button class="filter-btn" data-role-filter="COOK">Cooks</button>
             </div>
           </div>
@@ -597,15 +598,15 @@
           </div>
         </div>
 
-        <!-- Quick Clear / Reset Database Option (Super Admin Only) -->
+        <!-- Quick Clear / Reset Database Option (Master Super Admin Only) -->
         <div class="card" id="admin-db-controls-card">
           <div class="card-header">
-            <h4>Database & System Controls (Super Admin Only)</h4>
+            <h4>Cloud Database Controls (Master Super Admin Only)</h4>
           </div>
-          <p class="text-sub">System data is saved locally in your browser storage. You can clear and start fresh anytime.</p>
+          <p class="text-sub">Hostel database is synchronized in real-time across all connected devices with Firebase Firestore Cloud. Master Super Admin can reset cloud data and restore initial clean database state.</p>
           <div class="mt-2">
             <button class="btn btn-alert btn-sm" id="btn-reset-db">
-              🗑️ Reset All Local Data & Start Fresh
+              ☁️ Reset Cloud Database & Start Fresh
             </button>
           </div>
         </div>
@@ -643,9 +644,9 @@
           <div class="form-group">
             <label>Role Assignment *</label>
             <select id="form-user-role" class="form-select">
-              <option value="RESIDENT">Hostel Resident / Employee (रहवासी - Self Access Only)</option>
-              <option value="MANAGER">Hostel Manager (प्रबंधक - Ops & Expenses)</option>
-              <option value="ADMIN">Super Admin (व्यवस्थापक - Full Master Access)</option>
+              <option value="RESIDENT" selected>Hostel Resident / Employee (Default - Resident Self Portal)</option>
+              <option value="MANAGER">Hostel Manager (प्रबंधक - Kitchen Ops & Groceries)</option>
+              <option value="ADMIN">Admin (सहायक व्यवस्थापक - View & Update All, Strict No-Delete)</option>
               <option value="COOK">Kitchen Cook (रसोईया - Food Headcount Only)</option>
             </select>
           </div>

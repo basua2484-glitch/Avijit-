@@ -4,23 +4,23 @@
 
 const CLEAN_INITIAL_STATE = {
   currentUser: {
-    id: "usr_admin",
-    name: "Super Admin",
+    id: "usr_super_admin",
+    name: "Avijit Basu",
     mobile: "9876543210",
-    role: "ADMIN",
+    role: "SUPER_ADMIN",
     assignedRoom: "Admin Office",
-    userIdCode: "ADM_001",
+    userIdCode: "SADM_001",
     status: "ACTIVE",
     currentShift: "OFF_DUTY"
   },
   users: [
     {
-      id: "usr_admin",
-      name: "Super Admin",
+      id: "usr_super_admin",
+      name: "Avijit Basu",
       mobile: "9876543210",
-      role: "ADMIN",
+      role: "SUPER_ADMIN",
       assignedRoom: "Admin Office",
-      userIdCode: "ADM_001",
+      userIdCode: "SADM_001",
       status: "ACTIVE",
       currentShift: "OFF_DUTY"
     }
@@ -52,6 +52,20 @@ let state = (function() {
       if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
       if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
+
+      // Ensure Master Super Admin is Avijit Basu
+      const superUser = parsed.users.find(u => u.id === "usr_super_admin" || u.userIdCode === "SADM_001" || u.name === "Master Super Admin" || u.name === "Avijit Basu");
+      if (superUser) {
+        superUser.name = "Avijit Basu";
+        superUser.role = "SUPER_ADMIN";
+        superUser.userIdCode = "SADM_001";
+      }
+      if (parsed.currentUser && (parsed.currentUser.id === "usr_super_admin" || parsed.currentUser.userIdCode === "SADM_001" || parsed.currentUser.name === "Master Super Admin")) {
+        parsed.currentUser.name = "Avijit Basu";
+        parsed.currentUser.role = "SUPER_ADMIN";
+        parsed.currentUser.userIdCode = "SADM_001";
+      }
+
       return parsed;
     }
   } catch (e) {
@@ -59,6 +73,63 @@ let state = (function() {
   }
   return JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
 })();
+
+// ==========================================
+// RBAC ROLE HIERARCHY & PERMISSION HELPERS
+// ==========================================
+function isSuperAdmin(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  if (!user) return false;
+  return user.role === "SUPER_ADMIN" || user.userIdCode === "SADM_001" || user.id === "usr_super_admin" || user.name === "Avijit Basu" || (user.role === "ADMIN" && user.userIdCode === "ADM_001");
+}
+
+function isNormalAdmin(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  if (!user) return false;
+  return user.role === "ADMIN" && !isSuperAdmin(user);
+}
+
+function isManager(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  if (!user) return false;
+  return user.role === "MANAGER";
+}
+
+function isEmployee(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  if (!user) return false;
+  return user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "STAFF";
+}
+
+function isCook(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  if (!user) return false;
+  return user.role === "COOK";
+}
+
+// Check if currently authenticated user has authorization to onboard new employees/residents
+function isAuthorizedToOnboardUsers(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
+}
+
+// Check if user has permission to approve employee kitchen purchase requests
+function canApprovePurchaseRequests(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
+}
+
+// Check if user has permission to approve user registrations (Super Admin exclusive)
+function canApproveUserRegistrations(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  return isSuperAdmin(user);
+}
+
+// Check if user has master deletion permission (Super Admin exclusive)
+function canDeleteData(u) {
+  const user = u || state.currentUser || (state.users && state.users[0]);
+  return isSuperAdmin(user);
+}
 
 // Helper to find active user by mobile number
 function findUserByMobile(mobile, excludeUserId = null) {
@@ -73,15 +144,10 @@ function findUserByMobile(mobile, excludeUserId = null) {
   });
 }
 
-// Check if currently authenticated user has authorization to onboard new employees/residents
-function isAuthorizedToOnboardUsers() {
-  const currentUser = state.currentUser || state.users[0];
-  return currentUser && (currentUser.role === "ADMIN" || currentUser.role === "MANAGER");
-}
-
-// Strict Role Limits (Max 1 Admin, Max 3 Manager, Unlimited Employees)
+// Strict Role Limits (Max 1 Super Admin, Max 2 Admin, Max 3 Manager, Unlimited Employees)
 const ROLE_LIMITS = {
-  ADMIN: 1,
+  SUPER_ADMIN: 1,
+  ADMIN: 2,
   MANAGER: 3,
   RESIDENT: Infinity,
   EMPLOYEE: Infinity,
@@ -89,15 +155,15 @@ const ROLE_LIMITS = {
 };
 
 function getRoleCount(role) {
-  const normRole = (role === "EMPLOYEE") ? "RESIDENT" : role;
+  const normRole = (role === "EMPLOYEE" || role === "STAFF") ? "RESIDENT" : role;
   return (state.users || []).filter(u => {
-    const uRole = (u.role === "EMPLOYEE") ? "RESIDENT" : u.role;
-    return uRole === normRole && u.status !== "DELETED";
+    const uNorm = isSuperAdmin(u) ? "SUPER_ADMIN" : ((u.role === "EMPLOYEE" || u.role === "STAFF") ? "RESIDENT" : u.role);
+    return uNorm === normRole && u.status !== "DELETED";
   }).length;
 }
 
 function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
-  const normRole = (targetRole === "EMPLOYEE") ? "RESIDENT" : targetRole;
+  const normRole = (targetRole === "EMPLOYEE" || targetRole === "STAFF") ? "RESIDENT" : targetRole;
   const limit = ROLE_LIMITS[normRole] || Infinity;
   if (limit === Infinity) return { allowed: true };
 
@@ -105,7 +171,7 @@ function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
   if (currentUserId) {
     const existing = (state.users || []).find(u => u.id === currentUserId);
     if (existing) {
-      const existingNormRole = (existing.role === "EMPLOYEE") ? "RESIDENT" : existing.role;
+      const existingNormRole = isSuperAdmin(existing) ? "SUPER_ADMIN" : ((existing.role === "EMPLOYEE" || existing.role === "STAFF") ? "RESIDENT" : existing.role);
       if (existingNormRole === normRole) {
         return { allowed: true };
       }
@@ -114,7 +180,7 @@ function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
 
   const currentCount = getRoleCount(normRole);
   if (currentCount >= limit) {
-    const roleName = normRole === "ADMIN" ? "Super Admin" : "Hostel Manager";
+    const roleName = normRole === "SUPER_ADMIN" ? "Master Super Admin" : (normRole === "ADMIN" ? "Admin" : "Hostel Manager");
     return {
       allowed: false,
       message: `🚫 Registration Blocked: Maximum ${limit} ${roleName} account${limit === 1 ? '' : 's'} allowed in the system. Currently registered: ${currentCount}/${limit}.\n\nPlease select Resident/Employee (Unlimited) or another available role.`
@@ -124,25 +190,33 @@ function checkRoleQuotaAvailable(targetRole, currentUserId = null) {
 }
 
 function updateRoleQuotaUI() {
+  const superAdminCount = getRoleCount("SUPER_ADMIN");
   const adminCount = getRoleCount("ADMIN");
   const mgrCount = getRoleCount("MANAGER");
   const resCount = getRoleCount("RESIDENT");
 
   const quotaBox = document.getElementById("role-quota-info-box");
   if (quotaBox) {
-    quotaBox.innerHTML = `🛡️ <strong>System Role Quotas:</strong> Super Admin: <b>${adminCount}/1</b> ${adminCount >= 1 ? '(FULL 🔒)' : ''} • Hostel Manager: <b>${mgrCount}/3</b> ${mgrCount >= 3 ? '(FULL 🔒)' : ''} • Employees: <b>${resCount} (Unlimited)</b>`;
+    quotaBox.innerHTML = `🛡️ <strong>System Role Quotas:</strong> Master Super Admin: <b>Avijit Basu (1/1 Lock)</b> • Admin: <b>${adminCount}/2</b> • Manager: <b>${mgrCount}/3</b> • Employees: <b>${resCount} (Unlimited)</b>`;
   }
 
   const roleSelect = document.getElementById("form-user-role");
   if (roleSelect) {
     Array.from(roleSelect.options).forEach(opt => {
-      if (opt.value === "ADMIN") {
-        opt.textContent = `Super Admin (व्यवस्थापक - Max 1 | Current: ${adminCount}/1 ${adminCount >= 1 ? '🔒 Full' : '✓ Available'})`;
+      if (opt.value === "SUPER_ADMIN") {
+        opt.disabled = true;
+        opt.textContent = `Master Super Admin (🔒 Reserved for Avijit Basu Only)`;
+      } else if (opt.value === "ADMIN") {
+        opt.disabled = adminCount >= 2;
+        opt.textContent = `Admin (सहायक व्यवस्थापक - Max 2 | Current: ${adminCount}/2 ${adminCount >= 2 ? '🔒 Full' : '✓ Available'})`;
       } else if (opt.value === "MANAGER") {
+        opt.disabled = mgrCount >= 3;
         opt.textContent = `Hostel Manager (प्रबंधक - Max 3 | Current: ${mgrCount}/3 ${mgrCount >= 3 ? '🔒 Full' : '✓ Available'})`;
       } else if (opt.value === "RESIDENT") {
+        opt.disabled = false;
         opt.textContent = `Hostel Resident / Employee (रहवासी - Unlimited)`;
       } else if (opt.value === "COOK") {
+        opt.disabled = false;
         opt.textContent = `Kitchen Cook (रसोईया - Unlimited)`;
       }
     });
@@ -283,12 +357,13 @@ const FirebaseSyncService = {
       });
       state.users = cloudUsers;
 
-      const currentId = state.currentUser ? state.currentUser.id : "usr_admin";
+      const currentId = state.currentUser ? state.currentUser.id : "usr_super_admin";
       const matched = state.users.find(u => u.id === currentId);
       if (matched) {
         state.currentUser = matched;
       } else if (state.users.length > 0) {
-        state.currentUser = state.users[0];
+        const superAdm = state.users.find(u => isSuperAdmin(u));
+        state.currentUser = superAdm || state.users[0];
       }
 
       saveLocalState();
@@ -493,6 +568,35 @@ const FirebaseSyncService = {
         console.error("Firestore saveSettings error:", err);
       }
     }
+  },
+
+  async resetDatabase() {
+    if (!db) return;
+    try {
+      updateCloudSyncStatus(true, "⏳ Resetting Firebase Firestore Cloud...");
+      const collections = ["attendance", "expenses", "leaves", "meals", "users"];
+      for (const col of collections) {
+        const snap = await db.collection(col).get();
+        if (!snap.empty) {
+          const batch = db.batch();
+          snap.forEach(doc => batch.delete(doc.ref));
+          await batch.commit();
+        }
+      }
+
+      // Re-seed master super admin
+      const masterUser = CLEAN_INITIAL_STATE.currentUser;
+      await db.collection("users").doc(masterUser.id).set(masterUser);
+      await db.collection("settings").doc("hostel_config").set({
+        roomRentPerPerson: 1500,
+        resetAt: Date.now()
+      }, { merge: true });
+
+      updateCloudSyncStatus(true, "☁️ Cloud Synced • Fresh Database Ready");
+      console.log("✓ Cloud Firestore Database successfully reset by Super Admin");
+    } catch (e) {
+      console.error("Error resetting Firestore database:", e);
+    }
   }
 };
 
@@ -573,16 +677,20 @@ function isUserPendingApproval(user) {
   return user && user.status === "PENDING_APPROVAL";
 }
 
-// Master Super Admin: Approve User Registration
-function approveUserRegistration(userId) {
+// Master Super Admin: Approve User Registration with Role Assignment
+function approveUserRegistration(userId, assignedRole = null) {
   const current = state.currentUser || state.users[0];
-  if (current.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Master Super Admin has authority to approve new user registrations.");
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to approve new user registrations.");
     return;
   }
 
   const u = (state.users || []).find(x => x.id === userId);
   if (!u) return;
+
+  if (assignedRole) {
+    u.role = assignedRole;
+  }
 
   u.status = "ACTIVE";
   u.approvedBy = current.name;
@@ -616,8 +724,8 @@ function approveUserRegistration(userId) {
 // Master Super Admin: Reject User Registration
 function rejectUserRegistration(userId) {
   const current = state.currentUser || state.users[0];
-  if (current.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Master Super Admin has authority to reject registrations.");
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to reject registrations.");
     return;
   }
 
@@ -768,6 +876,20 @@ const TAB_ID_TO_HASH = {
 };
 
 function switchTab(targetTabId, updateUrlHash = true) {
+  const currentUser = state.currentUser || state.users[0];
+  
+  // Security Gate 1: Users pending approval are locked strictly to the resident tab
+  if (isUserPendingApproval(currentUser) && targetTabId !== "resident-tab") {
+    alert("⏳ Access Restricted: Your account registration is pending Master Super Admin approval.\n\nAll manager, kitchen, expense, and administrative modules are locked until your account is approved and activated.");
+    targetTabId = "resident-tab";
+  }
+
+  // Security Gate 2: Non-admins cannot open Admin tab
+  if (targetTabId === "admin-tab" && !isSuperAdmin(currentUser) && !isNormalAdmin(currentUser)) {
+    alert("🔒 Access Denied: The Administration Panel is restricted to Super Admin and Admin roles only.");
+    targetTabId = "resident-tab";
+  }
+
   const targetEl = document.getElementById(targetTabId);
   if (!targetEl) return;
 
@@ -841,35 +963,54 @@ function renderHeader() {
   
   document.getElementById("header-avatar").textContent = initials;
   document.getElementById("header-user-name").textContent = user.name;
-  document.getElementById("header-user-role").textContent = `${user.role} • ${user.assignedRoom || 'Room Unassigned'}`;
+  const roleDisplay = isSuperAdmin(user) ? "SUPER ADMIN" : user.role;
+  document.getElementById("header-user-role").textContent = `${roleDisplay} • ${user.assignedRoom || 'Room Unassigned'}`;
   
   const roleBadge = document.getElementById("current-role-badge");
   if (roleBadge) {
-    roleBadge.textContent = user.role;
-    roleBadge.className = `role-pill ${user.role.toLowerCase()}`;
+    roleBadge.textContent = roleDisplay;
+    const badgeClass = isSuperAdmin(user) ? "super_admin" : (user.role === "ADMIN" ? "admin" : (user.role === "MANAGER" ? "manager" : (user.role === "COOK" ? "cook" : "resident")));
+    roleBadge.className = `role-pill ${badgeClass}`;
   }
 
-  // Manage Nav Button Opacity & Lock Indicators based on user role
+  // Manage Nav Button Visibility, Opacity & Lock Indicators based on user role
   const mgrBtn = document.getElementById("nav-manager-btn");
   const expBtn = document.getElementById("nav-expense-btn");
   const admBtn = document.getElementById("nav-admin-btn");
+  const kitBtn = document.getElementById("nav-kitchen-btn");
 
-  if (user.role === "RESIDENT" || user.role === "EMPLOYEE") {
-    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.title = "🔒 Manager Ops (Restricted)"; }
-    if (expBtn) { expBtn.style.opacity = "0.9"; expBtn.title = "Expense View"; }
-    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
-  } else if (user.role === "MANAGER") {
-    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.title = "Manager Operations"; }
-    if (expBtn) { expBtn.style.opacity = "1"; expBtn.title = "Expense Ledger"; }
-    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
-  } else if (user.role === "ADMIN") {
-    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.title = "Manager Operations"; }
-    if (expBtn) { expBtn.style.opacity = "1"; expBtn.title = "Expense Ledger"; }
-    if (admBtn) { admBtn.style.opacity = "1"; admBtn.title = "Super Admin Panel"; }
-  } else if (user.role === "COOK") {
-    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.title = "🔒 Manager Ops (Restricted)"; }
-    if (expBtn) { expBtn.style.opacity = "0.7"; expBtn.title = "Expense View"; }
-    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.title = "🔒 Super Admin (Restricted)"; }
+  const isPending = isUserPendingApproval(user);
+
+  if (isPending) {
+    if (kitBtn) { kitBtn.style.opacity = "0.4"; kitBtn.title = "🔒 Kitchen (Locked - Pending Super Admin Approval)"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "0.4"; mgrBtn.style.display = "none"; }
+    if (expBtn) { expBtn.style.opacity = "0.4"; expBtn.style.display = "none"; }
+    if (admBtn) { admBtn.style.opacity = "0.4"; admBtn.style.display = "none"; }
+  } else if (isEmployee(user)) {
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.title = "Hostel Kitchen & Meal Status"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.style.display = "none"; }
+    if (expBtn) { expBtn.style.opacity = "0.9"; expBtn.style.display = "inline-flex"; expBtn.title = "Expense View & Purchase Requests"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.style.display = "none"; }
+  } else if (isManager(user)) {
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.title = "Hostel Kitchen"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.style.display = "inline-flex"; mgrBtn.title = "Hostel Manager Operations"; }
+    if (expBtn) { expBtn.style.opacity = "1"; expBtn.style.display = "inline-flex"; expBtn.title = "Expense & Purchase Approvals"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.style.display = "none"; }
+  } else if (isNormalAdmin(user)) {
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.title = "Hostel Kitchen"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.style.display = "inline-flex"; mgrBtn.title = "Manager Operations"; }
+    if (expBtn) { expBtn.style.opacity = "1"; expBtn.style.display = "inline-flex"; expBtn.title = "Expense Ledger"; }
+    if (admBtn) { admBtn.style.opacity = "1"; admBtn.style.display = "inline-flex"; admBtn.title = "Admin Panel (Strict No-Delete)"; }
+  } else if (isSuperAdmin(user)) {
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.title = "Hostel Kitchen"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "1"; mgrBtn.style.display = "inline-flex"; mgrBtn.title = "Manager Operations"; }
+    if (expBtn) { expBtn.style.opacity = "1"; expBtn.style.display = "inline-flex"; expBtn.title = "Expense Ledger & Deletions"; }
+    if (admBtn) { admBtn.style.opacity = "1"; admBtn.style.display = "inline-flex"; admBtn.title = "Master Super Admin Panel"; }
+  } else if (isCook(user)) {
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.title = "Kitchen Headcount"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "0.5"; mgrBtn.style.display = "none"; }
+    if (expBtn) { expBtn.style.opacity = "0.7"; expBtn.style.display = "inline-flex"; expBtn.title = "Expense View"; }
+    if (admBtn) { admBtn.style.opacity = "0.5"; admBtn.style.display = "none"; }
   }
 }
 
@@ -1149,7 +1290,7 @@ function renderResidentScreen() {
   // Update shift buttons active and disabled state
   document.querySelectorAll(".shift-btn").forEach(btn => {
     btn.classList.toggle("active", btn.getAttribute("data-shift") === user.currentShift);
-    if (onLeave) {
+    if (onLeave || pendingApproval) {
       btn.classList.add("btn-disabled-lockout");
       btn.style.opacity = "0.5";
       btn.style.cursor = "not-allowed";
@@ -1172,19 +1313,20 @@ function renderResidentScreen() {
 
   defaultMeals.forEach(dm => {
     let existing = userMeals.find(m => m.mealType === dm.type);
-    let status = onLeave ? "OFF (LEAVE)" : (existing ? existing.status : (isAutoOn ? "ON" : "OFF"));
-    let isOn = !onLeave && (status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED");
+    let status = pendingApproval ? "LOCKED (PENDING)" : (onLeave ? "OFF (LEAVE)" : (existing ? existing.status : (isAutoOn ? "ON" : "OFF")));
+    let isOn = !onLeave && !pendingApproval && (status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED");
 
+    const isLocked = onLeave || pendingApproval;
     const item = document.createElement("div");
-    item.className = `meal-item ${isOn ? "on" : ""} ${onLeave ? "locked-leave-item" : ""}`;
+    item.className = `meal-item ${isOn ? "on" : ""} ${isLocked ? "locked-leave-item" : ""}`;
     item.innerHTML = `
       <div class="meal-info">
         <strong>${dm.type} (${status})</strong>
         <span>${dm.time} • ${dm.cutOff}</span>
       </div>
-      <button class="meal-toggle-btn ${isOn ? "btn-toggle-on" : "btn-toggle-off"} ${onLeave ? "btn-disabled-lockout" : ""}" 
-              ${onLeave ? 'disabled title="Locked while ON LEAVE"' : `onclick="toggleMeal('${dm.type}')"`}>
-        ${onLeave ? "🔒 Locked (On Leave)" : (isOn ? "✓ Eating (Meal ON)" : "✕ Skip (Meal OFF)")}
+      <button class="meal-toggle-btn ${isOn ? "btn-toggle-on" : "btn-toggle-off"} ${isLocked ? "btn-disabled-lockout" : ""}" 
+              ${isLocked ? 'disabled title="Locked"' : `onclick="toggleMeal('${dm.type}')"`}>
+        ${pendingApproval ? "🔒 Locked (Pending Approval)" : (onLeave ? "🔒 Locked (On Leave)" : (isOn ? "✓ Eating (Meal ON)" : "✕ Skip (Meal OFF)"))}
       </button>
     `;
     listEl.appendChild(item);
@@ -1741,8 +1883,7 @@ function renderExpenseScreen() {
     const status = exp.status || "APPROVED";
     card.className = `expense-entry-card ${catClass} ${status === 'PENDING' ? 'pending-border' : (status === 'REJECTED' ? 'rejected-border' : '')}`;
 
-    const isKitchenExp = exp.category === "GROCERY" || exp.category === "COOK_SALARY";
-    const canDeleteThisExp = user.role === "ADMIN" || (user.role === "MANAGER" && isKitchenExp);
+    const canDeleteThisExp = isSuperAdmin(user);
 
     const statusBadge = status === "APPROVED"
       ? `<span class="badge badge-success">✓ APPROVED</span>`
@@ -1813,31 +1954,17 @@ function deleteExpense(id) {
   const exp = (state.expensesLog || []).find(e => e.id === id);
   if (!exp) return;
 
-  if (user.role === "ADMIN") {
-    if (confirm(`Delete expense "${exp.description}" (₹${exp.amount})?`)) {
-      state.expensesLog = state.expensesLog.filter(e => e.id !== id);
-      saveState();
-      renderUI();
-    }
+  if (!isSuperAdmin(user)) {
+    alert("🔒 Access Denied: Only Master Super Admin has permission to delete expense records. Normal Admin, Manager, and Employee accounts cannot delete records.");
     return;
   }
 
-  if (user.role === "MANAGER") {
-    const isKitchenExp = exp.category === "GROCERY" || exp.category === "COOK_SALARY";
-    if (isKitchenExp) {
-      if (confirm(`Delete Kitchen/Grocery expense "${exp.description}" (₹${exp.amount})?`)) {
-        state.expensesLog = state.expensesLog.filter(e => e.id !== id);
-        saveState();
-        renderUI();
-      }
-      return;
-    } else {
-      alert("🔒 Restricted Access: Hostel Manager can only delete Cook/Kitchen/Grocery related expenses. Utility and other system expenses are View-Only.");
-      return;
-    }
+  if (confirm(`Delete expense "${exp.description}" (₹${exp.amount}) permanently from Firestore Cloud?`)) {
+    state.expensesLog = state.expensesLog.filter(e => e.id !== id);
+    FirebaseSyncService.deleteExpense(id);
+    saveState();
+    renderUI();
   }
-
-  alert("🔒 Access Denied: Only Super Admin and Hostel Manager can delete expenses.");
 }
 
 // Expense Category Filter Chips
@@ -1852,12 +1979,16 @@ document.querySelectorAll(".exp-chip").forEach(chip => {
 
 // Save Room Rent
 document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
-  if (state.currentUser.role !== "ADMIN" && state.currentUser.role !== "MANAGER") {
+  const user = state.currentUser || state.users[0];
+  if (!isSuperAdmin(user) && !isNormalAdmin(user) && !isManager(user)) {
     alert("🔒 Access Denied: Only Admin and Manager can configure room rent.");
     return;
   }
   const val = parseFloat(document.getElementById("setting-room-rent").value) || 0;
   state.roomRentPerPerson = val;
+  if (db) {
+    db.collection("settings").doc("hostel_config").set({ roomRentPerPerson: val }, { merge: true });
+  }
   saveState();
   renderUI();
   alert("✓ Standard Monthly Room Rent updated to ₹" + val);
@@ -1866,27 +1997,32 @@ document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
 // 6. Admin Screen Rendering (User & Role Management CRUD + Attendance & OT Report)
 function renderAdminScreen() {
   const user = state.currentUser || state.users[0];
-  const isResidentOrCook = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
-  const isAdmin = user.role === "ADMIN";
-  const isManager = user.role === "MANAGER";
+  const isSuperAdm = isSuperAdmin(user);
+  const isNormAdm = isNormalAdmin(user);
+  const isMgr = isManager(user);
+  const isEmp = isEmployee(user) || isCook(user);
 
   const activeUsers = (state.users || []).filter(u => u.status === 'ACTIVE').length;
   const totalPlates = getTotalConsumedPlates();
   const plateRate = getDynamicPlateRate();
 
-  document.getElementById("admin-members-count").textContent = isResidentOrCook ? "🔒" : activeUsers;
-  document.getElementById("admin-plates-count").textContent = isResidentOrCook ? "🔒" : totalPlates;
-  document.getElementById("admin-rate-display").textContent = isResidentOrCook ? "🔒" : `₹${plateRate.toFixed(2)}`;
+  const memCountEl = document.getElementById("admin-members-count");
+  const platesCountEl = document.getElementById("admin-plates-count");
+  const rateDisplayEl = document.getElementById("admin-rate-display");
+
+  if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
+  if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
+  if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${plateRate.toFixed(2)}`;
 
   const addUsrBtn = document.getElementById("btn-open-add-user");
   const recPunchBtn = document.getElementById("btn-open-manual-att");
   const resetDbBtn = document.getElementById("btn-reset-db");
   const dbControlsCard = document.getElementById("admin-db-controls-card");
 
-  if (addUsrBtn) addUsrBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
-  if (recPunchBtn) recPunchBtn.style.display = isResidentOrCook ? "none" : "inline-flex";
-  if (resetDbBtn) resetDbBtn.style.display = isAdmin ? "inline-flex" : "none";
-  if (dbControlsCard) dbControlsCard.style.display = isAdmin ? "block" : "none";
+  if (addUsrBtn) addUsrBtn.style.display = (isSuperAdm || isNormAdm || isMgr) ? "inline-flex" : "none";
+  if (recPunchBtn) recPunchBtn.style.display = (isSuperAdm || isNormAdm || isMgr) ? "inline-flex" : "none";
+  if (resetDbBtn) resetDbBtn.style.display = isSuperAdm ? "inline-flex" : "none";
+  if (dbControlsCard) dbControlsCard.style.display = isSuperAdm ? "block" : "none";
 
   // 1. Render Attendance & OT Report Table
   renderAttendanceReport();
@@ -1899,14 +2035,14 @@ function renderAdminScreen() {
   if (!uList) return;
   uList.innerHTML = "";
 
-  if (isResidentOrCook) {
+  if (isEmp) {
     uList.innerHTML = `
       <div class="locked-tab-card">
         <div class="locked-icon-bubble">🔒</div>
-        <h4 style="margin:0;">Super Admin Control Locked</h4>
+        <h4 style="margin:0;">Administration Panel Locked</h4>
         <p class="text-sub">
-          Access Restricted: Master User Role Administration, Permissions, and System Settings are strictly protected.<br>
-          Normal employees can only view their own dashboard and perform Punch In/Out.
+          Access Restricted: User Role Administration and Permissions are strictly managed by Super Admin and Management.<br>
+          Employees can manage their own personal profile from the <strong>Resident Home</strong> portal.
         </p>
       </div>
     `;
@@ -1915,15 +2051,23 @@ function renderAdminScreen() {
 
   const roleFilter = state.selectedRoleFilter || "ALL";
   let filteredUsers = state.users || [];
-  if (roleFilter !== "ALL") {
-    filteredUsers = filteredUsers.filter(u => u.role === roleFilter);
+  if (roleFilter === "SUPER_ADMIN") {
+    filteredUsers = filteredUsers.filter(u => isSuperAdmin(u));
+  } else if (roleFilter === "ADMIN") {
+    filteredUsers = filteredUsers.filter(u => isNormalAdmin(u));
+  } else if (roleFilter === "MANAGER") {
+    filteredUsers = filteredUsers.filter(u => isManager(u));
+  } else if (roleFilter === "RESIDENT") {
+    filteredUsers = filteredUsers.filter(u => isEmployee(u));
+  } else if (roleFilter === "COOK") {
+    filteredUsers = filteredUsers.filter(u => isCook(u));
   }
 
   if (filteredUsers.length === 0) {
     uList.innerHTML = `
       <div class="empty-state">
-        <p>No users found for selected role.</p>
-        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to register new employees with OTP verification.</p>
+        <p>No users found for selected filter.</p>
+        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to onboard employees.</p>
       </div>
     `;
     return;
@@ -1932,36 +2076,30 @@ function renderAdminScreen() {
   filteredUsers.forEach(u => {
     const div = document.createElement("div");
     div.className = "user-card-item";
-    const roleBadgeClass = u.role === 'ADMIN' ? 'badge-amber' : (u.role === 'MANAGER' ? 'badge-lilac' : (u.role === 'COOK' ? 'badge-blue' : 'badge-success'));
+    const uIsSuperAdmin = isSuperAdmin(u);
+    const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
     const isBlocked = u.status === "BLOCKED";
-
     const isMe = user.id === u.id;
-    const isCook = u.role === "COOK";
 
     let canEdit = false;
     let canDelete = false;
     let canLock = false;
 
-    if (isAdmin) {
-      // Super Admin: full access to view, edit, delete, lock/unlock all
+    if (isSuperAdm) {
+      // Super Admin: Full system control over all accounts
       canEdit = true;
       canLock = !isMe;
-      canDelete = !isMe && u.role !== 'ADMIN';
-    } else if (isManager) {
-      // Hostel Manager: restricted access (edit self/Cook, delete Cook only; rest View Only)
-      if (isMe) {
-        canEdit = true;
-        canLock = false;
-        canDelete = false;
-      } else if (isCook) {
-        canEdit = true;
-        canLock = false;
-        canDelete = true;
-      } else {
-        canEdit = false;
-        canLock = false;
-        canDelete = false;
-      }
+      canDelete = !isMe; // Super Admin can delete anyone except self
+    } else if (isNormAdm) {
+      // Normal Admin: Can edit/update all except Super Admin. STRICTLY NO DELETE.
+      canEdit = !uIsSuperAdmin || isMe;
+      canLock = !isMe && !uIsSuperAdmin;
+      canDelete = false; // Normal Admin has NO DELETE PERMISSIONS
+    } else if (isMgr) {
+      // Hostel Manager: Can edit own profile only. All other staff are Read-Only (Watch Only).
+      canEdit = isMe;
+      canLock = false;
+      canDelete = false;
     }
 
     let actionsHtml = "";
@@ -1972,17 +2110,19 @@ function renderAdminScreen() {
       actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
     }
     if (canDelete) {
-      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Delete User">🗑️</button>`;
+      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
     }
     if (!canEdit && !canLock && !canDelete) {
       actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
     }
 
+    const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
+
     div.innerHTML = `
       <div>
         <div style="display:flex; align-items:center; gap:8px;">
           <strong>${u.name}</strong>
-          <span class="badge ${roleBadgeClass}">${u.role}</span>
+          <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
           ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
           ${u.isOtpVerified ? '<span class="badge badge-blue" style="font-size:9px;">✓ OTP VERIFIED</span>' : ''}
         </div>
@@ -2000,20 +2140,23 @@ function renderAdminScreen() {
 
 function renderAttendanceReport() {
   const user = state.currentUser || state.users[0];
-  const isResidentOrCook = user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "COOK";
-  const isAdmin = user.role === "ADMIN";
+  const isEmp = isEmployee(user) || isCook(user);
+  const isSuperAdm = isSuperAdmin(user);
 
   const today = getTodayString();
   const log = state.attendanceLog || [];
 
   // Metrics for Today
-  const todayPunches = log.filter(a => a.date === today);
-  const uniqueUsersToday = new Set(todayPunches.map(a => a.userId)).size;
+  let displayPunches = log.filter(a => a.date === today);
+  if (isEmp) {
+    displayPunches = displayPunches.filter(a => a.userId === user.id);
+  }
+  const uniqueUsersToday = new Set(displayPunches.map(a => a.userId)).size;
   
   let todayWorkedHours = 0;
   let todayOtHours = 0;
 
-  todayPunches.forEach(a => {
+  displayPunches.forEach(a => {
     if (a.status === "ACTIVE") {
       const calc = calculateDutyShift(a.punchInTimestamp, Date.now());
       todayWorkedHours += calc.totalHours;
@@ -2028,50 +2171,43 @@ function renderAttendanceReport() {
   const workedHrsEl = document.getElementById("admin-att-total-worked-hrs");
   const otHrsEl = document.getElementById("admin-att-total-ot-hrs");
 
-  if (punchedTodayEl) punchedTodayEl.textContent = isResidentOrCook ? "🔒" : uniqueUsersToday;
-  if (workedHrsEl) workedHrsEl.textContent = isResidentOrCook ? "🔒" : `${todayWorkedHours.toFixed(1)}h`;
-  if (otHrsEl) otHrsEl.textContent = isResidentOrCook ? "🔒" : `${todayOtHours.toFixed(1)}h`;
+  if (punchedTodayEl) punchedTodayEl.textContent = isEmp ? (displayPunches.length > 0 ? "1 (Self)" : "0") : uniqueUsersToday;
+  if (workedHrsEl) workedHrsEl.textContent = `${todayWorkedHours.toFixed(1)}h`;
+  if (otHrsEl) otHrsEl.textContent = `${todayOtHours.toFixed(1)}h`;
 
   const tbody = document.getElementById("admin-attendance-tbody");
   if (!tbody) return;
 
-  if (isResidentOrCook) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="9" class="text-center text-sub" style="padding:28px;">
-          🔒 Attendance Master Audit is locked for employee accounts.<br>
-          View your personal live punch-in status and overtime hours on the <strong>Resident Home</strong> dashboard.
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  // Populate User Filter Select
-  const userSelect = document.getElementById("admin-att-filter-user");
-  if (userSelect) {
-    const currentVal = state.selectedAttendanceUserFilter || "ALL";
-    userSelect.innerHTML = `<option value="ALL">All Employees</option>`;
-    (state.users || []).forEach(u => {
-      const opt = document.createElement("option");
-      opt.value = u.id;
-      opt.textContent = `${u.name} (${u.role} - Room ${u.assignedRoom || '101'})`;
-      if (u.id === currentVal) opt.selected = true;
-      userSelect.appendChild(opt);
-    });
-  }
-
   // Filter Attendance Log
   let filtered = log.slice().reverse();
+
+  // For Employee: Strictly isolate to OWN attendance records (privacy protection)
+  if (isEmp) {
+    filtered = filtered.filter(a => a.userId === user.id);
+  } else {
+    // Populate User Filter Select for Admin / Manager
+    const userSelect = document.getElementById("admin-att-filter-user");
+    if (userSelect) {
+      const currentVal = state.selectedAttendanceUserFilter || "ALL";
+      userSelect.innerHTML = `<option value="ALL">All Employees</option>`;
+      (state.users || []).forEach(u => {
+        const opt = document.createElement("option");
+        opt.value = u.id;
+        opt.textContent = `${u.name} (${u.role} - Room ${u.assignedRoom || '101'})`;
+        if (u.id === currentVal) opt.selected = true;
+        userSelect.appendChild(opt);
+      });
+    }
+
+    // User Filter
+    if (state.selectedAttendanceUserFilter && state.selectedAttendanceUserFilter !== "ALL") {
+      filtered = filtered.filter(a => a.userId === state.selectedAttendanceUserFilter);
+    }
+  }
 
   // Date Filter
   if (state.selectedAttendanceDateFilter && state.selectedAttendanceDateFilter !== "ALL") {
     filtered = filtered.filter(a => a.date === state.selectedAttendanceDateFilter);
-  }
-
-  // User Filter
-  if (state.selectedAttendanceUserFilter && state.selectedAttendanceUserFilter !== "ALL") {
-    filtered = filtered.filter(a => a.userId === state.selectedAttendanceUserFilter);
   }
 
   // Type / OT Filter
@@ -2093,8 +2229,8 @@ function renderAttendanceReport() {
     tbody.innerHTML = `
       <tr>
         <td colspan="9" class="text-center text-sub" style="padding:28px;">
-          No attendance punch records found for the selected filter.<br>
-          Employees can Punch In/Out from their portal, or Admin/Manager can click <strong>"+ Record Punch"</strong>.
+          ${isEmp ? 'No punch records found for your account on this date.' : 'No attendance punch records found for the selected filter.'}<br>
+          Punch In/Out records and GPS locations are synced live from Firebase Cloud.
         </td>
       </tr>
     `;
@@ -2155,17 +2291,26 @@ function renderAttendanceReport() {
       <td>${otBadge}</td>
       <td>${statusBadge}</td>
       <td>
-        ${isAdmin ? `<button class="btn btn-alert btn-sm" onclick="deleteAttendance('${att.id}')" title="Delete record">🗑️</button>` : `<span class="text-sub">-</span>`}
+        ${isSuperAdm ? `<button class="btn btn-alert btn-sm" onclick="deleteAttendance('${att.id}')" title="Super Admin Permanent Delete">🗑️</button>` : `<span class="text-sub">-</span>`}
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
+function handleApprovePendingUser(userId) {
+  const selectEl = document.getElementById(`pending-role-select-${userId}`);
+  const selectedRole = selectEl ? selectEl.value : "RESIDENT";
+  approveUserRegistration(userId, selectedRole);
+}
+
 function renderPendingUserApprovals() {
   const container = document.getElementById("admin-pending-users-list");
   const countBadge = document.getElementById("admin-pending-users-count");
   if (!container) return;
+
+  const current = state.currentUser || state.users[0];
+  const isSuperAdm = isSuperAdmin(current);
 
   const pendingUsers = (state.users || []).filter(u => u.status === "PENDING_APPROVAL");
   if (countBadge) {
@@ -2188,6 +2333,23 @@ function renderPendingUserApprovals() {
     card.className = "pending-user-card";
     const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : getTodayString();
 
+    const actionsHtml = isSuperAdm ? `
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <select id="pending-role-select-${u.id}" class="pending-role-select" title="Assign Role on Approval">
+          <option value="RESIDENT" ${u.role === 'RESIDENT' || u.role === 'EMPLOYEE' ? 'selected' : ''}>Employee / Resident</option>
+          <option value="MANAGER" ${u.role === 'MANAGER' ? 'selected' : ''}>Hostel Manager</option>
+          <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>Admin</option>
+          <option value="COOK" ${u.role === 'COOK' ? 'selected' : ''}>Kitchen Cook</option>
+        </select>
+        <button class="btn btn-success btn-sm" onclick="handleApprovePendingUser('${u.id}')">
+          ✓ Approve & Activate
+        </button>
+        <button class="btn btn-alert btn-sm" onclick="rejectUserRegistration('${u.id}')" title="Reject Request">
+          ✕ Reject
+        </button>
+      </div>
+    ` : `<span class="badge badge-amber" style="font-size:10px;">Awaiting Master Super Admin Approval</span>`;
+
     card.innerHTML = `
       <div class="pending-user-info">
         <div style="display:flex; align-items:center; gap:8px;">
@@ -2195,19 +2357,14 @@ function renderPendingUserApprovals() {
           <span class="badge badge-alert">⏳ AWAITING SUPER ADMIN APPROVAL</span>
         </div>
         <p class="pending-user-meta" style="margin-top:4px;">
-          📱 Mobile: <strong>+91 ${u.mobile}</strong> • Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
+          📱 Mobile: <strong>+91 ${u.mobile}</strong> • Applied Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
         </p>
         <p class="text-sub" style="font-size:10px; margin-top:2px; color:#64748B;">
           Applied on: ${dateStr} ${u.isOtpVerified ? '• <span style="color:#059669; font-weight:700;">✓ Phone OTP Verified</span>' : ''}
         </p>
       </div>
       <div class="pending-user-actions">
-        <button class="btn btn-success btn-sm" onclick="approveUserRegistration('${u.id}')">
-          ✓ Approve & Activate
-        </button>
-        <button class="btn btn-alert btn-sm" onclick="rejectUserRegistration('${u.id}')" title="Reject Request">
-          ✕ Reject
-        </button>
+        ${actionsHtml}
       </div>
     `;
     container.appendChild(card);
@@ -2215,11 +2372,12 @@ function renderPendingUserApprovals() {
 }
 
 function deleteAttendance(id) {
-  if (state.currentUser.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Super Admin can delete attendance records.");
+  const current = state.currentUser || state.users[0];
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin has permission to delete attendance records.");
     return;
   }
-  if (confirm("Are you sure you want to delete this attendance record?")) {
+  if (confirm("Are you sure you want to permanently delete this attendance record from Firestore Cloud?")) {
     state.attendanceLog = (state.attendanceLog || []).filter(a => a.id !== id);
     FirebaseSyncService.deleteAttendance(id);
     saveState();
@@ -2228,12 +2386,17 @@ function deleteAttendance(id) {
 }
 
 function toggleUserStatus(userId) {
-  if (state.currentUser.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Super Admin can block or unblock users.");
+  const current = state.currentUser || state.users[0];
+  if (!isSuperAdmin(current) && !isNormalAdmin(current)) {
+    alert("🔒 Access Denied: Only Super Admin and Admin can block or unblock users.");
     return;
   }
   const u = state.users.find(x => x.id === userId);
   if (u) {
+    if (isSuperAdmin(u)) {
+      alert("Cannot block Master Super Admin account!");
+      return;
+    }
     u.status = u.status === "ACTIVE" ? "BLOCKED" : "ACTIVE";
     FirebaseSyncService.saveUser(u);
     saveState();
@@ -2243,48 +2406,29 @@ function toggleUserStatus(userId) {
 
 function deleteUser(userId) {
   const current = state.currentUser || state.users[0];
-  const u = state.users.find(x => x.id === userId);
-  if (!u) return;
-
-  if (current.role === "ADMIN") {
-    if (u.id === current.id) {
-      alert("Cannot delete your own active Super Admin account!");
-      return;
-    }
-    if (confirm(`Delete user "${u.name}" (${u.role}) permanently?`)) {
-      state.users = state.users.filter(x => x.id !== userId);
-      state.meals = (state.meals || []).filter(m => m.userId !== userId);
-      state.pendingLeaves = (state.pendingLeaves || []).filter(l => l.userId !== userId);
-      state.attendanceLog = (state.attendanceLog || []).filter(a => a.userId !== userId);
-      if (state.currentUser.id === userId) {
-        state.currentUser = state.users[0];
-      }
-      FirebaseSyncService.deleteUser(userId);
-      saveState();
-      renderUI();
-      alert(`✓ User "${u.name}" deleted.`);
-    }
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin has permission to delete user accounts. Normal Admin and Manager accounts cannot delete users.");
     return;
   }
 
-  if (current.role === "MANAGER") {
-    if (u.role === "COOK") {
-      if (confirm(`Delete Kitchen Cook "${u.name}" permanently?`)) {
-        state.users = state.users.filter(x => x.id !== userId);
-        state.meals = (state.meals || []).filter(m => m.userId !== userId);
-        FirebaseSyncService.deleteUser(userId);
-        saveState();
-        renderUI();
-        alert(`✓ Cook "${u.name}" deleted.`);
-      }
-      return;
-    } else {
-      alert("🔒 Restricted Access: Hostel Manager can only delete Kitchen/Cook staff. All other employee and system accounts are View-Only.");
-      return;
-    }
+  const u = state.users.find(x => x.id === userId);
+  if (!u) return;
+
+  if (u.id === current.id || isSuperAdmin(u)) {
+    alert("Cannot delete Master Super Admin account!");
+    return;
   }
 
-  alert("🔒 Access Denied: Only Super Admin can delete user accounts.");
+  if (confirm(`⚠️ Super Admin Action: Permanently delete user "${u.name}" (${u.role}) from Firebase Cloud? This will remove all associated meals and punch data.`)) {
+    state.users = state.users.filter(x => x.id !== userId);
+    state.meals = (state.meals || []).filter(m => m.userId !== userId);
+    state.pendingLeaves = (state.pendingLeaves || []).filter(l => l.userId !== userId);
+    state.attendanceLog = (state.attendanceLog || []).filter(a => a.userId !== userId);
+    FirebaseSyncService.deleteUser(userId);
+    saveState();
+    renderUI();
+    alert(`✓ User "${u.name}" permanently deleted from Firebase Cloud.`);
+  }
 }
 
 // Role Filter Buttons
@@ -2409,18 +2553,29 @@ function openEditUserModal(userId) {
   if (!u) return;
 
   const current = state.currentUser || state.users[0];
-  if (current.role !== "ADMIN") {
-    const isMe = current.id === u.id;
-    const isCook = u.role === "COOK";
-    if (!isMe && !isCook) {
-      alert("🔒 Restricted Access: Hostel Manager can only edit their own profile and Cook/Kitchen staff. Other employee records are View-Only.");
+  const isSuperAdm = isSuperAdmin(current);
+  const isNormAdm = isNormalAdmin(current);
+  const isMgr = isManager(current);
+  const isMe = current.id === u.id;
+
+  if (isMgr) {
+    if (!isMe) {
+      alert("🔒 Restricted Access: Hostel Manager can only edit their own profile. Other employee and staff records are Read-Only.");
       return;
     }
+  } else if (isNormAdm) {
+    if (isSuperAdmin(u) && !isMe) {
+      alert("🔒 Restricted Access: Normal Admin cannot modify the Master Super Admin account.");
+      return;
+    }
+  } else if (!isSuperAdm && !isNormAdm && !isMe) {
+    alert("🔒 Access Denied: You do not have permission to edit this account.");
+    return;
   }
 
   resetUserModalToStep1();
   updateRoleQuotaUI();
-  document.getElementById("modal-user-title").textContent = `Edit User: ${u.name}`;
+  document.getElementById("modal-user-title").textContent = isMe ? `Edit My Profile: ${u.name}` : `Edit User: ${u.name}`;
   document.getElementById("form-user-id").value = u.id;
   document.getElementById("form-user-name").value = u.name;
   document.getElementById("form-user-mobile").value = u.mobile;
@@ -2598,26 +2753,34 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   const prefix = uData.role === "ADMIN" ? "ADM" : (uData.role === "MANAGER" ? "MGR" : (uData.role === "COOK" ? "CK" : "EMP"));
   const generatedCode = uData.code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
 
-  // Rule 3: Master Super Admin directly creates ACTIVE users; registrations from others/self require Super Admin Approval
+  // Rule: All newly registered/onboarded users are assigned PENDING_APPROVAL status.
+  // Master Super Admin (Avijit Basu) explicitly reviews and approves them with a chosen role from the Admin dashboard.
   const currentActor = state.currentUser || state.users[0];
-  const isMasterAdminCreating = currentActor && currentActor.role === "ADMIN";
+  const isMasterAdminCreating = currentActor && isSuperAdmin(currentActor);
   const userInitialStatus = isMasterAdminCreating ? "ACTIVE" : "PENDING_APPROVAL";
+
+  // Force default role to RESIDENT/EMPLOYEE unless Master Super Admin directly specifies otherwise
+  const assignedRole = isMasterAdminCreating ? uData.role : "RESIDENT";
 
   const newUser = {
     id: "usr_" + Date.now(),
     name: uData.name,
     mobile: uData.mobile,
-    role: uData.role,
-    assignedRoom: uData.room || (uData.role === "ADMIN" ? "Office" : (uData.role === "COOK" ? "Kitchen" : "101")),
+    role: assignedRole,
+    assignedRoom: uData.room || "101",
     userIdCode: generatedCode,
     status: userInitialStatus,
-    currentShift: uData.shift,
+    currentShift: uData.shift || "OFF_DUTY",
     isOtpVerified: true,
     verifiedAt: Date.now(),
     createdAt: Date.now()
   };
 
   state.users.push(newUser);
+  // If the registrant was not the Master Super Admin, switch the active session to this pending user so they see the Pending Approval screen
+  if (!isMasterAdminCreating) {
+    state.currentUser = newUser;
+  }
   FirebaseSyncService.saveUser(newUser);
 
   // If new user is resident, initialize today's meals based on shift
@@ -2717,12 +2880,15 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
   state.users.forEach(u => {
     const item = document.createElement("div");
     item.className = `account-item ${state.currentUser.id === u.id ? "selected" : ""}`;
+    const uIsSuper = isSuperAdmin(u);
+    const roleDisplay = uIsSuper ? "SUPER ADMIN" : u.role;
+    const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
     item.innerHTML = `
       <div>
         <strong>${u.name}</strong>
-        <p class="text-sub">${u.role} • Room ${u.assignedRoom || 'N/A'} • 📱 +91 ${u.mobile || 'N/A'}</p>
+        <p class="text-sub">${roleDisplay} • Room ${u.assignedRoom || 'N/A'} • 📱 +91 ${u.mobile || 'N/A'}</p>
       </div>
-      <span class="role-tag">${u.role}</span>
+      <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
     `;
     item.onclick = () => {
       state.currentUser = u;
@@ -3270,16 +3436,17 @@ document.getElementById("btn-save-manual-att")?.addEventListener("click", () => 
 });
 
 // 15. Reset Database Handler (Super Admin Only)
-document.getElementById("btn-reset-db")?.addEventListener("click", () => {
-  if (state.currentUser.role !== "ADMIN") {
-    alert("🔒 Access Denied: Only Super Admin has master authority to reset all local data.");
+document.getElementById("btn-reset-db")?.addEventListener("click", async () => {
+  if (!isSuperAdmin(state.currentUser)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has master authority to reset the Firebase Cloud Database.");
     return;
   }
-  if (confirm("⚠️ Super Admin Master Action: Are you sure you want to reset all local data? This will clear all attendance punches, custom expenses, leaves, and custom users, and initialize with clean Super Admin settings.")) {
+  if (confirm("⚠️ Super Admin Master Action: Are you sure you want to reset the Firebase Firestore Cloud database? This will clear all attendance punches, expenses, leaves, and registrations, restoring clean Super Admin settings for all connected devices.")) {
+    await FirebaseSyncService.resetDatabase();
     state = JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
     saveState();
     renderUI();
-    alert("✓ Database reset cleanly! You can now add real users, actual expenses, and attendance punches.");
+    alert("✓ Firebase Cloud Database Reset Cleanly!\n\nAll collections cleared and re-initialized with Super Admin Avijit Basu. Connected devices will sync immediately in real-time.");
   }
 });
 
