@@ -17,21 +17,160 @@
   <link rel="stylesheet" href="webapp/style.css">
 </head>
 <body>
+  <!-- AUTHENTICATION & LOGIN GATEWAY SCREEN -->
+  <div id="auth-gate-screen" class="auth-gate-screen" style="display: none;">
+    <div class="auth-gate-container">
+      <div class="auth-gate-header">
+        <div class="auth-gate-logo">🏢</div>
+        <h2>Hostel Mess & Duty Portal</h2>
+        <p>Real-time Attendance, Mess Headcount & Cloud Ledger</p>
+      </div>
+
+      <div class="auth-tabs-nav">
+        <button class="auth-tab-btn active" data-auth-tab="auth-tab-login">📱 Mobile Login</button>
+        <button class="auth-tab-btn" data-auth-tab="auth-tab-signup">📝 Resident Sign-Up</button>
+        <button class="auth-tab-btn" data-auth-tab="auth-tab-super">🛡️ Super Admin</button>
+      </div>
+
+      <div class="auth-form-body">
+        <!-- 1. MOBILE LOGIN TAB -->
+        <div id="auth-tab-login" class="auth-tab-pane active">
+          <div id="auth-login-step-1">
+            <div class="form-group">
+              <label>Enter Registered Mobile Number *</label>
+              <div style="display:flex; gap:6px;">
+                <span style="display:flex; align-items:center; padding:0 10px; background:#F1F5F9; border:1px solid var(--border); border-radius:var(--radius-md); font-weight:700; font-size:12px; color:#475569;">+91</span>
+                <input type="tel" id="input-gate-login-mobile" placeholder="e.g. 9876543210" maxlength="10" style="flex:1;">
+              </div>
+            </div>
+            <button class="btn btn-primary full-width mt-3" id="btn-gate-send-login-otp">
+              📲 Send Verification OTP
+            </button>
+          </div>
+
+          <div id="auth-login-step-2" style="display:none;">
+            <div class="simulated-sms-box mb-3">
+              <div class="simulated-sms-title">💬 SMS Gateway Verification Code</div>
+              <div class="simulated-sms-body">
+                Your Hostel Login OTP for <strong id="gate-login-phone-display">+91 XXXXXXXXXX</strong> is:
+                <div class="simulated-sms-code" id="gate-login-otp-code">1234</div>
+                <button class="btn-autofill-otp" id="btn-gate-login-autofill">⚡ Tap to Auto-Fill</button>
+              </div>
+            </div>
+
+            <div class="otp-input-container">
+              <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Code</label>
+              <input type="text" id="input-gate-login-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
+              <div class="otp-timer-text" id="gate-login-timer-display">Resend code in 30s</div>
+            </div>
+
+            <div style="display:flex; gap:8px;" class="mt-2">
+              <button class="btn btn-secondary" id="btn-gate-login-back" style="flex:1;">← Back</button>
+              <button class="btn btn-secondary" id="btn-gate-login-resend" disabled style="flex:1;">🔄 Resend</button>
+            </div>
+
+            <button class="btn btn-primary full-width mt-3" id="btn-gate-verify-login">
+              🔒 Verify & Open My Portal
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. RESIDENT SIGN-UP TAB -->
+        <div id="auth-tab-signup" class="auth-tab-pane">
+          <div id="auth-signup-step-1">
+            <div class="rule-box lilac mb-2" style="font-size:11px;">
+              ⏳ <strong>Approval Notice:</strong> New sign-ups are set to <strong>Pending Approval</strong> until confirmed by Master Super Admin Avijit Basu.
+            </div>
+            <div class="form-group">
+              <label>Full Name *</label>
+              <input type="text" id="input-gate-signup-name" placeholder="e.g. Ramesh Kumar">
+            </div>
+            <div class="form-group">
+              <label>Mobile Number *</label>
+              <div style="display:flex; gap:6px;">
+                <span style="display:flex; align-items:center; padding:0 10px; background:#F1F5F9; border:1px solid var(--border); border-radius:var(--radius-md); font-weight:700; font-size:12px; color:#475569;">+91</span>
+                <input type="tel" id="input-gate-signup-mobile" placeholder="e.g. 9876543210" maxlength="10" style="flex:1;">
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Room Number *</label>
+              <input type="text" id="input-gate-signup-room" placeholder="e.g. 101, 204" value="101">
+            </div>
+            <div class="form-group">
+              <label>Default Duty Shift</label>
+              <select id="input-gate-signup-shift" class="form-select">
+                <option value="OFF_DUTY" selected>Off Duty / General</option>
+                <option value="MORNING">Morning Shift (06:00 AM - 02:00 PM)</option>
+                <option value="EVENING">Evening Shift (02:00 PM - 10:00 PM)</option>
+                <option value="NIGHT">Night Shift (10:00 PM - 06:00 AM)</option>
+              </select>
+            </div>
+            <button class="btn btn-primary full-width mt-3" id="btn-gate-send-signup-otp">
+              📲 Verify Mobile Number
+            </button>
+          </div>
+
+          <div id="auth-signup-step-2" style="display:none;">
+            <div class="simulated-sms-box mb-3">
+              <div class="simulated-sms-title">💬 SMS Gateway Verification Code</div>
+              <div class="simulated-sms-body">
+                Registration OTP for <strong id="gate-signup-phone-display">+91 XXXXXXXXXX</strong> is:
+                <div class="simulated-sms-code" id="gate-signup-otp-code">1234</div>
+                <button class="btn-autofill-otp" id="btn-gate-signup-autofill">⚡ Tap to Auto-Fill</button>
+              </div>
+            </div>
+
+            <div class="otp-input-container">
+              <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Code</label>
+              <input type="text" id="input-gate-signup-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
+            </div>
+
+            <div style="display:flex; gap:8px;" class="mt-2">
+              <button class="btn btn-secondary" id="btn-gate-signup-back" style="flex:1;">← Back</button>
+            </div>
+
+            <button class="btn btn-primary full-width mt-3" id="btn-gate-verify-signup">
+              📝 Submit Registration for Super Admin Approval
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. MASTER SUPER ADMIN TAB -->
+        <div id="auth-tab-super" class="auth-tab-pane">
+          <div class="auth-super-admin-banner">
+            👑 <strong>Master Super Admin Security Lock</strong><br>
+            Exclusive administrative credentials for <strong>Avijit Basu</strong> (+91 9876543210). Provides master access to reset cloud data, delete records, and approve users.
+          </div>
+          <div class="form-group">
+            <label>Master Super Admin Phone</label>
+            <input type="text" value="+91 9876543210 (Avijit Basu)" disabled style="background:#F8FAFC; color:#0F172A; font-weight:700;">
+          </div>
+          <button class="btn btn-primary full-width mt-2" id="btn-gate-super-admin-login" style="background:#F59E0B; border-color:#D97706; color:#78350F; font-weight:800;">
+            👑 Unlock Master Super Admin Session
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="app">
     <!-- Top Global Header -->
     <header class="app-header">
       <div class="header-content">
         <div class="user-badge" id="header-user-badge">
-          <div class="avatar" id="header-avatar">AD</div>
+          <div class="avatar" id="header-avatar">AB</div>
           <div class="user-info">
-            <h2 id="header-user-name">Super Admin</h2>
-            <span class="user-sub" id="header-user-role">ADMIN • ROOM Admin Office</span>
+            <h2 id="header-user-name">Avijit Basu</h2>
+            <span class="user-sub" id="header-user-role">SUPER ADMIN • Room Admin Office</span>
           </div>
         </div>
         <div class="header-actions">
-          <span class="role-tag" id="current-role-badge">ADMIN</span>
+          <span class="role-tag super_admin" id="current-role-badge">SUPER ADMIN</span>
           <button class="icon-btn" id="btn-switch-user" title="Switch User Role">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+          </button>
+          <button class="icon-btn" id="btn-header-logout" title="Log Out / Lock Portal" style="color:#EF4444;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
           </button>
         </div>
       </div>

@@ -118,14 +118,19 @@ body {
 }
 
 .role-tag {
-  background: var(--primary-blue-light);
-  color: var(--primary-blue-dark);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 800;
   padding: 4px 10px;
   border-radius: 12px;
   display: inline-block;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
 }
+.role-tag.super_admin { background: #FEF3C7; color: #92400E; border: 1.5px solid #F59E0B; }
+.role-tag.admin { background: #E0E7FF; color: #3730A3; border: 1px solid #C7D2FE; }
+.role-tag.manager { background: #F3E8FF; color: #6B21A8; border: 1px solid #E9D5FF; }
+.role-tag.resident, .role-tag.employee, .role-tag.staff { background: #DCFCE7; color: #166534; border: 1px solid #BBF7D0; }
+.role-tag.cook { background: #E0F2FE; color: #075985; border: 1px solid #BAE6FD; }
 
 .role-pill {
   font-size: 10px;
@@ -1525,3 +1530,103 @@ body {
   color: #334155;
   line-height: 1.6;
 }
+
+/* Authentication Gate Screen */
+.auth-gate-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #0F172A 100%);
+  padding: 20px 16px;
+  position: relative;
+  z-index: 9999;
+}
+
+.auth-gate-container {
+  width: 100%;
+  max-width: 440px;
+  background: #FFFFFF;
+  border-radius: 20px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.auth-gate-header {
+  background: #0F172A;
+  color: #FFFFFF;
+  padding: 24px 20px;
+  text-align: center;
+  position: relative;
+}
+
+.auth-gate-logo {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+
+.auth-gate-header h2 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #FFFFFF;
+  margin: 0;
+}
+
+.auth-gate-header p {
+  font-size: 12px;
+  color: #94A3B8;
+  margin-top: 4px;
+}
+
+.auth-tabs-nav {
+  display: flex;
+  background: #F1F5F9;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.auth-tab-btn {
+  flex: 1;
+  padding: 12px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748B;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.auth-tab-btn.active {
+  color: var(--primary-blue);
+  background: #FFFFFF;
+  border-bottom-color: var(--primary-blue);
+}
+
+.auth-form-body {
+  padding: 22px 20px;
+}
+
+.auth-tab-pane {
+  display: none;
+}
+
+.auth-tab-pane.active {
+  display: block;
+}
+
+.auth-super-admin-banner {
+  background: #FEF3C7;
+  border: 1px solid #FCD34D;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  text-align: left;
+  font-size: 12px;
+  color: #78350F;
+  line-height: 1.5;
+}
+
