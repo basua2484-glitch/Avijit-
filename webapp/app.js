@@ -199,8 +199,438 @@ const OtpAuthService = {
   }
 };
 
-function saveState() {
+// ==========================================
+// 1. FIREBASE CONFIGURATION & FIRESTORE REALTIME SYNC
+// ==========================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBmsF0FdATAAz3cRNHPJzAykO6FGOouHE",
+  authDomain: "hostel-management-96f81.firebaseapp.com",
+  projectId: "hostel-management-96f81",
+  storageBucket: "hostel-management-96f81.firebasestorage.app",
+  messagingSenderId: "952292948322",
+  appId: "1:952292948322:web:ed54a71de1a647c887543b"
+};
+
+let db = null;
+let auth = null;
+let isFirebaseConnected = false;
+
+function updateCloudSyncStatus(isOnline, message) {
+  isFirebaseConnected = isOnline;
+  const dot = document.getElementById("cloud-sync-dot");
+  const text = document.getElementById("cloud-sync-text");
+  const time = document.getElementById("cloud-sync-time");
+  if (dot) {
+    dot.className = isOnline ? "pulse-indicator" : "pulse-indicator offline";
+  }
+  if (text) {
+    text.textContent = message || (isOnline ? "☁️ Firebase Firestore: Live Realtime Synced" : "⚠️ Local Storage Cache Active");
+  }
+  if (time) {
+    time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+}
+
+const FirebaseSyncService = {
+  unsubscribers: [],
+
+  init() {
+    try {
+      if (typeof firebase === "undefined") {
+        console.warn("Firebase SDK not ready yet, retrying...");
+        updateCloudSyncStatus(false, "⏳ Initializing Firebase Cloud...");
+        setTimeout(() => this.init(), 1000);
+        return;
+      }
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      db = firebase.firestore();
+      auth = firebase.auth();
+
+      // Enable offline persistence if supported
+      try {
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+          if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
+            console.warn("Firestore offline persistence info:", err.code);
+          }
+        });
+      } catch (e) {}
+
+      updateCloudSyncStatus(true, "☁️ Firebase Firestore: Live Cloud Sync Active");
+      console.log("✓ Firebase Connected & Initialized:", firebaseConfig.projectId);
+
+      this.setupListeners();
+    } catch (e) {
+      console.error("Firebase init failed:", e);
+      updateCloudSyncStatus(false, "⚠️ Local Cache Mode (Firestore Sync Error)");
+    }
+  },
+
+  setupListeners() {
+    if (!db) return;
+
+    // 1. Users Collection Listener
+    const unsubUsers = db.collection("users").onSnapshot(snapshot => {
+      if (snapshot.empty) {
+        this.seedInitialSuperAdmin();
+        return;
+      }
+      const cloudUsers = [];
+      snapshot.forEach(doc => {
+        cloudUsers.push({ id: doc.id, ...doc.data() });
+      });
+      state.users = cloudUsers;
+
+      const currentId = state.currentUser ? state.currentUser.id : "usr_admin";
+      const matched = state.users.find(u => u.id === currentId);
+      if (matched) {
+        state.currentUser = matched;
+      } else if (state.users.length > 0) {
+        state.currentUser = state.users[0];
+      }
+
+      saveLocalState();
+      renderUI();
+      updateRoleQuotaUI();
+      updateCloudSyncStatus(true, "☁️ Cloud Synced • Users Updated");
+    }, err => {
+      console.error("Firestore users listen error:", err);
+    });
+
+    // 2. Attendance & OT Collection Listener
+    const unsubAttendance = db.collection("attendance").onSnapshot(snapshot => {
+      const cloudAttendance = [];
+      snapshot.forEach(doc => {
+        cloudAttendance.push({ id: doc.id, ...doc.data() });
+      });
+      state.attendanceLog = cloudAttendance;
+      saveLocalState();
+      renderUI();
+      updateCloudSyncStatus(true, "☁️ Cloud Synced • Attendance Realtime");
+    }, err => {
+      console.error("Firestore attendance listen error:", err);
+    });
+
+    // 3. Expenses Ledger Collection Listener
+    const unsubExpenses = db.collection("expenses").onSnapshot(snapshot => {
+      const cloudExpenses = [];
+      snapshot.forEach(doc => {
+        cloudExpenses.push({ id: doc.id, ...doc.data() });
+      });
+      state.expensesLog = cloudExpenses;
+      saveLocalState();
+      renderUI();
+      updateCloudSyncStatus(true, "☁️ Cloud Synced • Expense Ledger Live");
+    }, err => {
+      console.error("Firestore expenses listen error:", err);
+    });
+
+    // 4. Leaves Collection Listener
+    const unsubLeaves = db.collection("leaves").onSnapshot(snapshot => {
+      const cloudLeaves = [];
+      snapshot.forEach(doc => {
+        cloudLeaves.push({ id: doc.id, ...doc.data() });
+      });
+      state.pendingLeaves = cloudLeaves;
+      saveLocalState();
+      renderUI();
+      updateCloudSyncStatus(true, "☁️ Cloud Synced • Leave Requests Live");
+    }, err => {
+      console.error("Firestore leaves listen error:", err);
+    });
+
+    // 5. Meals Collection Listener
+    const unsubMeals = db.collection("meals").onSnapshot(snapshot => {
+      const cloudMeals = [];
+      snapshot.forEach(doc => {
+        cloudMeals.push({ id: doc.id, ...doc.data() });
+      });
+      state.meals = cloudMeals;
+      saveLocalState();
+      renderUI();
+    }, err => {
+      console.error("Firestore meals listen error:", err);
+    });
+
+    // 6. Settings Document Listener
+    const unsubSettings = db.collection("settings").doc("hostel_config").onSnapshot(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        if (data && typeof data.roomRentPerPerson === "number") {
+          state.roomRentPerPerson = data.roomRentPerPerson;
+        }
+        saveLocalState();
+        renderUI();
+      }
+    }, err => {
+      console.error("Firestore settings listen error:", err);
+    });
+
+    this.unsubscribers = [unsubUsers, unsubAttendance, unsubExpenses, unsubLeaves, unsubMeals, unsubSettings];
+  },
+
+  async seedInitialSuperAdmin() {
+    if (!db) return;
+    try {
+      const adminUser = CLEAN_INITIAL_STATE.currentUser;
+      await db.collection("users").doc(adminUser.id).set(adminUser, { merge: true });
+      await db.collection("settings").doc("hostel_config").set({
+        roomRentPerPerson: 1500,
+        createdAt: Date.now()
+      }, { merge: true });
+      console.log("✓ Initial Super Admin seeded in Firestore!");
+    } catch (e) {
+      console.error("Error seeding initial data:", e);
+    }
+  },
+
+  async saveUser(user) {
+    if (!user || !user.id) return;
+    if (db) {
+      try {
+        await db.collection("users").doc(user.id).set(user, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveUser error:", err);
+      }
+    }
+  },
+
+  async deleteUser(userId) {
+    if (!userId) return;
+    if (db) {
+      try {
+        await db.collection("users").doc(userId).delete();
+      } catch (err) {
+        console.error("Firestore deleteUser error:", err);
+      }
+    }
+  },
+
+  async saveAttendance(record) {
+    if (!record || !record.id) return;
+    if (db) {
+      try {
+        await db.collection("attendance").doc(record.id).set(record, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveAttendance error:", err);
+      }
+    }
+  },
+
+  async deleteAttendance(recordId) {
+    if (!recordId) return;
+    if (db) {
+      try {
+        await db.collection("attendance").doc(recordId).delete();
+      } catch (err) {
+        console.error("Firestore deleteAttendance error:", err);
+      }
+    }
+  },
+
+  async saveExpense(expense) {
+    if (!expense || !expense.id) return;
+    if (db) {
+      try {
+        await db.collection("expenses").doc(expense.id).set(expense, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveExpense error:", err);
+      }
+    }
+  },
+
+  async deleteExpense(expenseId) {
+    if (!expenseId) return;
+    if (db) {
+      try {
+        await db.collection("expenses").doc(expenseId).delete();
+      } catch (err) {
+        console.error("Firestore deleteExpense error:", err);
+      }
+    }
+  },
+
+  async saveLeave(leave) {
+    if (!leave || !leave.id) return;
+    if (db) {
+      try {
+        await db.collection("leaves").doc(leave.id).set(leave, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveLeave error:", err);
+      }
+    }
+  },
+
+  async deleteLeave(leaveId) {
+    if (!leaveId) return;
+    if (db) {
+      try {
+        await db.collection("leaves").doc(leaveId).delete();
+      } catch (err) {
+        console.error("Firestore deleteLeave error:", err);
+      }
+    }
+  },
+
+  async saveMeal(meal) {
+    if (!meal || !meal.id) return;
+    if (db) {
+      try {
+        await db.collection("meals").doc(meal.id).set(meal, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveMeal error:", err);
+      }
+    }
+  },
+
+  async saveSettings(settings) {
+    if (db) {
+      try {
+        await db.collection("settings").doc("hostel_config").set(settings, { merge: true });
+      } catch (err) {
+        console.error("Firestore saveSettings error:", err);
+      }
+    }
+  }
+};
+
+// ==========================================
+// 2. LIVE GPS GEOLOCATION ENGINE
+// ==========================================
+async function fetchCurrentGpsLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({
+        available: false,
+        latitude: null,
+        longitude: null,
+        accuracy: null,
+        mapUrl: null,
+        display: "GPS not supported on device",
+        error: "NO_GEOLOCATION_SUPPORT"
+      });
+      return;
+    }
+
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        const accuracy = Math.round(position.coords.accuracy || 12);
+        const mapUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+        const display = `${lat.toFixed(4)}°, ${lng.toFixed(4)}° (±${accuracy}m)`;
+
+        resolve({
+          available: true,
+          latitude: lat,
+          longitude: lng,
+          accuracy: accuracy,
+          mapUrl: mapUrl,
+          display: display,
+          timestamp: position.timestamp || Date.now()
+        });
+      },
+      (error) => {
+        console.warn("GPS Location fetch notice:", error.message);
+        let errorReason = "Location permission denied";
+        if (error.code === error.TIMEOUT) errorReason = "GPS Request Timed Out";
+        else if (error.code === error.POSITION_UNAVAILABLE) errorReason = "Position Unavailable";
+
+        resolve({
+          available: false,
+          latitude: null,
+          longitude: null,
+          accuracy: null,
+          mapUrl: null,
+          display: `📍 Location Unavailable (${errorReason})`,
+          error: error.message
+        });
+      },
+      options
+    );
+  });
+}
+
+// Local State & Persistence
+function saveLocalState() {
   localStorage.setItem("hostel_mess_state_v2", JSON.stringify(state));
+}
+
+function saveState() {
+  saveLocalState();
+}
+
+// Check if user is pending Super Admin approval
+function isUserPendingApproval(user) {
+  return user && user.status === "PENDING_APPROVAL";
+}
+
+// Master Super Admin: Approve User Registration
+function approveUserRegistration(userId) {
+  const current = state.currentUser || state.users[0];
+  if (current.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Master Super Admin has authority to approve new user registrations.");
+    return;
+  }
+
+  const u = (state.users || []).find(x => x.id === userId);
+  if (!u) return;
+
+  u.status = "ACTIVE";
+  u.approvedBy = current.name;
+  u.approvedAt = Date.now();
+
+  // Initialize meals for today if employee/resident
+  if (u.role === "RESIDENT" || u.role === "EMPLOYEE") {
+    const isAutoOn = u.currentShift === "OFF_DUTY" || u.currentShift === "NIGHT";
+    ["LUNCH", "DINNER"].forEach(type => {
+      const mealObj = {
+        id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 5),
+        userId: u.id,
+        userName: u.name,
+        roomNumber: u.assignedRoom || "101",
+        mealType: type,
+        status: isAutoOn ? "ON" : "OFF",
+        otHours: 0,
+        shiftAtTime: u.currentShift || "OFF_DUTY"
+      };
+      state.meals.push(mealObj);
+      FirebaseSyncService.saveMeal(mealObj);
+    });
+  }
+
+  FirebaseSyncService.saveUser(u);
+  saveState();
+  renderUI();
+  alert(`✓ User Account Approved & Activated!\n\nUser "${u.name}" (+91 ${u.mobile}) is now ACTIVE in Firebase Cloud with role "${u.role}". They can now log in, punch duty shifts, and book hostel meals.`);
+}
+
+// Master Super Admin: Reject User Registration
+function rejectUserRegistration(userId) {
+  const current = state.currentUser || state.users[0];
+  if (current.role !== "ADMIN") {
+    alert("🔒 Access Denied: Only Master Super Admin has authority to reject registrations.");
+    return;
+  }
+
+  const u = (state.users || []).find(x => x.id === userId);
+  if (!u) return;
+
+  if (confirm(`Reject and delete registration request for "${u.name}" (+91 ${u.mobile})?`)) {
+    state.users = state.users.filter(x => x.id !== userId);
+    FirebaseSyncService.deleteUser(userId);
+    saveState();
+    renderUI();
+    alert(`✓ Registration request for "${u.name}" rejected and removed from Firebase.`);
+  }
 }
 
 function getTodayString() {
@@ -449,15 +879,32 @@ function isUserOnLeave(u) {
   return user && user.status === "ON_LEAVE";
 }
 
-// 2. Resident Screen Rendering (with Leave Lockout & View-Only Mode)
+// 2. Resident Screen Rendering (with Leave Lockout, Pending Approval & View-Only Mode)
 function renderResidentScreen() {
   const user = state.currentUser || state.users[0];
   const onLeave = isUserOnLeave(user);
+  const pendingApproval = isUserPendingApproval(user);
 
-  // Dynamic Leave Lockout Banner Container
+  // Dynamic Leave Lockout & Pending Approval Banner Container
   const lockoutContainer = document.getElementById("resident-leave-lockout-container");
   if (lockoutContainer) {
-    if (onLeave) {
+    if (pendingApproval) {
+      lockoutContainer.innerHTML = `
+        <div class="leave-lockout-banner" style="border-left: 4px solid #F59E0B; background: #FFFBEB;">
+          <div class="leave-lockout-header">
+            <span class="leave-lockout-icon">⏳</span>
+            <div>
+              <div class="leave-lockout-title" style="color:#92400E;">ACCOUNT REGISTRATION PENDING APPROVAL</div>
+              <div class="badge badge-alert" style="margin-top:2px;">STATUS: AWAITING MASTER SUPER ADMIN</div>
+            </div>
+          </div>
+          <p class="leave-lockout-desc" style="color:#78350F;">
+            Welcome, <strong>${user.name}</strong> (+91 ${user.mobile})! Your account registration has been saved to Firebase Cloud.<br>
+            The <strong>Master Super Admin</strong> must approve your registration before your live duty clock, meal booking, and hostel services are unlocked.
+          </p>
+        </div>
+      `;
+    } else if (onLeave) {
       lockoutContainer.innerHTML = `
         <div class="leave-lockout-banner">
           <div class="leave-lockout-header">
@@ -510,8 +957,36 @@ function renderResidentScreen() {
   const outTimeEl = document.getElementById("duty-out-time");
   const totalHoursEl = document.getElementById("duty-total-hours");
   const otHoursEl = document.getElementById("duty-ot-hours");
+  const gpsStatusEl = document.getElementById("resident-gps-status");
 
-  if (onLeave) {
+  if (pendingApproval) {
+    if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
+    if (statusBadge) {
+      statusBadge.textContent = "⏳ PENDING APPROVAL";
+      statusBadge.className = "badge badge-alert";
+    }
+    if (statusText) statusText.textContent = "Account awaiting Super Admin approval";
+    if (btnPunchIn) {
+      btnPunchIn.disabled = true;
+      btnPunchIn.className = "btn btn-primary full-width btn-disabled-lockout";
+      btnPunchIn.innerHTML = `🔒 Punch In (Pending Approval)`;
+    }
+    if (btnPunchOut) {
+      btnPunchOut.disabled = true;
+      btnPunchOut.className = "btn btn-secondary full-width btn-disabled-lockout";
+      btnPunchOut.innerHTML = `🔒 Punch Out (Locked)`;
+    }
+    if (inTimeEl) inTimeEl.textContent = "Locked";
+    if (outTimeEl) outTimeEl.textContent = "Locked";
+    if (totalHoursEl) totalHoursEl.textContent = "0.0h";
+    if (otHoursEl) {
+      otHoursEl.textContent = "Locked";
+      otHoursEl.style.color = "#94A3B8";
+    }
+    if (gpsStatusEl) {
+      gpsStatusEl.innerHTML = `<span>⏳</span><span>Live GPS Duty Punch disabled until Admin approves account</span>`;
+    }
+  } else if (onLeave) {
     if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
     if (statusBadge) {
       statusBadge.textContent = "🏖️ ON LEAVE (FROZEN)";
@@ -534,6 +1009,9 @@ function renderResidentScreen() {
     if (otHoursEl) {
       otHoursEl.textContent = "Locked";
       otHoursEl.style.color = "#94A3B8";
+    }
+    if (gpsStatusEl) {
+      gpsStatusEl.innerHTML = `<span>🏖️</span><span>Duty clock & GPS logging frozen while on leave</span>`;
     }
   } else if (activePunch) {
     if (pulseDot) pulseDot.className = "live-pulse-dot";
@@ -561,6 +1039,21 @@ function renderResidentScreen() {
       otHoursEl.textContent = `${calc.otHours.toFixed(2)}h OT`;
       otHoursEl.style.color = calc.otHours > 0 ? "#F59E0B" : "#94A3B8";
     }
+
+    if (gpsStatusEl) {
+      if (activePunch.gpsInLocation && activePunch.gpsInLocation.available) {
+        gpsStatusEl.innerHTML = `
+          <span>📍</span>
+          <span>Duty Punch-In GPS: 
+            <a href="${activePunch.gpsInLocation.mapUrl}" target="_blank" rel="noopener" class="gps-pill" style="margin-left:4px;">
+              ${activePunch.gpsInLocation.display} (View Map ↗)
+            </a>
+          </span>
+        `;
+      } else {
+        gpsStatusEl.innerHTML = `<span>📍</span><span>Live GPS Tracker Active (Ready for automatic Geolocation recording)</span>`;
+      }
+    }
   } else if (lastPunch && lastPunch.status === "COMPLETED") {
     if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
     if (statusBadge) {
@@ -585,6 +1078,16 @@ function renderResidentScreen() {
       otHoursEl.textContent = `${lastPunch.otHours.toFixed(2)}h OT`;
       otHoursEl.style.color = lastPunch.otHours > 0 ? "#F59E0B" : "#94A3B8";
     }
+    if (gpsStatusEl) {
+      if (lastPunch.gpsInLocation && lastPunch.gpsInLocation.available) {
+        gpsStatusEl.innerHTML = `
+          <span>📍</span>
+          <span>Last In GPS: <a href="${lastPunch.gpsInLocation.mapUrl}" target="_blank" rel="noopener" class="gps-pill">${lastPunch.gpsInLocation.display}</a></span>
+        `;
+      } else {
+        gpsStatusEl.innerHTML = `<span>📍</span><span>Live GPS Tracker: Shift recorded in Firebase Cloud</span>`;
+      }
+    }
   } else {
     if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
     if (statusBadge) {
@@ -608,6 +1111,9 @@ function renderResidentScreen() {
     if (otHoursEl) {
       otHoursEl.textContent = "0.0h OT";
       otHoursEl.style.color = "#94A3B8";
+    }
+    if (gpsStatusEl) {
+      gpsStatusEl.innerHTML = `<span>📍</span><span>Live GPS Location auto-tracking enabled for Punch In/Out</span>`;
     }
   }
 
@@ -720,13 +1226,18 @@ function toggleMeal(mealType) {
     alert("🔒 Leave Lockout Active: You are currently ON LEAVE. All meal bookings are frozen in View-Only mode.");
     return;
   }
+  if (isUserPendingApproval(user)) {
+    alert("🔒 Registration Pending: Super Admin must approve your registration before meal booking is active.");
+    return;
+  }
 
   let meal = state.meals.find(m => m.userId === user.id && m.mealType === mealType);
   if (meal) {
     meal.status = (meal.status === "OFF" || meal.status === "SKIP") ? "ON" : "OFF";
     meal.otHours = 0;
+    FirebaseSyncService.saveMeal(meal);
   } else {
-    state.meals.push({
+    meal = {
       id: "m_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
       userId: user.id,
       userName: user.name,
@@ -735,7 +1246,9 @@ function toggleMeal(mealType) {
       status: "ON",
       otHours: 0,
       shiftAtTime: user.currentShift || "OFF_DUTY"
-    });
+    };
+    state.meals.push(meal);
+    FirebaseSyncService.saveMeal(meal);
   }
   saveState();
   renderUI();
@@ -746,11 +1259,18 @@ function setShift(shift) {
     alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Shift modifications are frozen.");
     return;
   }
+  if (isUserPendingApproval(state.currentUser)) {
+    alert("🔒 Registration Pending: Super Admin must approve your registration first.");
+    return;
+  }
 
   state.currentUser.currentShift = shift;
   // Update in users list
   const u = state.users.find(x => x.id === state.currentUser.id);
-  if (u) u.currentShift = shift;
+  if (u) {
+    u.currentShift = shift;
+    FirebaseSyncService.saveUser(u);
+  }
 
   const isAutoOn = shift === "OFF_DUTY" || shift === "NIGHT";
   
@@ -758,7 +1278,7 @@ function setShift(shift) {
   ["LUNCH", "DINNER"].forEach(type => {
     let meal = state.meals.find(m => m.userId === state.currentUser.id && m.mealType === type);
     if (!meal) {
-      state.meals.push({
+      meal = {
         id: "m_" + Date.now() + "_" + type,
         userId: state.currentUser.id,
         userName: state.currentUser.name,
@@ -767,11 +1287,15 @@ function setShift(shift) {
         status: isAutoOn ? "ON" : "OFF",
         otHours: 0,
         shiftAtTime: shift
-      });
+      };
+      state.meals.push(meal);
     } else {
-      meal.status = isAutoOn ? "ON" : "OFF";
+      if (meal.status !== "PACK_TIFFIN" && meal.status !== "LATE_COVERED") {
+        meal.status = isAutoOn ? "ON" : "OFF";
+      }
       meal.shiftAtTime = shift;
     }
+    FirebaseSyncService.saveMeal(meal);
   });
 
   saveState();
@@ -1027,6 +1551,7 @@ function processLeave(id, approve) {
       if (targetUser) {
         targetUser.status = "ACTIVE";
         if (lev.resumingShift) targetUser.currentShift = lev.resumingShift;
+        FirebaseSyncService.saveUser(targetUser);
       }
       if (state.currentUser.id === lev.userId) {
         state.currentUser.status = "ACTIVE";
@@ -1037,6 +1562,7 @@ function processLeave(id, approve) {
       // Leave Start Approved: Set user ON_LEAVE and Freeze permissions
       if (targetUser) {
         targetUser.status = "ON_LEAVE";
+        FirebaseSyncService.saveUser(targetUser);
       }
       if (state.currentUser.id === lev.userId) {
         state.currentUser.status = "ON_LEAVE";
@@ -1045,6 +1571,7 @@ function processLeave(id, approve) {
       (state.meals || []).forEach(m => {
         if (m.userId === lev.userId) {
           m.status = "OFF";
+          FirebaseSyncService.saveMeal(m);
         }
       });
       // Complete any running duty punch
@@ -1058,6 +1585,7 @@ function processLeave(id, approve) {
         activePunch.regularHours = calc.regularHours;
         activePunch.otHours = calc.otHours;
         activePunch.status = "COMPLETED";
+        FirebaseSyncService.saveAttendance(activePunch);
       }
       alert(`✓ Leave Approved for ${lev.userName}!\nEmployee status set to 'ON LEAVE'. Meals, Duty Attendance, and update controls are now FROZEN in View-Only mode.`);
     }
@@ -1065,6 +1593,7 @@ function processLeave(id, approve) {
     alert(`Leave / Return request for ${lev.userName} has been Rejected.`);
   }
 
+  FirebaseSyncService.deleteLeave(id);
   saveState();
   renderUI();
 }
@@ -1091,6 +1620,7 @@ function processExpense(id, approve) {
     alert(`✕ Expense Rejected: ₹${parseFloat(exp.amount).toFixed(2)} for "${exp.description}" has been rejected and will NOT be added to calculations.`);
   }
 
+  FirebaseSyncService.saveExpense(exp);
   saveState();
   renderUI();
 }
@@ -1361,6 +1891,9 @@ function renderAdminScreen() {
   // 1. Render Attendance & OT Report Table
   renderAttendanceReport();
 
+  // 1B. Render Master Super Admin Pending User Registrations
+  renderPendingUserApprovals();
+
   // 2. Render User & Role Directory
   const uList = document.getElementById("admin-users-list");
   if (!uList) return;
@@ -1592,6 +2125,14 @@ function renderAttendanceReport() {
 
     const outDisplay = isActive ? `<span class="text-success font-bold">Active Live</span>` : (att.punchOutTime || "--:--");
 
+    const inGpsHtml = (att.gpsInLocation && att.gpsInLocation.available)
+      ? `<div style="margin-top:2px;"><a href="${att.gpsInLocation.mapUrl}" target="_blank" rel="noopener" class="gps-pill" title="GPS Accuracy: ±${att.gpsInLocation.accuracy || 10}m">📍 ${att.gpsInLocation.latitude.toFixed(4)}, ${att.gpsInLocation.longitude.toFixed(4)}</a></div>`
+      : ``;
+
+    const outGpsHtml = (att.gpsOutLocation && att.gpsOutLocation.available)
+      ? `<div style="margin-top:2px;"><a href="${att.gpsOutLocation.mapUrl}" target="_blank" rel="noopener" class="gps-pill" title="GPS Accuracy: ±${att.gpsOutLocation.accuracy || 10}m">📍 ${att.gpsOutLocation.latitude.toFixed(4)}, ${att.gpsOutLocation.longitude.toFixed(4)}</a></div>`
+      : ``;
+
     tr.innerHTML = `
       <td>
         <strong>${att.date}</strong>
@@ -1601,8 +2142,14 @@ function renderAttendanceReport() {
         <strong>${att.userName}</strong>
         <div class="text-sub">${att.userRole || 'RESIDENT'} • Room ${att.assignedRoom || '101'} • ${att.userIdCode || ''}</div>
       </td>
-      <td><span class="font-mono">${att.punchInTime || '--:--'}</span></td>
-      <td><span class="font-mono">${outDisplay}</span></td>
+      <td>
+        <span class="font-mono">${att.punchInTime || '--:--'}</span>
+        ${inGpsHtml}
+      </td>
+      <td>
+        <span class="font-mono">${outDisplay}</span>
+        ${outGpsHtml}
+      </td>
       <td><strong class="font-mono">${worked.toFixed(2)} hrs</strong></td>
       <td><span class="text-sub font-mono">${regular.toFixed(2)} hrs</span></td>
       <td>${otBadge}</td>
@@ -1615,6 +2162,58 @@ function renderAttendanceReport() {
   });
 }
 
+function renderPendingUserApprovals() {
+  const container = document.getElementById("admin-pending-users-list");
+  const countBadge = document.getElementById("admin-pending-users-count");
+  if (!container) return;
+
+  const pendingUsers = (state.users || []).filter(u => u.status === "PENDING_APPROVAL");
+  if (countBadge) {
+    countBadge.textContent = `${pendingUsers.length} Pending`;
+    countBadge.className = pendingUsers.length > 0 ? "badge badge-alert" : "badge badge-success";
+  }
+
+  container.innerHTML = "";
+  if (pendingUsers.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:14px; font-size:12px;">
+        ✓ Zero pending user registrations. All user accounts in Firebase Cloud are approved and active.
+      </div>
+    `;
+    return;
+  }
+
+  pendingUsers.forEach(u => {
+    const card = document.createElement("div");
+    card.className = "pending-user-card";
+    const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : getTodayString();
+
+    card.innerHTML = `
+      <div class="pending-user-info">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <h4>${u.name}</h4>
+          <span class="badge badge-alert">⏳ AWAITING SUPER ADMIN APPROVAL</span>
+        </div>
+        <p class="pending-user-meta" style="margin-top:4px;">
+          📱 Mobile: <strong>+91 ${u.mobile}</strong> • Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
+        </p>
+        <p class="text-sub" style="font-size:10px; margin-top:2px; color:#64748B;">
+          Applied on: ${dateStr} ${u.isOtpVerified ? '• <span style="color:#059669; font-weight:700;">✓ Phone OTP Verified</span>' : ''}
+        </p>
+      </div>
+      <div class="pending-user-actions">
+        <button class="btn btn-success btn-sm" onclick="approveUserRegistration('${u.id}')">
+          ✓ Approve & Activate
+        </button>
+        <button class="btn btn-alert btn-sm" onclick="rejectUserRegistration('${u.id}')" title="Reject Request">
+          ✕ Reject
+        </button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
 function deleteAttendance(id) {
   if (state.currentUser.role !== "ADMIN") {
     alert("🔒 Access Denied: Only Super Admin can delete attendance records.");
@@ -1622,6 +2221,7 @@ function deleteAttendance(id) {
   }
   if (confirm("Are you sure you want to delete this attendance record?")) {
     state.attendanceLog = (state.attendanceLog || []).filter(a => a.id !== id);
+    FirebaseSyncService.deleteAttendance(id);
     saveState();
     renderUI();
   }
@@ -1635,6 +2235,7 @@ function toggleUserStatus(userId) {
   const u = state.users.find(x => x.id === userId);
   if (u) {
     u.status = u.status === "ACTIVE" ? "BLOCKED" : "ACTIVE";
+    FirebaseSyncService.saveUser(u);
     saveState();
     renderUI();
   }
@@ -1658,6 +2259,7 @@ function deleteUser(userId) {
       if (state.currentUser.id === userId) {
         state.currentUser = state.users[0];
       }
+      FirebaseSyncService.deleteUser(userId);
       saveState();
       renderUI();
       alert(`✓ User "${u.name}" deleted.`);
@@ -1670,6 +2272,7 @@ function deleteUser(userId) {
       if (confirm(`Delete Kitchen Cook "${u.name}" permanently?`)) {
         state.users = state.users.filter(x => x.id !== userId);
         state.meals = (state.meals || []).filter(m => m.userId !== userId);
+        FirebaseSyncService.deleteUser(userId);
         saveState();
         renderUI();
         alert(`✓ Cook "${u.name}" deleted.`);
@@ -1902,6 +2505,7 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
       if (state.currentUser.id === editId) {
         state.currentUser = existing;
       }
+      FirebaseSyncService.saveUser(existing);
     }
 
     saveState();
@@ -1994,6 +2598,11 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   const prefix = uData.role === "ADMIN" ? "ADM" : (uData.role === "MANAGER" ? "MGR" : (uData.role === "COOK" ? "CK" : "EMP"));
   const generatedCode = uData.code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
 
+  // Rule 3: Master Super Admin directly creates ACTIVE users; registrations from others/self require Super Admin Approval
+  const currentActor = state.currentUser || state.users[0];
+  const isMasterAdminCreating = currentActor && currentActor.role === "ADMIN";
+  const userInitialStatus = isMasterAdminCreating ? "ACTIVE" : "PENDING_APPROVAL";
+
   const newUser = {
     id: "usr_" + Date.now(),
     name: uData.name,
@@ -2001,19 +2610,21 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
     role: uData.role,
     assignedRoom: uData.room || (uData.role === "ADMIN" ? "Office" : (uData.role === "COOK" ? "Kitchen" : "101")),
     userIdCode: generatedCode,
-    status: "ACTIVE",
+    status: userInitialStatus,
     currentShift: uData.shift,
     isOtpVerified: true,
-    verifiedAt: Date.now()
+    verifiedAt: Date.now(),
+    createdAt: Date.now()
   };
 
   state.users.push(newUser);
+  FirebaseSyncService.saveUser(newUser);
 
   // If new user is resident, initialize today's meals based on shift
   if (uData.role === "RESIDENT" || uData.role === "EMPLOYEE") {
-    const isAutoOn = uData.shift === "OFF_DUTY" || uData.shift === "NIGHT";
+    const isAutoOn = (uData.shift === "OFF_DUTY" || uData.shift === "NIGHT") && userInitialStatus === "ACTIVE";
     ["LUNCH", "DINNER"].forEach(type => {
-      state.meals.push({
+      const meal = {
         id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 4),
         userId: newUser.id,
         userName: newUser.name,
@@ -2022,7 +2633,9 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
         status: isAutoOn ? "ON" : "OFF",
         otHours: 0,
         shiftAtTime: uData.shift
-      });
+      };
+      state.meals.push(meal);
+      FirebaseSyncService.saveMeal(meal);
     });
   }
 
@@ -2031,7 +2644,11 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   closeModal("modal-user-form");
   resetUserModalToStep1();
 
-  alert(`✓ Phone Verification & Onboarding Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) onboarded with role ${newUser.role}.`);
+  if (userInitialStatus === "PENDING_APPROVAL") {
+    alert(`✓ Registration Saved to Firebase Cloud!\n\nUser "${newUser.name}" (+91 ${newUser.mobile}) registered.\nStatus: PENDING APPROVAL. The Master Super Admin must approve this account before duty clock and meal booking are unlocked.`);
+  } else {
+    alert(`✓ Phone Verification & Onboarding Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) onboarded and synced to Firebase with role ${newUser.role}.`);
+  }
 });
 
 // 8. Add Real Expense Form Handlers (Mess / Grocery Expense Workflow)
@@ -2080,6 +2697,7 @@ document.getElementById("btn-save-expense")?.addEventListener("click", () => {
 
   if (!state.expensesLog) state.expensesLog = [];
   state.expensesLog.push(newExpense);
+  FirebaseSyncService.saveExpense(newExpense);
 
   saveState();
   renderUI();
@@ -2223,8 +2841,9 @@ document.getElementById("btn-confirm-ot")?.addEventListener("click", () => {
   if (meal) {
     meal.status = status;
     meal.otHours = hours;
+    FirebaseSyncService.saveMeal(meal);
   } else {
-    state.meals.push({
+    meal = {
       id: "m_" + Date.now(),
       userId: user.id,
       userName: user.name,
@@ -2233,7 +2852,9 @@ document.getElementById("btn-confirm-ot")?.addEventListener("click", () => {
       status: status,
       otHours: hours,
       shiftAtTime: user.currentShift || "OFF_DUTY"
-    });
+    };
+    state.meals.push(meal);
+    FirebaseSyncService.saveMeal(meal);
   }
   saveState();
   renderUI();
@@ -2287,7 +2908,7 @@ document.getElementById("btn-submit-leave")?.addEventListener("click", () => {
   const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
   if (!state.pendingLeaves) state.pendingLeaves = [];
-  state.pendingLeaves.push({
+  const newLeave = {
     id: "lev_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
     type: "LEAVE_START",
     userId: user.id,
@@ -2300,7 +2921,9 @@ document.getElementById("btn-submit-leave")?.addEventListener("click", () => {
     reason: reason,
     status: "PENDING",
     createdAt: Date.now()
-  });
+  };
+  state.pendingLeaves.push(newLeave);
+  FirebaseSyncService.saveLeave(newLeave);
 
   saveState();
   renderUI();
@@ -2316,7 +2939,7 @@ document.getElementById("btn-submit-leave-end")?.addEventListener("click", () =>
   const note = document.getElementById("leave-end-note").value.trim() || "Returned from leave, ready for duty";
 
   if (!state.pendingLeaves) state.pendingLeaves = [];
-  state.pendingLeaves.push({
+  const newLeaveEnd = {
     id: "lev_end_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
     type: "LEAVE_END",
     userId: user.id,
@@ -2328,7 +2951,9 @@ document.getElementById("btn-submit-leave-end")?.addEventListener("click", () =>
     reason: note,
     status: "PENDING",
     createdAt: Date.now()
-  });
+  };
+  state.pendingLeaves.push(newLeaveEnd);
+  FirebaseSyncService.saveLeave(newLeaveEnd);
 
   saveState();
   renderUI();
@@ -2353,7 +2978,7 @@ document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
   const count = parseInt(document.getElementById("guest-count").value) || 2;
   const note = document.getElementById("guest-note").value || "Guests";
   for (let i = 0; i < count; i++) {
-    state.meals.push({
+    const guestMeal = {
       id: "m_guest_" + Date.now() + "_" + i,
       userId: "guest_" + Date.now() + "_" + i,
       userName: `Guest (${note})`,
@@ -2362,7 +2987,9 @@ document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
       status: "ON",
       otHours: 0,
       shiftAtTime: "OFF_DUTY"
-    });
+    };
+    state.meals.push(guestMeal);
+    FirebaseSyncService.saveMeal(guestMeal);
   }
   saveState();
   renderUI();
@@ -2371,9 +2998,13 @@ document.getElementById("btn-confirm-guest")?.addEventListener("click", () => {
 });
 
 // 14. Attendance & Overtime (OT) Module Event Listeners
-// Employee Punch In
-document.getElementById("btn-employee-punch-in")?.addEventListener("click", () => {
+// Employee Punch In (Auto GPS + Firestore Sync)
+document.getElementById("btn-employee-punch-in")?.addEventListener("click", async () => {
   const user = state.currentUser || state.users[0];
+  if (isUserPendingApproval(user)) {
+    alert("🔒 Registration Pending: Your account is awaiting Super Admin approval before you can Punch In for duty.");
+    return;
+  }
   if (isUserOnLeave(user)) {
     alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Duty Punch In is blocked until Manager/Admin approves your return request.");
     return;
@@ -2385,6 +3016,14 @@ document.getElementById("btn-employee-punch-in")?.addEventListener("click", () =
     return;
   }
 
+  const btnPunchIn = document.getElementById("btn-employee-punch-in");
+  const origHtml = btnPunchIn ? btnPunchIn.innerHTML : "";
+  if (btnPunchIn) {
+    btnPunchIn.disabled = true;
+    btnPunchIn.innerHTML = `<span>🛰️ Fetching Live GPS Location...</span>`;
+  }
+
+  const gpsLocation = await fetchCurrentGpsLocation();
   const now = new Date();
   const newRecord = {
     id: "att_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
@@ -2399,23 +3038,37 @@ document.getElementById("btn-employee-punch-in")?.addEventListener("click", () =
     punchInTimestamp: now.getTime(),
     punchOutTime: null,
     punchOutTimestamp: null,
+    punchInLocation: gpsLocation,
+    gpsInLocation: gpsLocation,
+    punchOutLocation: null,
+    gpsOutLocation: null,
     totalWorkedHours: 0,
     regularHours: 0,
     otHours: 0,
     status: "ACTIVE",
-    note: "Live Punch In"
+    note: "Live GPS Punch In"
   };
 
   if (!state.attendanceLog) state.attendanceLog = [];
   state.attendanceLog.push(newRecord);
   saveState();
+  FirebaseSyncService.saveAttendance(newRecord);
   renderUI();
-  alert(`✓ Punch In recorded at ${formatTimeShort(now)}!\nDuty shift started. Standard shift is 8.0 hours; extra time will be auto-calculated as Overtime (OT).`);
+
+  const gpsNotice = gpsLocation.available 
+    ? `\n📍 GPS Coordinates Captured: ${gpsLocation.display}` 
+    : `\n⚠️ GPS: ${gpsLocation.display}`;
+
+  alert(`✓ Punch In recorded at ${formatTimeShort(now)}!\nDuty shift started. Standard shift is 8.0 hours; extra time will be auto-calculated as Overtime (OT).${gpsNotice}`);
 });
 
-// Employee Punch Out
-document.getElementById("btn-employee-punch-out")?.addEventListener("click", () => {
+// Employee Punch Out (Auto GPS + Firestore Sync)
+document.getElementById("btn-employee-punch-out")?.addEventListener("click", async () => {
   const user = state.currentUser || state.users[0];
+  if (isUserPendingApproval(user)) {
+    alert("🔒 Registration Pending: Your account is awaiting Super Admin approval.");
+    return;
+  }
   if (isUserOnLeave(user)) {
     alert("🔒 Leave Lockout Active: You are currently ON LEAVE. Duty Punch Out is blocked in View-Only mode.");
     return;
@@ -2427,24 +3080,38 @@ document.getElementById("btn-employee-punch-out")?.addEventListener("click", () 
     return;
   }
 
+  const btnPunchOut = document.getElementById("btn-employee-punch-out");
+  if (btnPunchOut) {
+    btnPunchOut.disabled = true;
+    btnPunchOut.innerHTML = `<span>🛰️ Fetching Live GPS Location...</span>`;
+  }
+
+  const gpsOutLocation = await fetchCurrentGpsLocation();
   const now = new Date();
   const calc = calculateDutyShift(active.punchInTimestamp, now.getTime());
 
   active.punchOutTime = formatTimeAMPM(now);
   active.punchOutTimestamp = now.getTime();
+  active.punchOutLocation = gpsOutLocation;
+  active.gpsOutLocation = gpsOutLocation;
   active.totalWorkedHours = calc.totalHours;
   active.regularHours = calc.regularHours;
   active.otHours = calc.otHours;
   active.status = "COMPLETED";
 
   saveState();
+  FirebaseSyncService.saveAttendance(active);
   renderUI();
 
   const otMsg = calc.otHours > 0
     ? `\n⚡ Overtime: +${calc.otHours.toFixed(2)} OT Hours recorded!`
     : `\nStandard shift (8h) completed.`;
 
-  alert(`✓ Punch Out recorded at ${formatTimeShort(now)}!\nTotal Worked: ${calc.totalHours.toFixed(2)} hrs (Standard: ${calc.regularHours.toFixed(2)}h)${otMsg}`);
+  const gpsNotice = gpsOutLocation.available 
+    ? `\n📍 Punch Out GPS Captured: ${gpsOutLocation.display}` 
+    : `\n⚠️ GPS: ${gpsOutLocation.display}`;
+
+  alert(`✓ Punch Out recorded at ${formatTimeShort(now)}!\nTotal Worked: ${calc.totalHours.toFixed(2)} hrs (Standard: ${calc.regularHours.toFixed(2)}h)${otMsg}${gpsNotice}`);
 });
 
 // Attendance Report Filters
@@ -2595,6 +3262,7 @@ document.getElementById("btn-save-manual-att")?.addEventListener("click", () => 
 
   if (!state.attendanceLog) state.attendanceLog = [];
   state.attendanceLog.push(newRecord);
+  FirebaseSyncService.saveAttendance(newRecord);
   saveState();
   renderUI();
   closeModal("modal-manual-attendance");

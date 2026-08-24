@@ -1318,5 +1318,125 @@ body {
   text-decoration: line-through;
 }
 
+/* Cloud Sync Realtime Bar */
+.cloud-sync-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0F172A;
+  color: #F8FAFC;
+  padding: 6px 16px;
+  font-size: 11px;
+  font-weight: 600;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.cloud-sync-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pulse-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10B981;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: cloudPulse 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+}
+
+.pulse-indicator.offline {
+  background: #F59E0B;
+  box-shadow: none;
+  animation: none;
+}
+
+.pulse-indicator.error {
+  background: #EF4444;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes cloudPulse {
+  to {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+.cloud-sync-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #94A3B8;
+}
+
+/* GPS Badge & Clickable Maps */
+.gps-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #F0FDF4;
+  color: #166534;
+  border: 1px solid #BBF7D0;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.gps-pill:hover {
+  background: #DCFCE7;
+  color: #14532D;
+  text-decoration: underline;
+}
+
+.gps-pill.offline {
+  background: #F1F5F9;
+  color: #64748B;
+  border-color: #CBD5E1;
+}
+
+/* Pending Registrations Card */
+.pending-user-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-left: 4px solid #F59E0B;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.pending-user-card:hover {
+  border-color: #CBD5E1;
+  box-shadow: var(--shadow-md);
+}
+
+.pending-user-info h4 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.pending-user-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.pending-user-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+
 
 

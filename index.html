@@ -37,6 +37,15 @@
       </div>
     </header>
 
+    <!-- Cloud Sync Realtime Status Bar -->
+    <div class="cloud-sync-status-bar" id="cloud-sync-status-bar">
+      <div class="cloud-sync-pill" id="cloud-sync-pill">
+        <span class="pulse-indicator" id="cloud-sync-dot"></span>
+        <span id="cloud-sync-text">☁️ Firebase Firestore: Connecting Realtime...</span>
+      </div>
+      <div class="cloud-sync-time" id="cloud-sync-time">Cloud Synced</div>
+    </div>
+
     <!-- Navigation Bar for Portals -->
     <nav class="nav-bar" id="portal-nav">
       <button class="nav-btn" data-tab="resident-tab">
@@ -119,8 +128,14 @@
               <div class="duty-metric-val" style="color:#FBBF24;" id="duty-ot-hours">0.0h OT</div>
             </div>
           </div>
+          <!-- Live GPS Location Tracker Feedback -->
+          <div class="gps-location-status" id="resident-gps-status" style="display:flex; align-items:center; justify-content:center; gap:6px; background:rgba(255,255,255,0.08); border-radius:8px; padding:6px 12px; margin-top:10px; font-size:11px; color:#E2E8F0;">
+            <span id="resident-gps-icon">📍</span>
+            <span id="resident-gps-text">Live GPS Tracker: Active (Ready for automatic Geolocation recording)</span>
+          </div>
+
           <p class="text-sub mt-2" style="color:#94A3B8; font-size:10px; text-align:center;">
-            ⚡ 8 घंटे से ज्यादा काम करने पर बाकी समय स्वतः ओवर-टाइम (OT) में जुड़ेगा।
+            ⚡ 8 घंटे से ज्यादा काम करने पर बाकी समय स्वतः ओवर-टाइम (OT) में जुड़ेगा। Live GPS Location स्वतः दर्ज होती है।
           </p>
         </div>
 
@@ -529,8 +544,8 @@
                 <tr>
                   <th>Date & Shift</th>
                   <th>Employee</th>
-                  <th>Punch In</th>
-                  <th>Punch Out</th>
+                  <th>Punch In & GPS</th>
+                  <th>Punch Out & GPS</th>
                   <th>Total Worked</th>
                   <th>Standard (8h)</th>
                   <th>Overtime (OT)</th>
@@ -542,6 +557,22 @@
                 <!-- Rendered dynamically -->
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- Master Super Admin: Pending User Registrations Approval Card -->
+        <div class="card" id="admin-pending-users-card">
+          <div class="card-header flex-between">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3>Pending User Registrations</h3>
+                <span class="badge badge-pending" id="admin-pending-users-count">0 Pending</span>
+              </div>
+              <p class="text-sub">Master Super Admin Approval required for new employee registrations & sign-ups before activation</p>
+            </div>
+          </div>
+          <div class="pending-users-list" id="admin-pending-users-list" style="margin-top:12px;">
+            <!-- Rendered dynamically -->
           </div>
         </div>
 
@@ -951,6 +982,11 @@
       </div>
     </div>
   </div>
+
+  <!-- Firebase SDKs (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
   <script src="webapp/app.js"></script>
 </body>
