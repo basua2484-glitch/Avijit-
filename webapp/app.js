@@ -29,7 +29,6 @@ const CLEAN_INITIAL_STATE = {
   meals: [],
   pendingLeaves: [],
   expensesLog: [], // Real actual expenses ledger
-  paymentProofs: [], // Real resident payment slips & proofs
   roomRentPerPerson: 1500,
   activeKitchenMeal: "LUNCH",
   selectedOtHours: 2,
@@ -49,7 +48,6 @@ let state = (function() {
       // Ensure arrays exist
       if (!parsed.attendanceLog) parsed.attendanceLog = [];
       if (!parsed.expensesLog) parsed.expensesLog = [];
-      if (!parsed.paymentProofs) parsed.paymentProofs = [];
       if (!parsed.users || parsed.users.length === 0) parsed.users = CLEAN_INITIAL_STATE.users;
       if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
@@ -121,10 +119,10 @@ function canApprovePurchaseRequests(u) {
   return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
 }
 
-// Check if user has permission to approve user registrations (Super Admin and Manager)
+// Check if user has permission to approve user registrations (Super Admin exclusive)
 function canApproveUserRegistrations(u) {
   const user = u || state.currentUser || (state.users && state.users[0]);
-  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
+  return isSuperAdmin(user);
 }
 
 // Check if user has master deletion permission (Super Admin exclusive)
@@ -431,21 +429,7 @@ const FirebaseSyncService = {
       console.error("Firestore meals listen error:", err);
     });
 
-    // 6. Payment Proofs Collection Listener (Slips & Receipts)
-    const unsubPayments = db.collection("payment_proofs").onSnapshot(snapshot => {
-      const cloudProofs = [];
-      snapshot.forEach(doc => {
-        cloudProofs.push({ id: doc.id, ...doc.data() });
-      });
-      state.paymentProofs = cloudProofs;
-      saveLocalState();
-      renderUI();
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Payment Slips Live");
-    }, err => {
-      console.error("Firestore payment_proofs listen error:", err);
-    });
-
-    // 7. Settings Document Listener
+    // 6. Settings Document Listener
     const unsubSettings = db.collection("settings").doc("hostel_config").onSnapshot(doc => {
       if (doc.exists) {
         const data = doc.data();
@@ -459,7 +443,7 @@ const FirebaseSyncService = {
       console.error("Firestore settings listen error:", err);
     });
 
-    this.unsubscribers = [unsubUsers, unsubAttendance, unsubExpenses, unsubLeaves, unsubMeals, unsubPayments, unsubSettings];
+    this.unsubscribers = [unsubUsers, unsubAttendance, unsubExpenses, unsubLeaves, unsubMeals, unsubSettings];
   },
 
   async seedInitialSuperAdmin() {
@@ -543,28 +527,6 @@ const FirebaseSyncService = {
     }
   },
 
-  async savePaymentProof(proof) {
-    if (!proof || !proof.id) return;
-    if (db) {
-      try {
-        await db.collection("payment_proofs").doc(proof.id).set(proof, { merge: true });
-      } catch (err) {
-        console.error("Firestore savePaymentProof error:", err);
-      }
-    }
-  },
-
-  async deletePaymentProof(proofId) {
-    if (!proofId) return;
-    if (db) {
-      try {
-        await db.collection("payment_proofs").doc(proofId).delete();
-      } catch (err) {
-        console.error("Firestore deletePaymentProof error:", err);
-      }
-    }
-  },
-
   async saveLeave(leave) {
     if (!leave || !leave.id) return;
     if (db) {
@@ -612,7 +574,7 @@ const FirebaseSyncService = {
     if (!db) return;
     try {
       updateCloudSyncStatus(true, "⏳ Resetting Firebase Firestore Cloud...");
-      const collections = ["attendance", "expenses", "leaves", "meals", "payment_proofs", "users"];
+      const collections = ["attendance", "expenses", "leaves", "meals", "users"];
       for (const col of collections) {
         const snap = await db.collection(col).get();
         if (!snap.empty) {
@@ -715,11 +677,11 @@ function isUserPendingApproval(user) {
   return user && user.status === "PENDING_APPROVAL";
 }
 
-// Super Admin & Manager: Approve User Registration with Role Assignment
+// Master Super Admin: Approve User Registration with Role Assignment
 function approveUserRegistration(userId, assignedRole = null) {
   const current = state.currentUser || state.users[0];
-  if (!canApproveUserRegistrations(current)) {
-    alert("🔒 Access Denied: Only Super Admin and Hostel Manager have authority to approve new user registrations.");
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to approve new user registrations.");
     return;
   }
 
@@ -759,11 +721,11 @@ function approveUserRegistration(userId, assignedRole = null) {
   alert(`✓ User Account Approved & Activated!\n\nUser "${u.name}" (+91 ${u.mobile}) is now ACTIVE in Firebase Cloud with role "${u.role}". They can now log in, punch duty shifts, and book hostel meals.`);
 }
 
-// Super Admin & Manager: Reject User Registration
+// Master Super Admin: Reject User Registration
 function rejectUserRegistration(userId) {
   const current = state.currentUser || state.users[0];
-  if (!canApproveUserRegistrations(current)) {
-    alert("🔒 Access Denied: Only Super Admin and Hostel Manager have authority to reject registrations.");
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to reject registrations.");
     return;
   }
 
@@ -963,28 +925,9 @@ function handleUrlRouting() {
     window.history.replaceState(null, '', cleanPath + window.location.search + window.location.hash);
   }
 
-  // 2. Resolve target tab or referral action from hash/search
+  // 2. Resolve target tab from hash
   const rawHash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
-  if (rawHash === "register" || rawHash === "signup" || window.location.search.includes("ref=")) {
-    // If user is on Auth Gate screen, switch to signup tab
-    const authGate = document.getElementById("auth-gate-screen");
-    if (authGate && authGate.style.display !== "none") {
-      const signupTabBtn = document.querySelector('[data-auth-tab="auth-tab-signup"]');
-      if (signupTabBtn) signupTabBtn.click();
-    } else {
-      // Open user registration modal
-      resetUserModalToStep1();
-      document.getElementById("modal-user-title").textContent = "Register Staff / Resident (Safe Referral)";
-      document.getElementById("form-user-id").value = "";
-      document.getElementById("form-user-name").value = "";
-      document.getElementById("form-user-mobile").value = "";
-      document.getElementById("form-user-role").value = "RESIDENT";
-      document.getElementById("form-user-room").value = "";
-      document.getElementById("form-user-code").value = "";
-      document.getElementById("form-user-shift").value = "OFF_DUTY";
-      openModal("modal-user-form");
-    }
-  } else if (rawHash && TAB_HASH_MAP[rawHash]) {
+  if (rawHash && TAB_HASH_MAP[rawHash]) {
     switchTab(TAB_HASH_MAP[rawHash], false);
   }
 }
@@ -1417,60 +1360,6 @@ function renderResidentScreen() {
 
   document.getElementById("resident-bill-amount").textContent = `₹${myTotalBill.toFixed(2)}`;
   document.getElementById("resident-plates-count").textContent = `${myPlatesCount} Plates`;
-
-  // Render Resident's submitted payment history slips
-  renderResidentPaymentHistory();
-}
-
-function renderResidentPaymentHistory() {
-  const container = document.getElementById("resident-my-payments-list") || document.getElementById("res-payment-history-list");
-  if (!container) return;
-
-  const user = state.currentUser || state.users[0];
-  const mySlips = (state.paymentProofs || [])
-    .filter(p => p.userId === user.id)
-    .slice()
-    .reverse();
-
-  container.innerHTML = "";
-  if (mySlips.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state" style="padding:14px; font-size:12px;">
-        No payment slips submitted yet. Click "+ Submit Payment Slip" above after paying via UPI or cash to upload your receipt proof.
-      </div>
-    `;
-    return;
-  }
-
-  mySlips.forEach(slip => {
-    const card = document.createElement("div");
-    card.className = `payment-proof-card ${slip.status === 'VERIFIED' ? 'verified' : (slip.status === 'REJECTED' ? 'rejected' : 'pending')}`;
-    
-    const statusBadge = slip.status === "VERIFIED"
-      ? `<span class="badge badge-success">✓ Verified & Credited</span>`
-      : (slip.status === "REJECTED" ? `<span class="badge badge-alert">✕ Rejected</span>` : `<span class="badge badge-amber">⏳ Pending Manager Approval</span>`);
-
-    const imgThumb = slip.receiptUrl
-      ? `<img src="${slip.receiptUrl}" class="proof-thumb" onclick="openPaymentSlipViewer('${slip.id}')" title="Click to view slip" style="cursor:pointer;" />`
-      : `<div class="proof-thumb" style="display:flex; align-items:center; justify-content:center; background:#E2E8F0; font-size:16px; cursor:pointer;" onclick="openPaymentSlipViewer('${slip.id}')" title="Click to view slip">📄</div>`;
-
-    card.innerHTML = `
-      <div style="display:flex; gap:10px; align-items:center;">
-        ${imgThumb}
-        <div style="flex:1;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <strong class="font-mono" style="font-size:15px; color:#059669;">₹${parseFloat(slip.amount).toFixed(2)}</strong>
-            ${statusBadge}
-          </div>
-          <p class="text-sub" style="margin-top:2px; font-size:11px;">
-            ${slip.mode || slip.paymentMode || 'UPI'} • Date: ${slip.date} ${slip.utr && slip.utr !== 'N/A' ? `• UTR: ${slip.utr}` : ''}
-          </p>
-          ${slip.note ? `<p style="font-size:10px; color:#64748B; margin-top:2px;">"${slip.note}"</p>` : ''}
-        </div>
-      </div>
-    `;
-    container.appendChild(card);
-  });
 }
 
 function toggleMeal(mealType) {
@@ -1525,23 +1414,10 @@ function setShift(shift) {
     FirebaseSyncService.saveUser(u);
   }
 
-  // Shift-Based Custom Meal Defaults
-  // Morning (6 AM - 2 PM): Lunch is OFF (eaten on site / outside), Dinner is ON.
-  // Evening (2 PM - 10 PM): Lunch is ON (eaten before shift), Dinner is LATE_COVERED / PACK_TIFFIN.
-  // Night (10 PM - 6 AM): Both Lunch and Dinner are ON.
-  // Off-Duty / General: Both Lunch and Dinner are ON.
-  const shiftMealDefaults = {
-    MORNING: { LUNCH: "OFF", DINNER: "ON" },
-    EVENING: { LUNCH: "ON", DINNER: "LATE_COVERED" },
-    NIGHT: { LUNCH: "ON", DINNER: "ON" },
-    OFF_DUTY: { LUNCH: "ON", DINNER: "ON" }
-  };
-
-  const defaults = shiftMealDefaults[shift] || { LUNCH: "ON", DINNER: "ON" };
+  const isAutoOn = shift === "OFF_DUTY" || shift === "NIGHT";
   
-  // Auto sync today's meals based on shift rules
+  // Auto sync today's meals based on rules
   ["LUNCH", "DINNER"].forEach(type => {
-    const targetStatus = defaults[type] || "ON";
     let meal = state.meals.find(m => m.userId === state.currentUser.id && m.mealType === type);
     if (!meal) {
       meal = {
@@ -1550,14 +1426,14 @@ function setShift(shift) {
         userName: state.currentUser.name,
         roomNumber: state.currentUser.assignedRoom || "101",
         mealType: type,
-        status: targetStatus,
+        status: isAutoOn ? "ON" : "OFF",
         otHours: 0,
         shiftAtTime: shift
       };
       state.meals.push(meal);
     } else {
-      if (meal.status !== "PACK_TIFFIN") {
-        meal.status = targetStatus;
+      if (meal.status !== "PACK_TIFFIN" && meal.status !== "LATE_COVERED") {
+        meal.status = isAutoOn ? "ON" : "OFF";
       }
       meal.shiftAtTime = shift;
     }
