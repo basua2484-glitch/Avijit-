@@ -166,6 +166,9 @@
         </div>
         <div class="header-actions">
           <span class="role-tag super_admin" id="current-role-badge">SUPER ADMIN</span>
+          <button class="icon-btn" id="btn-header-share" title="Share App Link / Invite Staff" style="color:var(--primary-blue);">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          </button>
           <button class="icon-btn" id="btn-switch-user" title="Switch User Role">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
           </button>
@@ -345,6 +348,10 @@
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
             <span>ADD PURCHASE</span>
           </button>
+          <button class="action-card" style="background:#F0FDF4; border:1px solid #BBF7D0; color:#15803D;" id="btn-resident-share-link">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            <span>INVITE / SHARE</span>
+          </button>
         </div>
 
         <!-- Current Monthly Bill Card (Calculated from Real Expenses) -->
@@ -359,10 +366,30 @@
               <span class="live-dot">● Real Ledger Sync</span>
             </div>
           </div>
-          <button class="btn btn-primary full-width" id="btn-view-invoice">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            View Itemized Statement
-          </button>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button class="btn btn-primary" style="flex:1;" id="btn-view-invoice">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Statement & PDF
+            </button>
+            <button class="btn btn-secondary" style="flex:1;" id="btn-open-payment-proof">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+              Submit Slip / Pay
+            </button>
+          </div>
+        </div>
+
+        <!-- My Payment History & Verification Status -->
+        <div class="card" id="resident-payments-history-card">
+          <div class="card-header flex-between">
+            <div>
+              <h3>My Payment Slips & Receipts</h3>
+              <p class="text-sub">Uploaded payment proofs and verification status by Super Admin / Manager</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btn-resident-add-slip">+ Submit Slip</button>
+          </div>
+          <div id="resident-my-payments-list" style="margin-top:10px;">
+            <!-- Populated via JS -->
+          </div>
         </div>
       </section>
 
@@ -444,12 +471,17 @@
       <!-- 3. MANAGER OPERATIONS SCREEN -->
       <section id="manager-tab" class="tab-pane">
         <div class="dark-card">
-          <div class="card-header">
+          <div class="card-header flex-between">
             <div>
               <span class="dark-sub">HOSTEL OPERATIONS DESK</span>
               <h2 class="text-white">Manager Portal</h2>
             </div>
-            <span class="role-tag">MANAGER</span>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <button class="btn btn-secondary btn-sm" id="btn-mgr-share-link" style="background:rgba(255,255,255,0.15); color:#FFFFFF; border:1px solid rgba(255,255,255,0.2);">
+                🔗 Invite / Share App
+              </button>
+              <span class="role-tag">MANAGER</span>
+            </div>
           </div>
           <div class="grid-3 mt-3">
             <div>
@@ -461,9 +493,41 @@
               <div class="text-lilac font-bold text-lg" id="mgr-pending-count">0 Requests</div>
             </div>
             <div>
-              <span class="dark-sub">PENDING EXPENSES</span>
-              <div class="text-amber font-bold text-lg" style="color:#FBBF24;" id="mgr-pending-expenses-count">0 Pending</div>
+              <span class="dark-sub">PENDING PAYMENTS</span>
+              <div class="text-amber font-bold text-lg" style="color:#FBBF24;" id="mgr-pending-payments-count">0 Pending</div>
             </div>
+          </div>
+        </div>
+
+        <!-- Pending New Staff / User Registrations (Manager Review) -->
+        <div class="card" id="mgr-pending-users-card">
+          <div class="card-header flex-between">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3>Pending Staff Registrations (नया स्टाफ स्वीकृति)</h3>
+                <span class="badge badge-pending" id="mgr-pending-users-count">0 Pending</span>
+              </div>
+              <p class="text-sub">Review new employee sign-ups from referral links and activate them</p>
+            </div>
+          </div>
+          <div class="pending-users-list" id="mgr-pending-users-list" style="margin-top:10px;">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Payment Receipts & Slip Verification (रसीद सत्यापन) -->
+        <div class="card" id="mgr-payment-verification-card">
+          <div class="card-header flex-between">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3>Payment Proof & Slip Verification (भुगतान रसीद सत्यापन)</h3>
+                <span class="badge badge-amber" id="mgr-pending-slips-badge">0 Pending</span>
+              </div>
+              <p class="text-sub">Verify UPI / Bank payment slips submitted by residents and update their account balances</p>
+            </div>
+          </div>
+          <div id="mgr-payment-slips-list" style="margin-top:10px;">
+            <!-- Populated via JS -->
           </div>
         </div>
 
@@ -599,9 +663,14 @@
               <span class="badge badge-primary-light">👑 SUPER ADMIN MASTER CONTROL</span>
               <h2 class="text-white mt-1">Admin Dashboard</h2>
             </div>
-            <button class="btn btn-primary" id="btn-open-add-user">
-              + Add New User
-            </button>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              <button class="btn btn-secondary" id="btn-admin-share-link" style="background:rgba(255,255,255,0.15); color:#FFFFFF; border:1px solid rgba(255,255,255,0.25);">
+                🔗 Share App Link (WhatsApp)
+              </button>
+              <button class="btn btn-primary" id="btn-open-add-user">
+                + Add New User
+              </button>
+            </div>
           </div>
           <div class="grid-3 mt-3">
             <div>
@@ -711,6 +780,22 @@
             </div>
           </div>
           <div class="pending-users-list" id="admin-pending-users-list" style="margin-top:12px;">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
+        <!-- Master Super Admin: Payment Receipts & Verification Card -->
+        <div class="card" id="admin-payment-verification-card">
+          <div class="card-header flex-between">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <h3>Resident Payment Slips & Verification (भुगतान रसीद सत्यापन)</h3>
+                <span class="badge badge-amber" id="admin-pending-slips-badge">0 Pending</span>
+              </div>
+              <p class="text-sub">Verify bank transfer & UPI payment proofs submitted by residents and credit their ledger accounts</p>
+            </div>
+          </div>
+          <div id="admin-payment-slips-list" style="margin-top:12px;">
             <!-- Rendered dynamically -->
           </div>
         </div>
@@ -933,42 +1018,76 @@
       </div>
     </div>
 
-    <!-- 4. Itemized Invoice Modal (Real Calculations) -->
+    <!-- 4. Itemized Invoice Modal (Real Calculations & PDF Export) -->
     <div class="modal" id="modal-invoice">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h3>Itemized Statement Breakdown</h3>
+      <div class="modal-content" style="max-width:540px;">
+        <div class="modal-header no-print">
+          <h3>Itemized Monthly Mess Statement</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">100% Transparent Auto-Accounting based on actual logged expenses</p>
-        <div class="invoice-table-wrap">
-          <table class="invoice-table">
-            <thead>
-              <tr>
-                <th>Expense Item</th>
-                <th>Calculation Detail</th>
-                <th class="text-right">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody id="invoice-breakdown-tbody">
-              <!-- Populated via JS -->
-            </tbody>
-            <tfoot>
-              <tr>
-                <th colspan="2">Total Amount Payable</th>
-                <th class="text-right text-primary" id="invoice-modal-total">₹0.00</th>
-              </tr>
-            </tfoot>
-          </table>
+        
+        <div id="printable-statement-container">
+          <div class="statement-print-header">
+            <div>
+              <div class="statement-brand-title">🏢 HOSTEL MESS STATEMENT</div>
+              <div style="font-size:12px; color:#475569; margin-top:2px;">
+                Resident: <strong id="statement-resident-name">Employee Name</strong> (<span id="statement-resident-mobile">+91 XXXXXXXXXX</span>)
+              </div>
+              <div style="font-size:11px; color:#64748B;">
+                Shift: <span id="statement-resident-shift">Morning</span> | Room: <span id="statement-resident-room">101</span>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div class="statement-meta-badge" id="statement-date-badge">OCTOBER 2026</div>
+              <div style="font-size:10px; color:#64748B; margin-top:4px;">Single Dukan Sync</div>
+            </div>
+          </div>
+
+          <p class="text-sub no-print">100% Transparent Auto-Accounting based on actual logged mess expenses</p>
+
+          <div class="invoice-table-wrap">
+            <table class="invoice-table">
+              <thead>
+                <tr>
+                  <th>Expense Item</th>
+                  <th>Calculation Detail</th>
+                  <th class="text-right">Amount (₹)</th>
+                </tr>
+              </thead>
+              <tbody id="invoice-breakdown-tbody">
+                <!-- Populated via JS -->
+              </tbody>
+              <tfoot>
+                <tr>
+                  <th colspan="2">Total Amount Payable</th>
+                  <th class="text-right text-primary" id="invoice-modal-total" style="font-size:18px;">₹0.00</th>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="math-explainer">
+            <strong>Auto-Accounting Math:</strong><br>
+            • <strong>Plate Rate:</strong> Total Actual Grocery Expenses ÷ Total Consumed Plates<br>
+            • <strong>Utilities:</strong> Electricity & Water bills shared equally among active residents<br>
+            • <strong>Staff Salary:</strong> Mess & Cook salary shared equally<br>
+            • <strong>Formula:</strong> (Your Plates × Plate Rate) + Electricity Share + Water Share + Cook Share + Room Rent
+          </div>
         </div>
-        <div class="math-explainer">
-          <strong>Auto-Accounting Math:</strong><br>
-          • <strong>Plate Rate:</strong> Total Actual Grocery Expenses ÷ Total Consumed Plates<br>
-          • <strong>Utilities:</strong> Total Actual Electricity & Water expenses shared equally<br>
-          • <strong>Staff Salary:</strong> Actual Cook & Mess salary shared equally<br>
-          • <strong>Formula:</strong> (Your Plates × Rate) + Electricity Share + Water Share + Cook Share + Room Rent
+
+        <!-- Action Buttons (No Print) -->
+        <div class="no-print mt-3" style="display:flex; flex-direction:column; gap:8px;">
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-secondary" style="flex:1;" id="btn-print-statement">
+              🖨️ Print / Save PDF
+            </button>
+            <button class="btn-whatsapp-share" style="flex:1;" id="btn-whatsapp-share-statement">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.664-.699c.971.53 1.77.813 2.796.814 3.179 0 5.766-2.587 5.767-5.766.001-3.18-2.585-5.766-5.767-5.766zm3.385 8.163c-.144.406-.838.749-1.157.798-.319.05-.623.08-1.579-.297-1.22-.482-2.008-1.722-2.068-1.802-.061-.08-1.488-1.979-1.488-3.774 0-1.795.941-2.678 1.277-3.037.337-.36.734-.45 1.002-.45.267 0 .534.004.767.015.247.012.576-.094.903.69.336.804 1.144 2.793 1.246 3.003.102.21.17.455.034.726-.136.27-.205.44-.407.676-.202.237-.425.528-.607.708-.203.203-.414.423-.178.829.236.406 1.05 1.733 2.254 2.806 1.549 1.38 2.855 1.808 3.261 2.011.406.203.643.17.88-.102.237-.271 1.015-1.185 1.285-1.591.271-.406.542-.338.914-.203.372.135 2.368 1.117 2.774 1.32.406.203.677.305.778.474.102.169.102.982-.242 1.947z"/></svg>
+              Share via WhatsApp
+            </button>
+          </div>
+          <button class="btn btn-primary full-width" id="btn-pay-invoice">💳 Pay Now & Submit Receipt</button>
         </div>
-        <button class="btn btn-primary full-width mt-3" id="btn-pay-invoice">Pay Now (UPI / NetBanking)</button>
       </div>
     </div>
 
@@ -1119,6 +1238,143 @@
         </div>
 
         <button class="btn btn-primary full-width mt-3" id="btn-save-manual-att">Save Attendance Record</button>
+      </div>
+    </div>
+
+    <!-- 9. Share App Link & Multi-Level Staff Referral Modal -->
+    <div class="modal" id="modal-share-referral">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>🔗 Invite New Staff / Share App</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">
+          Share this registration link with new employees, managers, or cooks to join the hostel management system.
+        </p>
+
+        <div class="share-referral-box">
+          <div style="font-size:32px; margin-bottom:6px;">📲</div>
+          <div style="font-size:14px; font-weight:800; color:#14532D;">Invite Link (Ek Hi Dukan System)</div>
+          <div style="font-size:11px; color:#15803D; margin-top:2px;">Safe Referral Onboarding (Auto-Enters Pending Queue)</div>
+          
+          <div class="share-link-input-group">
+            <input type="text" id="referral-share-url-input" class="share-link-input" readonly value="">
+            <button class="btn-copy-link" id="btn-copy-referral-url">
+              📋 Copy
+            </button>
+          </div>
+        </div>
+
+        <div class="rule-box lilac mt-2" style="font-size:11px; text-align:left;">
+          🛡️ <strong>Safe Referral Security:</strong><br>
+          • Anyone registering with this link will automatically enter the <strong>Pending Approval Queue</strong>.<br>
+          • <strong>Super Admin (Owner)</strong> and <strong>Manager</strong> will review and assign roles before granting access.<br>
+          • No unauthorized or orphan accounts can enter the workspace.
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+          <a href="#" target="_blank" class="btn-whatsapp-share" id="btn-whatsapp-direct-share">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.664-.699c.971.53 1.77.813 2.796.814 3.179 0 5.766-2.587 5.767-5.766.001-3.18-2.585-5.766-5.767-5.766zm3.385 8.163c-.144.406-.838.749-1.157.798-.319.05-.623.08-1.579-.297-1.22-.482-2.008-1.722-2.068-1.802-.061-.08-1.488-1.979-1.488-3.774 0-1.795.941-2.678 1.277-3.037.337-.36.734-.45 1.002-.45.267 0 .534.004.767.015.247.012.576-.094.903.69.336.804 1.144 2.793 1.246 3.003.102.21.17.455.034.726-.136.27-.205.44-.407.676-.202.237-.425.528-.607.708-.203.203-.414.423-.178.829.236.406 1.05 1.733 2.254 2.806 1.549 1.38 2.855 1.808 3.261 2.011.406.203.643.17.88-.102.237-.271 1.015-1.185 1.285-1.591.271-.406.542-.338.914-.203.372.135 2.368 1.117 2.774 1.32.406.203.677.305.778.474.102.169.102.982-.242 1.947z"/></svg>
+            Send Invite via WhatsApp
+          </a>
+          <button class="btn btn-secondary full-width" id="btn-close-share-modal">
+            Done / Close
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. Upload Payment Receipt / Slip Modal -->
+    <div class="modal" id="modal-payment-upload">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>💳 Submit Payment Receipt / Proof</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        <p class="text-sub">
+          Submit your UPI, Bank Transfer, or Cash payment voucher. Super Admin / Manager will verify and update your ledger.
+        </p>
+
+        <div class="form-group mt-3">
+          <label>Payment Amount (₹) *</label>
+          <input type="number" id="pay-proof-amount" placeholder="e.g. 2500" min="1" step="0.01">
+        </div>
+
+        <div class="form-group">
+          <label>Payment Mode *</label>
+          <select id="pay-proof-mode" class="form-select">
+            <option value="UPI">Google Pay / PhonePe / Paytm / UPI</option>
+            <option value="BANK_TRANSFER">Bank Transfer / IMPS / NEFT</option>
+            <option value="CASH">Cash Given to Manager / Owner</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Transaction UTR / Ref No. (Optional for Cash)</label>
+          <input type="text" id="pay-proof-utr" placeholder="e.g. 428901238472">
+        </div>
+
+        <div class="form-group">
+          <label>Date of Payment *</label>
+          <input type="date" id="pay-proof-date">
+        </div>
+
+        <div class="form-group">
+          <label>Upload Payment Screenshot / Slip Photo (रसीद फोटो) *</label>
+          <div class="slip-upload-dropzone" id="pay-proof-dropzone">
+            <div style="font-size:28px;">📷</div>
+            <div style="font-weight:700; font-size:13px; color:#0F172A; margin-top:4px;">Click to Select or Take Photo</div>
+            <div style="font-size:11px; color:#64748B;">Supports PNG, JPG, JPEG (Receipt image)</div>
+            <input type="file" id="pay-proof-file" accept="image/*" style="display:none;">
+          </div>
+          <div class="slip-preview-container" id="pay-proof-preview-wrap" style="display:none; text-align:center;">
+            <img id="pay-proof-preview-img" class="slip-preview-img" alt="Receipt Preview">
+            <button class="btn btn-alert btn-sm mt-1" id="btn-remove-proof-image" style="padding:2px 8px; font-size:11px;">✕ Remove Photo</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Remarks / Notes (Optional)</label>
+          <input type="text" id="pay-proof-note" placeholder="e.g. Paid for October mess bill via PhonePe">
+        </div>
+
+        <button class="btn btn-primary full-width mt-3" id="btn-submit-payment-proof">
+          🚀 Submit Payment Slip for Verification
+        </button>
+      </div>
+    </div>
+
+    <!-- 11. View Payment Receipt & Verification Detail Modal -->
+    <div class="modal" id="modal-payment-viewer">
+      <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header">
+          <h3 id="viewer-modal-title">Payment Slip Verification</h3>
+          <button class="close-btn">&times;</button>
+        </div>
+        
+        <div id="viewer-slip-image-container" style="text-align:center; margin:10px 0;">
+          <!-- Populated via JS -->
+        </div>
+
+        <div class="rule-box lilac" id="viewer-payment-details">
+          <!-- Populated via JS -->
+        </div>
+
+        <!-- Verification Action Buttons (for Manager & Super Admin) -->
+        <div id="viewer-admin-actions" style="display:none; margin-top:14px;">
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary" style="flex:1; background:#10B981; border-color:#059669;" id="btn-viewer-approve-payment">
+              ✓ Approve & Credit
+            </button>
+            <button class="btn btn-alert" style="flex:1;" id="btn-viewer-reject-payment">
+              ✕ Reject Receipt
+            </button>
+          </div>
+        </div>
+
+        <button class="btn btn-secondary full-width mt-3" id="btn-close-payment-viewer">
+          Close Window
+        </button>
       </div>
     </div>
   </div>

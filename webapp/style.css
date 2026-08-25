@@ -1630,3 +1630,286 @@ body {
   line-height: 1.5;
 }
 
+/* ==========================================================================
+   Multi-Level Referral Sharing & Safe Onboarding Styles
+   ========================================================================== */
+.share-referral-box {
+  background: linear-gradient(135deg, #F0FDF4 0%, #DCFCE7 100%);
+  border: 1.5px dashed #86EFAC;
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+  margin: 14px 0;
+}
+
+.share-link-input-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.share-link-input {
+  flex: 1;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: #0F172A;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-whatsapp-share {
+  background: #25D366 !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  padding: 12px 18px !important;
+  font-size: 14px !important;
+  box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3) !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  text-decoration: none !important;
+}
+
+.btn-whatsapp-share:hover {
+  background: #1EBE5D !important;
+  transform: translateY(-1px);
+}
+
+.btn-copy-link {
+  background: #0284C7;
+  color: #FFFFFF;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-copy-link:hover {
+  background: #0369A1;
+}
+
+/* ==========================================================================
+   Payment Proof & Slip Verification Management
+   ========================================================================== */
+.payment-proof-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.payment-proof-card.pending {
+  border-left: 4px solid #F59E0B;
+  background: #FFFBEB;
+}
+
+.payment-proof-card.verified {
+  border-left: 4px solid #10B981;
+}
+
+.payment-proof-card.rejected {
+  border-left: 4px solid #EF4444;
+  opacity: 0.85;
+}
+
+.payment-slip-thumbnail {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid #CBD5E1;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.payment-slip-thumbnail:hover {
+  transform: scale(1.08);
+}
+
+.payment-slip-placeholder {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  background: #F1F5F9;
+  border: 1px dashed #CBD5E1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.badge-payment-verified {
+  background: #DCFCE7;
+  color: #15803D;
+  border: 1px solid #BBF7D0;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.badge-payment-pending {
+  background: #FEF3C7;
+  color: #B45309;
+  border: 1px solid #FDE68A;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.badge-payment-rejected {
+  background: #FEE2E2;
+  color: #B91C1C;
+  border: 1px solid #FECACA;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* Payment slip upload preview area */
+.slip-upload-dropzone {
+  border: 2px dashed #94A3B8;
+  background: #F8FAFC;
+  border-radius: var(--radius-md);
+  padding: 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.slip-upload-dropzone:hover {
+  border-color: var(--primary-blue);
+  background: #F0F9FF;
+}
+
+.slip-preview-container {
+  margin-top: 12px;
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+}
+
+.slip-preview-img {
+  max-width: 100%;
+  max-height: 220px;
+  border-radius: var(--radius-md);
+  border: 1px solid #E2E8F0;
+  box-shadow: var(--shadow-sm);
+  display: block;
+}
+
+/* Modal Fullscreen Slip Viewer */
+.slip-viewer-full {
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  background: #0F172A;
+}
+
+/* ==========================================================================
+   Printable PDF Statement Formatting
+   ========================================================================== */
+.statement-print-wrapper {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-md);
+  padding: 20px;
+  color: #0F172A;
+}
+
+.statement-print-header {
+  border-bottom: 2px solid #0F172A;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.statement-brand-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0F172A;
+  margin: 0;
+}
+
+.statement-meta-badge {
+  font-size: 11px;
+  font-weight: 700;
+  background: #F1F5F9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #CBD5E1;
+}
+
+.statement-summary-box {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin-top: 14px;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #modal-invoice,
+  #modal-invoice .modal-content,
+  #printable-statement-container,
+  #printable-statement-container * {
+    visibility: visible;
+  }
+  #modal-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: auto;
+    background: #FFFFFF !important;
+    display: block !important;
+    padding: 0 !important;
+  }
+  #modal-invoice .modal-content {
+    max-width: 100% !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 20px !important;
+  }
+  .no-print,
+  .close-btn,
+  .btn-no-print {
+    display: none !important;
+  }
+}
+
+
