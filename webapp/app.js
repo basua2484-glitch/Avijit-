@@ -61,7 +61,7 @@ const CLEAN_INITIAL_STATE = {
     userIdCode: "SADM_001",
     status: "ACTIVE",
     currentShift: "OFF_DUTY",
-    referralCode: "MESS101",
+    referralCode: "101001",
     messGroupId: "hostel_mess_data",
     isEmailVerified: true,
     emailVerifiedAt: Date.now(),
@@ -79,7 +79,7 @@ const CLEAN_INITIAL_STATE = {
       userIdCode: "SADM_001",
       status: "ACTIVE",
       currentShift: "OFF_DUTY",
-      referralCode: "MESS101",
+      referralCode: "101001",
       messGroupId: "hostel_mess_data",
       isEmailVerified: true,
       emailVerifiedAt: Date.now(),
@@ -360,12 +360,12 @@ function updateRoleQuotaUI() {
 // ==========================================
 const ReferralService = {
   generateUniqueReferralId() {
-    // Generate unique 6-digit Referral/Mess ID like MESS101 - MESS999
+    // Generate unique 6-digit Referral ID (e.g. 100000 - 999999)
     let code = "";
     let attempts = 0;
     do {
-      const num = Math.floor(100 + Math.random() * 900);
-      code = `MESS${num}`;
+      const num = Math.floor(100000 + Math.random() * 900000);
+      code = String(num);
       attempts++;
     } while (attempts < 50 && (state.users || []).some(u => (u.referralCode || "").toUpperCase() === code));
     return code;
@@ -4029,11 +4029,16 @@ document.getElementById("btn-reset-db")?.addEventListener("click", async () => {
 // 16. REFER & INVITE FRIEND SYSTEM (WHATSAPP + FIREBASE SYNC)
 // ==========================================
 function getUserReferralCode(user) {
-  if (!user) return "REF-HOSTEL";
-  if (user.referralCode) return user.referralCode;
-  const cleanName = (user.name || "USER").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
-  const suffix = user.mobile ? user.mobile.slice(-4) : (user.id || "101").slice(-4).toUpperCase();
-  return `REF-${cleanName}${suffix}`;
+  if (!user) return "101001";
+  if (user.referralCode && user.referralCode.length >= 4) return user.referralCode;
+  
+  // Auto-generate 6-digit Referral ID if not present
+  const newRef = ReferralService.generateUniqueReferralId();
+  user.referralCode = newRef;
+  if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.saveUser) {
+    FirebaseSyncService.saveUser(user);
+  }
+  return newRef;
 }
 
 function getInviteLink(user) {
