@@ -1933,3 +1933,42 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Referral ID Card & Join Group Box */
+.referral-id-card {
+  background: linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%);
+  border: 1px solid #C7D2FE;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.referral-id-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 18px;
+  font-weight: 800;
+  color: #3730A3;
+  background: #FFFFFF;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px dashed #6366F1;
+  letter-spacing: 1px;
+  display: inline-block;
+}
+
+.join-group-box {
+  background: #FFFFFF;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+.account-danger-card {
+  background: #FFF5F5;
+  border: 1px solid #FED7D7;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+

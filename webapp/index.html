@@ -236,23 +236,45 @@
           </button>
         </div>
 
-        <!-- Connect Friends & WhatsApp Referral Card on Resident Home -->
-        <div class="card" style="background:linear-gradient(135deg, #EEF2FF, #E0E7FF); border:1px solid #C7D2FE;">
-          <div class="flex-between" style="flex-wrap:wrap; gap:10px;">
+        <!-- Your Mess Referral ID & Join Group Card on Resident Home -->
+        <div class="referral-id-card">
+          <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
             <div>
-              <h4 style="color:#3730A3; margin:0; font-size:14px;">🎁 Invite Roommates & Friends</h4>
-              <p class="text-sub" style="color:#4338CA; margin-top:2px; font-size:12px;">
-                Share your WhatsApp invite link to connect roommates directly to this central mess group (hostel_mess_data).
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span class="role-pill resident" style="font-size:10px; font-weight:800;">YOUR REFERRAL ID</span>
+                <span class="badge badge-success" style="font-size:9px;">● Shared Database: hostel_mess_data</span>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+                <span class="referral-id-badge" id="resident-my-ref-id">MESS101</span>
+                <button class="btn btn-secondary btn-sm" id="btn-resident-copy-ref-id" title="Copy Referral ID" style="padding:5px 10px; font-size:11px;">📋 Copy</button>
+                <button class="btn btn-whatsapp btn-sm" id="btn-resident-share-wa" style="font-weight:800; padding:5px 12px; font-size:11px;">💬 WhatsApp</button>
+              </div>
+              <p class="text-sub" style="color:#4338CA; margin-top:4px; font-size:11px;">
+                Share your 6-digit Referral ID with friends so they can join your shared Mess Group.
               </p>
             </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn btn-whatsapp btn-sm" id="btn-resident-share-wa" style="font-weight:800; padding:6px 12px; font-size:12px;">
-                💬 WhatsApp Invite
-              </button>
-              <button class="btn btn-secondary btn-sm" id="btn-resident-view-friends" style="font-size:12px;">
-                👥 View Friends
-              </button>
+            <div class="join-group-box">
+              <label style="font-size:11px; font-weight:700; color:#334155;">Join Group / Connect Friend</label>
+              <div style="display:flex; gap:6px; margin-top:4px;">
+                <input type="text" id="resident-join-ref-input" placeholder="Referral ID (e.g. MESS123)" style="text-transform:uppercase; font-size:12px; padding:6px 10px; max-width:180px;">
+                <button class="btn btn-primary btn-sm" id="btn-resident-join-ref" style="font-size:11px; padding:6px 12px;">Connect</button>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Account Actions & Profile Management -->
+        <div class="account-danger-card" id="resident-account-manage-card">
+          <div class="flex-between" style="flex-wrap:wrap; gap:8px;">
+            <div>
+              <h4 style="margin:0; font-size:13px; color:#991B1B;">Account & Data Management</h4>
+              <p class="text-sub" style="margin-top:2px; font-size:11px; color:#B91C1C;">
+                You have permission to delete your own account and all associated meal / punch records.
+              </p>
+            </div>
+            <button class="btn btn-alert btn-sm" id="btn-resident-delete-account" style="font-size:11px; padding:6px 12px;">
+              🗑️ Delete My Account
+            </button>
           </div>
         </div>
       </section>
@@ -464,26 +486,39 @@
       <!-- 4. FRIENDS / MESS MEMBERS SCREEN -->
       <section id="friends-tab" class="tab-pane">
         <!-- Connect Friends & WhatsApp Invite Hero Card -->
-        <div class="card" style="background:linear-gradient(135deg, #EEF2FF, #E0E7FF); border:1px solid #C7D2FE;">
-          <div class="flex-between" style="flex-wrap:wrap; gap:10px;">
+        <div class="card referral-id-card">
+          <div class="flex-between" style="flex-wrap:wrap; gap:12px;">
             <div>
               <div style="display:flex; align-items:center; gap:6px;">
-                <span class="role-pill admin" style="font-size:10px;">CENTRAL CLOUD GROUP</span>
+                <span class="role-pill admin" style="font-size:10px; font-weight:800;">SHARED DATABASE: hostel_mess_data</span>
                 <span class="badge badge-success" style="font-size:10px;">● Live Synced</span>
               </div>
-              <h3 style="color:#3730A3; font-size:16px; margin-top:4px;">👥 Mess Group: <span class="font-mono">hostel_mess_data</span></h3>
-              <p class="text-sub" style="color:#4338CA; margin-top:2px; font-size:12px;">
-                All connected roommates & staff read and write to this shared Firebase database. Invite friends via WhatsApp to join!
+              <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                <span style="font-size:12px; font-weight:700; color:#3730A3;">Your Referral ID:</span>
+                <span class="referral-id-badge" id="friends-my-ref-id">MESS101</span>
+                <button class="btn btn-secondary btn-sm" id="btn-friends-copy-id" style="padding:4px 8px; font-size:11px;">📋 Copy</button>
+              </div>
+              <p class="text-sub" style="color:#4338CA; margin-top:4px; font-size:12px;">
+                All connected roommates & staff read and write to this shared Firebase database.
               </p>
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button class="btn btn-whatsapp" id="btn-friends-tab-invite" style="display:flex; align-items:center; gap:6px; font-weight:800; padding:8px 14px; font-size:13px;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.669-.699c.969.54 1.772.82 2.791.82 3.181 0 5.767-2.586 5.767-5.766.001-3.181-2.585-5.766-5.767-5.766zm9.969 5.766c0 5.485-4.484 9.969-9.969 9.969-1.722 0-3.339-.441-4.757-1.213l-5.274 1.381 1.41-5.143c-.886-1.488-1.379-3.217-1.379-5.063 0-5.485 4.485-9.969 10-9.969 5.485 0 9.969 4.485 9.969 9.969z"/></svg>
-                Invite via WhatsApp
-              </button>
-              <button class="btn btn-secondary" id="btn-friends-copy-link" style="display:flex; align-items:center; gap:4px; font-size:12px;">
-                🔗 Copy Link
-              </button>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div class="join-group-box">
+                <label style="font-size:11px; font-weight:700; color:#334155;">Join Group / Connect Friend</label>
+                <div style="display:flex; gap:6px; margin-top:4px;">
+                  <input type="text" id="friends-join-ref-input" placeholder="Referral ID (e.g. MESS123)" style="text-transform:uppercase; font-size:12px; padding:6px 10px; max-width:180px;">
+                  <button class="btn btn-primary btn-sm" id="btn-friends-join-ref" style="font-size:11px; padding:6px 12px;">Connect</button>
+                </div>
+              </div>
+              <div style="display:flex; gap:6px;">
+                <button class="btn btn-whatsapp btn-sm" id="btn-friends-tab-invite" style="display:flex; align-items:center; gap:6px; font-weight:800; padding:6px 12px; font-size:12px; flex:1; justify-content:center;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.669-.699c.969.54 1.772.82 2.791.82 3.181 0 5.767-2.586 5.767-5.766.001-3.181-2.585-5.766-5.767-5.766zm9.969 5.766c0 5.485-4.484 9.969-9.969 9.969-1.722 0-3.339-.441-4.757-1.213l-5.274 1.381 1.41-5.143c-.886-1.488-1.379-3.217-1.379-5.063 0-5.485 4.485-9.969 10-9.969 5.485 0 9.969 4.485 9.969 9.969z"/></svg>
+                  Invite via WhatsApp
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-friends-copy-link" style="display:flex; align-items:center; gap:4px; font-size:11px; padding:6px 10px;">
+                  🔗 Link
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -693,54 +728,49 @@
 
     <!-- MODALS -->
 
-    <!-- 1. Add / Register User Modal with Email OTP Verification -->
+    <!-- 1. Add / Register User Modal (Simplified - No OTP) -->
     <div class="modal" id="modal-user-form">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="modal-user-title">Employee Registration (Email OTP)</h3>
+          <h3 id="modal-user-title">Register / Add Member</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">A real 4-digit verification OTP will be sent to your registered Email address for verification before submitting for Manager approval.</p>
-        <div class="rule-box mt-2" style="font-size:11px;" id="role-quota-info-box">
-          🛡️ <strong>Strict Security:</strong> Duplicate Email Check Active • Manager Onboarding
-        </div>
+        <p class="text-sub">Simplified registration with Name and Mobile. Automatically links account to shared database (<strong>hostel_mess_data</strong>) with unique Referral ID.</p>
         <input type="hidden" id="form-user-id" value="">
 
-        <!-- STEP 1: Registration Details & Email Input -->
         <div id="otp-step-1" class="otp-step active">
           <div class="form-group mt-3">
             <label>Full Name *</label>
             <input type="text" id="form-user-name" placeholder="e.g. Ramesh Kumar">
           </div>
-          <div class="form-group">
-            <label>Registered Email Address (Verification OTP will be sent here) *</label>
-            <input type="email" id="form-user-email" placeholder="e.g. ramesh@gmail.com" autocomplete="email">
-          </div>
           <div class="grid-2">
             <div class="form-group">
-              <label>Mobile Number (for record) *</label>
+              <label>Mobile Number (Optional)</label>
               <div style="display:flex; gap:6px;">
                 <span style="display:flex; align-items:center; padding:0 8px; background:#F1F5F9; border:1px solid var(--border); border-radius:var(--radius-md); font-weight:700; font-size:12px; color:#475569;">+91</span>
                 <input type="tel" id="form-user-mobile" placeholder="9876543210" maxlength="10" style="flex:1;">
               </div>
             </div>
             <div class="form-group">
-              <label>4-Digit Account PIN *</label>
-              <input type="password" id="form-user-pin" placeholder="e.g. 1234" maxlength="4" style="letter-spacing:3px; font-weight:700;">
+              <label>4-Digit Account PIN</label>
+              <input type="password" id="form-user-pin" placeholder="Default: 1234" maxlength="4" style="letter-spacing:3px; font-weight:700;">
             </div>
+          </div>
+          <div class="form-group" style="display:none;">
+            <input type="email" id="form-user-email" placeholder="user@gmail.com">
           </div>
           <div class="form-group">
             <label>Role Assignment *</label>
             <select id="form-user-role" class="form-select">
               <option value="RESIDENT">Hostel Resident / Employee (रहवासी - Self Access Only)</option>
               <option value="MANAGER">Hostel Manager (प्रबंधक - Ops & Expenses)</option>
-              <option value="ADMIN">Super Admin (व्यवस्थापक - Full Master Access)</option>
+              <option value="ADMIN">Admin / Supervisor (व्यवस्थापक - Full Access)</option>
               <option value="COOK">Kitchen Cook (रसोईया - Food Headcount Only)</option>
             </select>
           </div>
           <div class="grid-2">
             <div class="form-group">
-              <label>Assigned Room / Bed *</label>
+              <label>Assigned Room / Bed</label>
               <input type="text" id="form-user-room" placeholder="e.g. 204 or Bed A-1">
             </div>
             <div class="form-group">
@@ -758,49 +788,11 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Referral / Invite Code (Optional / रेफरल कोड)</label>
-            <input type="text" id="form-user-referral-code" placeholder="e.g. REF-AVIJ2484" style="text-transform:uppercase;">
+            <label>Referral / Mess ID (Optional / दोस्तों का रेफरल कोड)</label>
+            <input type="text" id="form-user-referral-code" placeholder="e.g. MESS101" style="text-transform:uppercase;">
           </div>
           <button class="btn btn-primary full-width mt-3" id="btn-proceed-otp">
-            📧 Send 4-Digit Email OTP
-          </button>
-        </div>
-
-        <!-- STEP 2: Email OTP Verification Screen -->
-        <div id="otp-step-2" class="otp-step">
-          <!-- Real Email Notification Card -->
-          <div class="email-otp-card">
-            <div class="email-otp-header">
-              <span class="email-otp-icon">📧</span>
-              <div>
-                <div class="email-otp-title">Verification Code Sent</div>
-                <div class="email-otp-desc">
-                  A 4-digit verification code has been dispatched to <strong id="otp-target-email" style="color:#047857;">user@domain.com</strong>.
-                </div>
-              </div>
-            </div>
-            <div style="font-size:11px; color:#475569; margin-top:4px;">
-              Please check your Email inbox (and Spam/Junk folder) and enter the 4-digit code below.
-            </div>
-          </div>
-
-          <div class="otp-input-container">
-            <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Email OTP</label>
-            <input type="text" id="input-verify-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
-            <div class="otp-timer-text" id="otp-timer-display">Resend code in 30s</div>
-          </div>
-
-          <div style="display:flex; gap:8px;" class="mt-2">
-            <button class="btn btn-secondary" id="btn-back-otp-step" style="flex:1;">
-              ← Back / Edit
-            </button>
-            <button class="btn btn-secondary" id="btn-resend-otp" disabled style="flex:1;">
-              🔄 Resend Email OTP
-            </button>
-          </div>
-
-          <button class="btn btn-primary full-width mt-3" id="btn-verify-and-register">
-            🔒 Verify Email OTP & Submit for Approval
+            ✓ Register & Join Mess Group
           </button>
         </div>
       </div>
@@ -849,84 +841,42 @@
       </div>
     </div>
 
-    <!-- 3. Secure Login Modal (Email OTP Verification Only) -->
+    <!-- 3. Secure Login / Switch User Modal (Simplified - No OTP) -->
     <div class="modal" id="modal-switch-user">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="modal-login-title">🔐 Secure Login (Email OTP Only)</h3>
+          <h3 id="modal-login-title">🔐 Switch Account / Log In</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Authentication is strictly verified via a 4-digit OTP sent directly to your registered Email address.</p>
+        <p class="text-sub">Tap any user below for instant 1-click switch, or enter your Name / Mobile to log in.</p>
 
-        <!-- LOGIN STEP 1: Email Input, 4-Digit PIN & Quick Select -->
+        <!-- LOGIN STEP 1: Name/Mobile Input & Quick Switch -->
         <div id="login-step-1" class="login-step active">
           <div class="login-auth-box">
             <div class="form-group">
-              <label>Registered Email Address *</label>
-              <input type="email" id="login-identifier" placeholder="e.g. basua2484@gmail.com" autocomplete="email">
+              <label>Name or Mobile Number *</label>
+              <input type="text" id="login-identifier" placeholder="e.g. Avijit Basu or 9876543210" autocomplete="username">
             </div>
             <div class="form-group">
-              <label>4-Digit Account PIN *</label>
+              <label>4-Digit Account PIN</label>
               <input type="password" id="login-pin" placeholder="Default PIN: 1234" maxlength="4" style="letter-spacing:4px; font-weight:700;" autocomplete="current-password">
             </div>
             <button class="btn btn-primary full-width mt-2" id="btn-login-proceed-2fa">
-              📧 Verify PIN & Send 4-Digit Email OTP
+              🔓 Log In
             </button>
           </div>
 
           <div style="margin:16px 0 8px; font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
-            <span>⚡ Select User to Fill Email</span>
+            <span>⚡ 1-Click Switch Account</span>
             <span style="flex:1; height:1px; background:#E2E8F0;"></span>
           </div>
 
-          <div class="account-list" id="switch-account-list" style="max-height:180px; overflow-y:auto;">
+          <div class="account-list" id="switch-account-list" style="max-height:220px; overflow-y:auto;">
             <!-- Populated via JS -->
           </div>
 
           <button class="btn btn-secondary full-width mt-3" id="btn-switch-modal-register">
-            ➕ Onboard New User (Admin / Manager Only)
-          </button>
-
-          <div id="switch-modal-restricted-notice" class="rule-box lilac mt-2" style="font-size:11px; display:none;">
-            🔒 <strong>Onboarding Restricted:</strong> Public self-registration is closed. Please contact your Hostel Manager to register your account.
-          </div>
-        </div>
-
-        <!-- LOGIN STEP 2: Email OTP Verification Screen -->
-        <div id="login-step-2" class="login-step">
-          <!-- Real Email Notification Card -->
-          <div class="email-otp-card login-style">
-            <div class="email-otp-header">
-              <span class="email-otp-icon">📬</span>
-              <div>
-                <div class="email-otp-title">Login OTP Dispatched</div>
-                <div class="email-otp-desc">
-                  A 4-digit security code was sent to <strong id="login-2fa-target-email" style="color:#1D4ED8;">basua2484@gmail.com</strong>.
-                </div>
-              </div>
-            </div>
-            <div style="font-size:11px; color:#475569; margin-top:4px;">
-              Please check your Email inbox and enter the 4-digit code below to log in.
-            </div>
-          </div>
-
-          <div class="otp-input-container">
-            <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Email OTP</label>
-            <input type="text" id="login-input-verify-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
-            <div class="otp-timer-text" id="login-otp-timer-display">Resend code in 30s</div>
-          </div>
-
-          <div style="display:flex; gap:8px;" class="mt-2">
-            <button class="btn btn-secondary" id="btn-login-back-step" style="flex:1;">
-              ← Back / Change Email
-            </button>
-            <button class="btn btn-secondary" id="btn-login-resend-otp" disabled style="flex:1;">
-              🔄 Resend Email OTP
-            </button>
-          </div>
-
-          <button class="btn btn-primary full-width mt-3" id="btn-login-verify-2fa">
-            🔓 Verify Email OTP & Log In
+            ➕ Register New Member
           </button>
         </div>
       </div>
@@ -1096,26 +1046,34 @@
     <div class="modal" id="modal-referral">
       <div class="modal-content">
         <div class="modal-header">
-          <h3>🎁 Refer & Invite Friend</h3>
+          <h3 id="modal-ref-header-title">🎁 Mess Referral ID & Invite</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Share your invite link with roommates and coworkers to join the Hostel & Mess Management portal.</p>
+        <p class="text-sub">Share your unique 6-digit Referral ID or enter a friend's ID to connect under shared central database (<strong>hostel_mess_data</strong>).</p>
         
         <div class="referral-code-card mt-3">
-          <div class="text-sub" style="font-size:11px; font-weight:700; color:#475569;">YOUR UNIQUE REFERRAL CODE</div>
-          <div class="referral-code-badge font-mono" id="modal-ref-code-display">REF-HOSTEL</div>
-          <div>
+          <div class="text-sub" style="font-size:11px; font-weight:700; color:#475569;">YOUR UNIQUE 6-DIGIT REFERRAL ID</div>
+          <div class="referral-code-badge font-mono" id="modal-ref-code-display">MESS101</div>
+          <div style="display:flex; gap:6px; justify-content:center; margin-top:6px;">
             <button class="btn btn-secondary btn-sm" id="btn-copy-ref-code" style="padding:4px 10px; font-size:11px;">
-              📋 Copy Code
+              📋 Copy ID
             </button>
+          </div>
+        </div>
+
+        <div class="join-group-box mt-3" style="width:100%;">
+          <label style="font-size:12px; font-weight:700; color:#334155;">Join Group / Connect Friend via Referral ID</label>
+          <div style="display:flex; gap:6px; margin-top:6px;">
+            <input type="text" id="modal-join-ref-input" placeholder="Enter Referral ID (e.g. MESS123)" style="text-transform:uppercase; font-size:12px; padding:7px 10px; flex:1;">
+            <button class="btn btn-primary btn-sm" id="btn-modal-join-ref" style="font-size:12px; padding:7px 14px;">Connect</button>
           </div>
         </div>
 
         <div class="grid-2 mt-3">
           <div class="metric-card">
             <div class="metric-num text-primary" id="modal-ref-count-display">0</div>
-            <div class="metric-label">Friends Referred</div>
-            <div class="metric-sub">Joined with Code</div>
+            <div class="metric-label">Friends Connected</div>
+            <div class="metric-sub">Joined with ID</div>
           </div>
           <div class="metric-card">
             <div class="metric-num text-success" id="modal-ref-active-display">0 Active</div>
@@ -1135,7 +1093,7 @@
         </div>
 
         <div class="mt-3">
-          <h4 style="font-size:12px; font-weight:700; color:#334155; margin-bottom:6px;">Referred Friends List (Firebase Tracked):</h4>
+          <h4 style="font-size:12px; font-weight:700; color:#334155; margin-bottom:6px;">Connected Members List (Firebase Tracked):</h4>
           <div class="referred-users-box" id="modal-referred-list-container">
             <!-- Populated via JS -->
           </div>
