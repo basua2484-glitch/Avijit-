@@ -37,6 +37,15 @@
       </div>
     </header>
 
+    <!-- Cloud Sync Realtime Status Bar -->
+    <div class="cloud-sync-status-bar" id="cloud-sync-status-bar">
+      <div class="cloud-sync-pill" id="cloud-sync-pill">
+        <span class="pulse-indicator" id="cloud-sync-dot"></span>
+        <span id="cloud-sync-text">☁️ Firebase Realtime DB: Connecting to hostel_mess_data...</span>
+      </div>
+      <div class="cloud-sync-time" id="cloud-sync-time">Cloud Synced</div>
+    </div>
+
     <!-- Navigation Bar for Portals -->
     <nav class="nav-bar" id="portal-nav">
       <button class="nav-btn" data-tab="resident-tab">
@@ -876,6 +885,12 @@
     </div>
   </div>
 
-  <script src="webapp/app.js"></script>
+  <!-- Firebase SDKs (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <script src="app.js"></script>
 </body>
 </html>

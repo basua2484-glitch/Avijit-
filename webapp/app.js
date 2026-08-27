@@ -274,19 +274,21 @@ const OtpAuthService = {
 };
 
 // ==========================================
-// 1. FIREBASE CONFIGURATION & FIRESTORE REALTIME SYNC
+// 1. SINGLE CENTRAL FIREBASE REALTIME DATABASE ('hostel_mess_data')
 // ==========================================
 const firebaseConfig = {
   apiKey: "AIzaSyBmsF0FdATAAz3cRNHPJzAykO6FGOouHE",
   authDomain: "hostel-management-96f81.firebaseapp.com",
+  databaseURL: "https://hostel-management-96f81-default-rtdb.firebaseio.com",
   projectId: "hostel-management-96f81",
   storageBucket: "hostel-management-96f81.firebasestorage.app",
   messagingSenderId: "952292948322",
   appId: "1:952292948322:web:ed54a71de1a647c887543b"
 };
 
+const CENTRAL_DB_NODE = "hostel_mess_data";
+let rtdb = null;
 let db = null;
-let auth = null;
 let isFirebaseConnected = false;
 
 function updateCloudSyncStatus(isOnline, message) {
@@ -298,7 +300,7 @@ function updateCloudSyncStatus(isOnline, message) {
     dot.className = isOnline ? "pulse-indicator" : "pulse-indicator offline";
   }
   if (text) {
-    text.textContent = message || (isOnline ? "☁️ Firebase Firestore: Live Realtime Synced" : "⚠️ Local Storage Cache Active");
+    text.textContent = message || (isOnline ? "☁️ Realtime DB: Connected • hostel_mess_data" : "⚠️ Local Cache Active");
   }
   if (time) {
     time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -306,297 +308,311 @@ function updateCloudSyncStatus(isOnline, message) {
 }
 
 const FirebaseSyncService = {
-  unsubscribers: [],
+  dbRef: null,
+  isInitialized: false,
 
   init() {
     try {
       if (typeof firebase === "undefined") {
-        console.warn("Firebase SDK not ready yet, retrying...");
-        updateCloudSyncStatus(false, "⏳ Initializing Firebase Cloud...");
-        setTimeout(() => this.init(), 1000);
+        console.warn("Firebase SDK not ready yet, retrying in 500ms...");
+        updateCloudSyncStatus(false, "⏳ Connecting to Firebase Cloud...");
+        setTimeout(() => this.init(), 500);
         return;
       }
 
       if (!firebase.apps.length) {
         firebase.initializeApp(firebaseConfig);
       }
-      db = firebase.firestore();
-      auth = firebase.auth();
 
-      // Enable offline persistence if supported
-      try {
-        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
-          if (err.code !== 'failed-precondition' && err.code !== 'unimplemented') {
-            console.warn("Firestore offline persistence info:", err.code);
-          }
-        });
-      } catch (e) {}
+      // Initialize Firebase Realtime Database
+      if (typeof firebase.database === "function") {
+        try {
+          rtdb = firebase.database();
+          rtdb.ref(CENTRAL_DB_NODE).keepSynced(true);
+        } catch (e) {
+          console.warn("RTDB keepSynced warning:", e);
+        }
+      }
 
-      updateCloudSyncStatus(true, "☁️ Firebase Firestore: Live Cloud Sync Active");
-      console.log("✓ Firebase Connected & Initialized:", firebaseConfig.projectId);
+      // Initialize Firestore as auxiliary backup if available
+      if (typeof firebase.firestore === "function") {
+        try {
+          db = firebase.firestore();
+        } catch (e) {}
+      }
 
-      this.setupListeners();
+      this.isInitialized = true;
+      updateCloudSyncStatus(true, "☁️ Realtime DB: Connected • hostel_mess_data");
+      console.log("✓ Central Realtime Database Connected at node:", CENTRAL_DB_NODE);
+
+      this.setupCentralListener();
     } catch (e) {
-      console.error("Firebase init failed:", e);
-      updateCloudSyncStatus(false, "⚠️ Local Cache Mode (Firestore Sync Error)");
+      console.error("Firebase Realtime DB init error:", e);
+      updateCloudSyncStatus(false, "⚠️ Local Cache Active");
     }
   },
 
-  setupListeners() {
-    if (!db) return;
+  setupCentralListener() {
+    if (!rtdb) {
+      if (db) this.setupFirestoreFallback();
+      return;
+    }
 
-    // 1. Users Collection Listener
-    const unsubUsers = db.collection("users").onSnapshot(snapshot => {
-      if (snapshot.empty) {
+    this.dbRef = rtdb.ref(CENTRAL_DB_NODE);
+
+    // Single Central Realtime Database Listener for all devices
+    this.dbRef.on("value", (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        console.log("Empty central database, seeding initial data...");
         this.seedInitialSuperAdmin();
         return;
       }
-      const cloudUsers = [];
-      snapshot.forEach(doc => {
-        cloudUsers.push({ id: doc.id, ...doc.data() });
-      });
-      state.users = cloudUsers;
 
+      // Sync all data modules from single central node
+      if (Array.isArray(data.users)) state.users = data.users;
+      else if (data.users && typeof data.users === "object") state.users = Object.values(data.users);
+      else state.users = CLEAN_INITIAL_STATE.users;
+
+      if (Array.isArray(data.attendanceLog)) state.attendanceLog = data.attendanceLog;
+      else if (data.attendanceLog && typeof data.attendanceLog === "object") state.attendanceLog = Object.values(data.attendanceLog);
+      else state.attendanceLog = [];
+
+      if (Array.isArray(data.expensesLog)) state.expensesLog = data.expensesLog;
+      else if (data.expensesLog && typeof data.expensesLog === "object") state.expensesLog = Object.values(data.expensesLog);
+      else state.expensesLog = [];
+
+      if (Array.isArray(data.meals)) state.meals = data.meals;
+      else if (data.meals && typeof data.meals === "object") state.meals = Object.values(data.meals);
+      else state.meals = [];
+
+      if (Array.isArray(data.pendingLeaves)) state.pendingLeaves = data.pendingLeaves;
+      else if (data.pendingLeaves && typeof data.pendingLeaves === "object") state.pendingLeaves = Object.values(data.pendingLeaves);
+      else state.pendingLeaves = [];
+
+      if (typeof data.roomRentPerPerson === "number") {
+        state.roomRentPerPerson = data.roomRentPerPerson;
+      }
+
+      // Preserve or update current session
       const currentId = state.currentUser ? state.currentUser.id : "usr_super_admin";
-      const matched = state.users.find(u => u.id === currentId);
+      const matched = (state.users || []).find(u => u.id === currentId);
       if (matched) {
         state.currentUser = matched;
-      } else if (state.users.length > 0) {
+      } else if (state.users && state.users.length > 0) {
         const superAdm = state.users.find(u => isSuperAdmin(u));
         state.currentUser = superAdm || state.users[0];
       }
 
+      // Save local cache and render UI across all active devices
       saveLocalState();
       renderUI();
       updateRoleQuotaUI();
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Users Updated");
-    }, err => {
-      console.error("Firestore users listen error:", err);
+      updateCloudSyncStatus(true, "☁️ Realtime DB: Synced Live • hostel_mess_data");
+    }, (error) => {
+      console.error("RTDB value listener error:", error);
+      updateCloudSyncStatus(false, "⚠️ Sync Disconnected");
     });
+  },
 
-    // 2. Attendance & OT Collection Listener
-    const unsubAttendance = db.collection("attendance").onSnapshot(snapshot => {
-      const cloudAttendance = [];
-      snapshot.forEach(doc => {
-        cloudAttendance.push({ id: doc.id, ...doc.data() });
-      });
-      state.attendanceLog = cloudAttendance;
+  setupFirestoreFallback() {
+    if (!db) return;
+    db.collection("users").onSnapshot(snapshot => {
+      if (snapshot.empty) return;
+      const cloudUsers = [];
+      snapshot.forEach(doc => cloudUsers.push({ id: doc.id, ...doc.data() }));
+      state.users = cloudUsers;
       saveLocalState();
       renderUI();
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Attendance Realtime");
-    }, err => {
-      console.error("Firestore attendance listen error:", err);
+      updateRoleQuotaUI();
     });
-
-    // 3. Expenses Ledger Collection Listener
-    const unsubExpenses = db.collection("expenses").onSnapshot(snapshot => {
-      const cloudExpenses = [];
-      snapshot.forEach(doc => {
-        cloudExpenses.push({ id: doc.id, ...doc.data() });
-      });
-      state.expensesLog = cloudExpenses;
+    db.collection("attendance").onSnapshot(snapshot => {
+      const arr = [];
+      snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+      state.attendanceLog = arr;
       saveLocalState();
       renderUI();
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Expense Ledger Live");
-    }, err => {
-      console.error("Firestore expenses listen error:", err);
     });
-
-    // 4. Leaves Collection Listener
-    const unsubLeaves = db.collection("leaves").onSnapshot(snapshot => {
-      const cloudLeaves = [];
-      snapshot.forEach(doc => {
-        cloudLeaves.push({ id: doc.id, ...doc.data() });
-      });
-      state.pendingLeaves = cloudLeaves;
+    db.collection("expenses").onSnapshot(snapshot => {
+      const arr = [];
+      snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+      state.expensesLog = arr;
       saveLocalState();
       renderUI();
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Leave Requests Live");
-    }, err => {
-      console.error("Firestore leaves listen error:", err);
     });
-
-    // 5. Meals Collection Listener
-    const unsubMeals = db.collection("meals").onSnapshot(snapshot => {
-      const cloudMeals = [];
-      snapshot.forEach(doc => {
-        cloudMeals.push({ id: doc.id, ...doc.data() });
-      });
-      state.meals = cloudMeals;
+    db.collection("leaves").onSnapshot(snapshot => {
+      const arr = [];
+      snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+      state.pendingLeaves = arr;
       saveLocalState();
       renderUI();
-    }, err => {
-      console.error("Firestore meals listen error:", err);
     });
+    db.collection("meals").onSnapshot(snapshot => {
+      const arr = [];
+      snapshot.forEach(doc => arr.push({ id: doc.id, ...doc.data() }));
+      state.meals = arr;
+      saveLocalState();
+      renderUI();
+    });
+  },
 
-    // 6. Settings Document Listener
-    const unsubSettings = db.collection("settings").doc("hostel_config").onSnapshot(doc => {
-      if (doc.exists) {
-        const data = doc.data();
-        if (data && typeof data.roomRentPerPerson === "number") {
-          state.roomRentPerPerson = data.roomRentPerPerson;
-        }
-        saveLocalState();
-        renderUI();
+  // Save whole state to single central node in Realtime DB
+  async syncAllToCloud() {
+    const payload = {
+      users: state.users || [],
+      attendanceLog: state.attendanceLog || [],
+      expensesLog: state.expensesLog || [],
+      meals: state.meals || [],
+      pendingLeaves: state.pendingLeaves || [],
+      roomRentPerPerson: state.roomRentPerPerson || 1500,
+      lastUpdated: Date.now(),
+      updatedBy: (state.currentUser && state.currentUser.name) || "Super Admin"
+    };
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(CENTRAL_DB_NODE).set(payload);
+        updateCloudSyncStatus(true, "☁️ Realtime DB: Synced Live • hostel_mess_data");
+        return;
+      } catch (e) {
+        console.warn("RTDB set error:", e);
       }
-    }, err => {
-      console.error("Firestore settings listen error:", err);
-    });
+    }
 
-    this.unsubscribers = [unsubUsers, unsubAttendance, unsubExpenses, unsubLeaves, unsubMeals, unsubSettings];
+    // Direct REST push fallback
+    try {
+      fetch(`https://hostel-management-96f81-default-rtdb.firebaseio.com/${CENTRAL_DB_NODE}.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).catch(() => {});
+    } catch (e) {}
+
+    // Fallback sync to Firestore
+    if (db) {
+      try {
+        const batch = db.batch();
+        (state.users || []).forEach(u => {
+          if (u.id) batch.set(db.collection("users").doc(u.id), u, { merge: true });
+        });
+        await batch.commit().catch(() => {});
+      } catch (e) {}
+    }
   },
 
   async seedInitialSuperAdmin() {
-    if (!db) return;
-    try {
-      const adminUser = CLEAN_INITIAL_STATE.currentUser;
-      await db.collection("users").doc(adminUser.id).set(adminUser, { merge: true });
-      await db.collection("settings").doc("hostel_config").set({
-        roomRentPerPerson: 1500,
-        createdAt: Date.now()
-      }, { merge: true });
-      console.log("✓ Initial Super Admin seeded in Firestore!");
-    } catch (e) {
-      console.error("Error seeding initial data:", e);
-    }
+    const adminUser = CLEAN_INITIAL_STATE.currentUser;
+    state.users = [adminUser];
+    await this.syncAllToCloud();
+    console.log("✓ Initial Super Admin seeded in hostel_mess_data!");
   },
 
   async saveUser(user) {
     if (!user || !user.id) return;
-    if (db) {
-      try {
-        await db.collection("users").doc(user.id).set(user, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveUser error:", err);
-      }
-    }
+    const idx = (state.users || []).findIndex(u => u.id === user.id);
+    if (idx >= 0) state.users[idx] = user;
+    else state.users.push(user);
+    await this.syncAllToCloud();
   },
 
   async deleteUser(userId) {
     if (!userId) return;
-    if (db) {
-      try {
-        await db.collection("users").doc(userId).delete();
-      } catch (err) {
-        console.error("Firestore deleteUser error:", err);
-      }
-    }
+    state.users = (state.users || []).filter(u => u.id !== userId);
+    await this.syncAllToCloud();
   },
 
   async saveAttendance(record) {
     if (!record || !record.id) return;
-    if (db) {
-      try {
-        await db.collection("attendance").doc(record.id).set(record, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveAttendance error:", err);
-      }
-    }
+    const idx = (state.attendanceLog || []).findIndex(r => r.id === record.id);
+    if (idx >= 0) state.attendanceLog[idx] = record;
+    else state.attendanceLog.push(record);
+    await this.syncAllToCloud();
   },
 
   async deleteAttendance(recordId) {
     if (!recordId) return;
-    if (db) {
-      try {
-        await db.collection("attendance").doc(recordId).delete();
-      } catch (err) {
-        console.error("Firestore deleteAttendance error:", err);
-      }
-    }
+    state.attendanceLog = (state.attendanceLog || []).filter(r => r.id !== recordId);
+    await this.syncAllToCloud();
   },
 
   async saveExpense(expense) {
     if (!expense || !expense.id) return;
-    if (db) {
-      try {
-        await db.collection("expenses").doc(expense.id).set(expense, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveExpense error:", err);
-      }
-    }
+    const idx = (state.expensesLog || []).findIndex(e => e.id === expense.id);
+    if (idx >= 0) state.expensesLog[idx] = expense;
+    else state.expensesLog.push(expense);
+    await this.syncAllToCloud();
   },
 
   async deleteExpense(expenseId) {
     if (!expenseId) return;
-    if (db) {
-      try {
-        await db.collection("expenses").doc(expenseId).delete();
-      } catch (err) {
-        console.error("Firestore deleteExpense error:", err);
-      }
-    }
+    state.expensesLog = (state.expensesLog || []).filter(e => e.id !== expenseId);
+    await this.syncAllToCloud();
   },
 
   async saveLeave(leave) {
     if (!leave || !leave.id) return;
-    if (db) {
-      try {
-        await db.collection("leaves").doc(leave.id).set(leave, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveLeave error:", err);
-      }
-    }
+    const idx = (state.pendingLeaves || []).findIndex(l => l.id === leave.id);
+    if (idx >= 0) state.pendingLeaves[idx] = leave;
+    else state.pendingLeaves.push(leave);
+    await this.syncAllToCloud();
   },
 
   async deleteLeave(leaveId) {
     if (!leaveId) return;
-    if (db) {
-      try {
-        await db.collection("leaves").doc(leaveId).delete();
-      } catch (err) {
-        console.error("Firestore deleteLeave error:", err);
-      }
-    }
+    state.pendingLeaves = (state.pendingLeaves || []).filter(l => l.id !== leaveId);
+    await this.syncAllToCloud();
   },
 
   async saveMeal(meal) {
     if (!meal || !meal.id) return;
-    if (db) {
-      try {
-        await db.collection("meals").doc(meal.id).set(meal, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveMeal error:", err);
-      }
-    }
+    const idx = (state.meals || []).findIndex(m => m.id === meal.id);
+    if (idx >= 0) state.meals[idx] = meal;
+    else state.meals.push(meal);
+    await this.syncAllToCloud();
   },
 
   async saveSettings(settings) {
-    if (db) {
-      try {
-        await db.collection("settings").doc("hostel_config").set(settings, { merge: true });
-      } catch (err) {
-        console.error("Firestore saveSettings error:", err);
-      }
+    if (settings && typeof settings.roomRentPerPerson === "number") {
+      state.roomRentPerPerson = settings.roomRentPerPerson;
     }
+    await this.syncAllToCloud();
   },
 
   async resetDatabase() {
-    if (!db) return;
-    try {
-      updateCloudSyncStatus(true, "⏳ Resetting Firebase Firestore Cloud...");
+    updateCloudSyncStatus(true, "⏳ Resetting Realtime Database (hostel_mess_data)...");
+    const freshPayload = {
+      users: [CLEAN_INITIAL_STATE.currentUser],
+      attendanceLog: [],
+      expensesLog: [],
+      meals: [],
+      pendingLeaves: [],
+      roomRentPerPerson: 1500,
+      lastUpdated: Date.now(),
+      resetAt: Date.now(),
+      updatedBy: "Super Admin"
+    };
+
+    if (rtdb) {
+      await rtdb.ref(CENTRAL_DB_NODE).set(freshPayload);
+    }
+    if (db) {
       const collections = ["attendance", "expenses", "leaves", "meals", "users"];
       for (const col of collections) {
         const snap = await db.collection(col).get();
         if (!snap.empty) {
           const batch = db.batch();
           snap.forEach(doc => batch.delete(doc.ref));
-          await batch.commit();
+          await batch.commit().catch(() => {});
         }
       }
-
-      // Re-seed master super admin
-      const masterUser = CLEAN_INITIAL_STATE.currentUser;
-      await db.collection("users").doc(masterUser.id).set(masterUser);
-      await db.collection("settings").doc("hostel_config").set({
-        roomRentPerPerson: 1500,
-        resetAt: Date.now()
-      }, { merge: true });
-
-      updateCloudSyncStatus(true, "☁️ Cloud Synced • Fresh Database Ready");
-      console.log("✓ Cloud Firestore Database successfully reset by Super Admin");
-    } catch (e) {
-      console.error("Error resetting Firestore database:", e);
+      await db.collection("users").doc(freshPayload.users[0].id).set(freshPayload.users[0]);
     }
+
+    state = JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
+    saveLocalState();
+    renderUI();
+    updateCloudSyncStatus(true, "☁️ Realtime DB: Fresh Database Ready");
+    console.log("✓ Central Realtime Database Reset Cleanly!");
   }
 };
 
@@ -670,6 +686,9 @@ function saveLocalState() {
 
 function saveState() {
   saveLocalState();
+  if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.syncAllToCloud) {
+    FirebaseSyncService.syncAllToCloud();
+  }
 }
 
 // Check if user is pending Super Admin approval
@@ -3450,9 +3469,12 @@ document.getElementById("btn-reset-db")?.addEventListener("click", async () => {
   }
 });
 
-// Initial boot render & routing
+// Initial boot render, Firebase Realtime Database connection & routing
 renderUI();
 handleUrlRouting();
+if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.init) {
+  FirebaseSyncService.init();
+}
 
 // 16. Progressive Web App (PWA) Service Worker Registration & Offline Support
 if ('serviceWorker' in navigator) {
