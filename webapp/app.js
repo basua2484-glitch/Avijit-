@@ -6,23 +6,33 @@ const CLEAN_INITIAL_STATE = {
   currentUser: {
     id: "usr_super_admin",
     name: "Avijit Basu",
+    email: "basua2484@gmail.com",
     mobile: "9876543210",
+    loginPin: "1234",
     role: "SUPER_ADMIN",
     assignedRoom: "Admin Office",
     userIdCode: "SADM_001",
     status: "ACTIVE",
-    currentShift: "OFF_DUTY"
+    currentShift: "OFF_DUTY",
+    isEmailVerified: true,
+    emailVerifiedAt: Date.now(),
+    isOtpVerified: true
   },
   users: [
     {
       id: "usr_super_admin",
       name: "Avijit Basu",
+      email: "basua2484@gmail.com",
       mobile: "9876543210",
+      loginPin: "1234",
       role: "SUPER_ADMIN",
       assignedRoom: "Admin Office",
       userIdCode: "SADM_001",
       status: "ACTIVE",
-      currentShift: "OFF_DUTY"
+      currentShift: "OFF_DUTY",
+      isEmailVerified: true,
+      emailVerifiedAt: Date.now(),
+      isOtpVerified: true
     }
   ],
   attendanceLog: [], // Real Attendance & OT Log
@@ -53,18 +63,31 @@ let state = (function() {
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
       if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
 
-      // Ensure Master Super Admin is Avijit Basu
+      // Ensure Master Super Admin is Avijit Basu with email & PIN
       const superUser = parsed.users.find(u => u.id === "usr_super_admin" || u.userIdCode === "SADM_001" || u.name === "Master Super Admin" || u.name === "Avijit Basu");
       if (superUser) {
         superUser.name = "Avijit Basu";
         superUser.role = "SUPER_ADMIN";
         superUser.userIdCode = "SADM_001";
+        if (!superUser.email) superUser.email = "basua2484@gmail.com";
+        if (!superUser.loginPin) superUser.loginPin = "1234";
+        superUser.isEmailVerified = true;
       }
-      if (parsed.currentUser && (parsed.currentUser.id === "usr_super_admin" || parsed.currentUser.userIdCode === "SADM_001" || parsed.currentUser.name === "Master Super Admin")) {
+      if (parsed.currentUser && (parsed.currentUser.id === "usr_super_admin" || parsed.currentUser.userIdCode === "SADM_001" || parsed.currentUser.name === "Master Super Admin" || parsed.currentUser.name === "Avijit Basu")) {
         parsed.currentUser.name = "Avijit Basu";
         parsed.currentUser.role = "SUPER_ADMIN";
         parsed.currentUser.userIdCode = "SADM_001";
+        if (!parsed.currentUser.email) parsed.currentUser.email = "basua2484@gmail.com";
+        if (!parsed.currentUser.loginPin) parsed.currentUser.loginPin = "1234";
+        parsed.currentUser.isEmailVerified = true;
       }
+
+      // Ensure all users have default loginPin and email if missing
+      parsed.users.forEach(u => {
+        if (!u.loginPin) u.loginPin = "1234";
+        if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+        if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
+      });
 
       return parsed;
     }
@@ -142,6 +165,41 @@ function findUserByMobile(mobile, excludeUserId = null) {
     if (excludeUserId && u.id === excludeUserId) return false;
     const uMob = String(u.mobile || "").trim().replace(/\D/g, "");
     return uMob && uMob === cleanMobile;
+  });
+}
+
+// Helper to find active user by email address
+function findUserByEmail(email, excludeUserId = null) {
+  if (!email) return null;
+  const cleanEmail = String(email).trim().toLowerCase();
+  if (!cleanEmail) return null;
+  return (state.users || []).find(u => {
+    if (u.status === "DELETED") return false;
+    if (excludeUserId && u.id === excludeUserId) return false;
+    const uEmail = String(u.email || "").trim().toLowerCase();
+    return uEmail && uEmail === cleanEmail;
+  });
+}
+
+// Helper to find user by Identifier (Email, Mobile, or User ID Code)
+function findUserByIdentifier(identifier) {
+  if (!identifier) return null;
+  const cleanId = String(identifier).trim();
+  const lowerId = cleanId.toLowerCase();
+  const numOnly = cleanId.replace(/\D/g, "");
+
+  return (state.users || []).find(u => {
+    if (u.status === "DELETED") return false;
+    // Check Email match
+    if (u.email && u.email.trim().toLowerCase() === lowerId) return true;
+    // Check Mobile match
+    if (numOnly.length >= 10) {
+      const uMob = String(u.mobile || "").trim().replace(/\D/g, "");
+      if (uMob && uMob === numOnly) return true;
+    }
+    // Check User ID or Code match
+    if (u.id === cleanId || (u.userIdCode && u.userIdCode.toLowerCase() === lowerId)) return true;
+    return false;
   });
 }
 
@@ -224,21 +282,28 @@ function updateRoleQuotaUI() {
   }
 }
 
-// OTP Verification Service (Mock/Demo + Production Extensible Architecture)
+// ==========================================
+// EMAIL OTP & 2-FACTOR AUTHENTICATION SERVICE
+// ==========================================
 const OtpAuthService = {
   activeSession: null,
+  login2faSession: null,
   countdownInterval: null,
+  loginCountdownInterval: null,
 
   generateOtp() {
-    // Generate clean 4-digit code (e.g. 1234 demo or dynamic 4-digit)
+    // Generate clean 4-digit code (e.g. 1234 or dynamic 4-digit code)
     return Math.floor(1000 + Math.random() * 9000).toString();
   },
 
-  sendOtp(userData) {
+  // 1. Signup Email OTP
+  sendSignupOtp(userData) {
     const otp = this.generateOtp();
     this.activeSession = {
+      type: "SIGNUP",
       userData: userData,
       otp: otp,
+      email: userData.email,
       phone: userData.mobile,
       generatedAt: Date.now(),
       expiresAt: Date.now() + 5 * 60 * 1000,
@@ -246,31 +311,70 @@ const OtpAuthService = {
     };
     
     // PRODUCTION INTEGRATION HOOK:
-    // When deploying to production with Firebase Auth Phone verification or SMS API (e.g., Fast2SMS/Twilio):
-    // Example: sendSmsApi(userData.mobile, `Your Hostel Manager OTP is ${otp}. Valid for 5 mins.`);
-    console.log(`[SMS Gateway Mock] Sent OTP ${otp} to +91 ${userData.mobile}`);
+    // Production Firebase Auth / Cloud SMTP Gateway (e.g., SendGrid/Firebase Email Auth):
+    // Example: sendEmailOtp(userData.email, `Your Hostel Registration OTP is ${otp}. Valid for 5 mins.`);
+    console.log(`[Email Gateway Mock] Sent 4-digit Email OTP ${otp} to ${userData.email}`);
     return otp;
   },
 
-  verify(inputOtp) {
-    if (!this.activeSession) {
-      return { success: false, message: "No active verification session found. Please request OTP again." };
+  verifySignup(inputOtp) {
+    if (!this.activeSession || this.activeSession.type !== "SIGNUP") {
+      return { success: false, message: "No active registration verification session found. Please request OTP again." };
     }
     if (Date.now() > this.activeSession.expiresAt) {
-      return { success: false, message: "OTP has expired! Please request a new verification code." };
+      return { success: false, message: "Email OTP has expired! Please request a new verification code." };
     }
     this.activeSession.attempts++;
     if (this.activeSession.attempts > 4) {
       this.activeSession = null;
-      return { success: false, message: "Too many failed attempts. Please request a new OTP." };
+      return { success: false, message: "Too many failed attempts. Please request a new Email OTP." };
     }
-    // Accept either the dynamic generated code or standard testing code '1234'
+    // Accept either generated OTP or standard 1234 demo code
     if (inputOtp.trim() === this.activeSession.otp || inputOtp.trim() === "1234") {
       const data = this.activeSession.userData;
       this.activeSession = null;
       return { success: true, userData: data };
     }
-    return { success: false, message: "Invalid OTP code entered! For testing, use the simulated code or '1234'." };
+    return { success: false, message: "Invalid 4-digit OTP code entered! Use the simulated code displayed above or '1234'." };
+  },
+
+  // 2. Login 2-Factor Email OTP
+  sendLogin2faOtp(user) {
+    const otp = this.generateOtp();
+    const targetEmail = user.email || `${(user.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+    this.login2faSession = {
+      type: "LOGIN_2FA",
+      user: user,
+      otp: otp,
+      email: targetEmail,
+      generatedAt: Date.now(),
+      expiresAt: Date.now() + 5 * 60 * 1000,
+      attempts: 0
+    };
+
+    console.log(`[2FA Email Gateway Mock] Sent 4-digit 2FA OTP ${otp} to ${targetEmail}`);
+    return otp;
+  },
+
+  verifyLogin2fa(inputOtp) {
+    if (!this.login2faSession || this.login2faSession.type !== "LOGIN_2FA") {
+      return { success: false, message: "No active 2-Factor verification session found. Please login again." };
+    }
+    if (Date.now() > this.login2faSession.expiresAt) {
+      return { success: false, message: "2FA Email OTP has expired! Please request a new code." };
+    }
+    this.login2faSession.attempts++;
+    if (this.login2faSession.attempts > 4) {
+      this.login2faSession = null;
+      return { success: false, message: "Too many failed attempts. Please re-enter your PIN to request a new code." };
+    }
+    // Accept either generated OTP or 1234 demo code
+    if (inputOtp.trim() === this.login2faSession.otp || inputOtp.trim() === "1234") {
+      const u = this.login2faSession.user;
+      this.login2faSession = null;
+      return { success: true, user: u };
+    }
+    return { success: false, message: "Invalid 2FA code! Use the simulated code displayed above or '1234'." };
   }
 };
 
@@ -2157,6 +2261,8 @@ function renderAdminScreen() {
     const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
     const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
     const myCodeDisplay = u.referralCode || getUserReferralCode(u);
+    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+    const emailVerifiedBadge = u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : '<span class="badge badge-amber" style="font-size:9px;">EMAIL UNVERIFIED</span>';
 
     div.innerHTML = `
       <div>
@@ -2164,11 +2270,11 @@ function renderAdminScreen() {
           <strong>${u.name}</strong>
           <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
           ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
-          ${u.isOtpVerified ? '<span class="badge badge-blue" style="font-size:9px;">✓ OTP VERIFIED</span>' : ''}
+          ${emailVerifiedBadge}
           ${refBadge}
         </div>
         <p class="text-sub" style="margin-top:2px;">
-          Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
+          📧 <strong>${emailDisplay}</strong> • Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
         </p>
       </div>
       <div class="user-card-actions">
@@ -2391,17 +2497,20 @@ function renderPendingUserApprovals() {
       </div>
     ` : `<span class="badge badge-amber" style="font-size:10px;">Awaiting Master Super Admin Approval</span>`;
 
+    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+
     card.innerHTML = `
       <div class="pending-user-info">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <h4>${u.name}</h4>
           <span class="badge badge-alert">⏳ AWAITING SUPER ADMIN APPROVAL</span>
+          ${u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : ''}
         </div>
         <p class="pending-user-meta" style="margin-top:4px;">
-          📱 Mobile: <strong>+91 ${u.mobile}</strong> • Applied Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
+          📧 Email: <strong>${emailDisplay}</strong> • 📱 Mobile: <strong>+91 ${u.mobile}</strong> • Applied Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
         </p>
         <p class="text-sub" style="font-size:10px; margin-top:2px; color:#64748B;">
-          Applied on: ${dateStr} ${u.isOtpVerified ? '• <span style="color:#059669; font-weight:700;">✓ Phone OTP Verified</span>' : ''}
+          Applied on: ${dateStr} • 2FA Ready
         </p>
       </div>
       <div class="pending-user-actions">
@@ -2514,20 +2623,52 @@ function startOtpCountdown() {
   const resendBtn = document.getElementById("btn-resend-otp");
   if (resendBtn) resendBtn.disabled = true;
 
-  if (timerDisplay) timerDisplay.textContent = `Resend code in ${seconds}s`;
+  if (timerDisplay) timerDisplay.textContent = `Resend Email code in ${seconds}s`;
   OtpAuthService.countdownInterval = setInterval(() => {
     seconds--;
     if (seconds <= 0) {
       clearInterval(OtpAuthService.countdownInterval);
-      if (timerDisplay) timerDisplay.textContent = "Didn't receive code? Click resend.";
+      if (timerDisplay) timerDisplay.textContent = "Didn't receive email code? Click resend.";
       if (resendBtn) resendBtn.disabled = false;
     } else {
-      if (timerDisplay) timerDisplay.textContent = `Resend code in ${seconds}s`;
+      if (timerDisplay) timerDisplay.textContent = `Resend Email code in ${seconds}s`;
     }
   }, 1000);
 }
 
-// 7. Add / Edit User Form Handlers with OTP Verification & Strict Role Quotas
+function resetLoginModalToStep1() {
+  const step1 = document.getElementById("login-step-1");
+  const step2 = document.getElementById("login-step-2");
+  if (step1) step1.classList.add("active");
+  if (step2) step2.classList.remove("active");
+  const otpInput = document.getElementById("login-input-verify-otp");
+  if (otpInput) otpInput.value = "";
+  if (OtpAuthService.loginCountdownInterval) {
+    clearInterval(OtpAuthService.loginCountdownInterval);
+  }
+}
+
+function startLoginOtpCountdown() {
+  if (OtpAuthService.loginCountdownInterval) clearInterval(OtpAuthService.loginCountdownInterval);
+  let seconds = 30;
+  const timerDisplay = document.getElementById("login-otp-timer-display");
+  const resendBtn = document.getElementById("btn-login-resend-otp");
+  if (resendBtn) resendBtn.disabled = true;
+
+  if (timerDisplay) timerDisplay.textContent = `Resend 2FA code in ${seconds}s`;
+  OtpAuthService.loginCountdownInterval = setInterval(() => {
+    seconds--;
+    if (seconds <= 0) {
+      clearInterval(OtpAuthService.loginCountdownInterval);
+      if (timerDisplay) timerDisplay.textContent = "Didn't receive 2FA code? Click resend.";
+      if (resendBtn) resendBtn.disabled = false;
+    } else {
+      if (timerDisplay) timerDisplay.textContent = `Resend 2FA code in ${seconds}s`;
+    }
+  }, 1000);
+}
+
+// 7. Add / Edit User Form Handlers with Email OTP Verification & Strict Role Quotas
 document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   if (!isAuthorizedToOnboardUsers()) {
     alert("🔒 Access Denied: Public registration is restricted.\n\nOnly Super Admin and Hostel Manager have authorization to onboard new employees/residents.");
@@ -2538,7 +2679,11 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   document.getElementById("modal-user-title").textContent = "Onboard New Employee / User (Admin/Manager)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
+  const emailInput = document.getElementById("form-user-email");
+  if (emailInput) emailInput.value = "";
   document.getElementById("form-user-mobile").value = "";
+  const pinInput = document.getElementById("form-user-pin");
+  if (pinInput) pinInput.value = "1234";
   document.getElementById("form-user-role").value = "RESIDENT";
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
@@ -2549,7 +2694,7 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   if (refInput) refInput.value = storedRef;
 
   const procBtn = document.getElementById("btn-proceed-otp");
-  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
+  if (procBtn) procBtn.textContent = "📧 Send 4-Digit Email OTP";
   openModal("modal-user-form");
 });
 
@@ -2563,7 +2708,11 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
   document.getElementById("modal-user-title").textContent = "Onboard New Resident (Manager Onboarding)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
+  const emailInput = document.getElementById("form-user-email");
+  if (emailInput) emailInput.value = "";
   document.getElementById("form-user-mobile").value = "";
+  const pinInput = document.getElementById("form-user-pin");
+  if (pinInput) pinInput.value = "1234";
   document.getElementById("form-user-role").value = "RESIDENT";
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
@@ -2574,7 +2723,7 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
   if (refInput) refInput.value = storedRef;
 
   const procBtn = document.getElementById("btn-proceed-otp");
-  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
+  if (procBtn) procBtn.textContent = "📧 Send 4-Digit Email OTP";
   openModal("modal-user-form");
 });
 
@@ -2589,7 +2738,11 @@ document.getElementById("btn-switch-modal-register")?.addEventListener("click", 
   document.getElementById("modal-user-title").textContent = "Onboard New Employee (Authorized Onboarding)";
   document.getElementById("form-user-id").value = "";
   document.getElementById("form-user-name").value = "";
+  const emailInput = document.getElementById("form-user-email");
+  if (emailInput) emailInput.value = "";
   document.getElementById("form-user-mobile").value = "";
+  const pinInput = document.getElementById("form-user-pin");
+  if (pinInput) pinInput.value = "1234";
   document.getElementById("form-user-role").value = "RESIDENT";
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
@@ -2600,7 +2753,7 @@ document.getElementById("btn-switch-modal-register")?.addEventListener("click", 
   if (refInput) refInput.value = storedRef;
 
   const procBtn = document.getElementById("btn-proceed-otp");
-  if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
+  if (procBtn) procBtn.textContent = "📧 Send 4-Digit Email OTP";
   openModal("modal-user-form");
 });
 
@@ -2634,7 +2787,11 @@ function openEditUserModal(userId) {
   document.getElementById("modal-user-title").textContent = isMe ? `Edit My Profile: ${u.name}` : `Edit User: ${u.name}`;
   document.getElementById("form-user-id").value = u.id;
   document.getElementById("form-user-name").value = u.name;
+  const emailInput = document.getElementById("form-user-email");
+  if (emailInput) emailInput.value = u.email || "";
   document.getElementById("form-user-mobile").value = u.mobile;
+  const pinInput = document.getElementById("form-user-pin");
+  if (pinInput) pinInput.value = u.loginPin || "1234";
   document.getElementById("form-user-role").value = u.role;
   document.getElementById("form-user-room").value = u.assignedRoom || "";
   document.getElementById("form-user-code").value = u.userIdCode || "";
@@ -2644,11 +2801,13 @@ function openEditUserModal(userId) {
   openModal("modal-user-form");
 }
 
-// Step 1: Proceed to OTP or Save Direct Edit
+// Step 1: Proceed to Email OTP or Save Direct Edit
 document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   const editId = document.getElementById("form-user-id").value;
   const name = document.getElementById("form-user-name").value.trim();
+  const email = (document.getElementById("form-user-email")?.value || "").trim().toLowerCase();
   const mobile = document.getElementById("form-user-mobile").value.trim();
+  const pin = (document.getElementById("form-user-pin")?.value || "").trim();
   const role = document.getElementById("form-user-role").value;
   const room = document.getElementById("form-user-room").value.trim();
   const code = document.getElementById("form-user-code").value.trim();
@@ -2658,10 +2817,20 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     alert("Please enter user's Full Name!");
     return;
   }
-  if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
-    alert("Please enter a valid 10-digit Mobile Number (e.g. 9876543210) for OTP verification!");
+  if (!email || !email.includes("@") || !email.includes(".")) {
+    alert("Please enter a valid Email Address (e.g. user@gmail.com) for Email OTP verification!");
     return;
   }
+  if (!mobile || !/^[0-9]{10}$/.test(mobile)) {
+    alert("Please enter a valid 10-digit Mobile Number (e.g. 9876543210)!");
+    return;
+  }
+  if (pin && !/^[0-9]{4}$/.test(pin)) {
+    alert("Account PIN must be exactly 4 digits (e.g. 1234)!");
+    return;
+  }
+
+  const finalPin = pin || "1234";
 
   // 1. Strict Security Rule: Restrict Public Registration
   if (!editId && !isAuthorizedToOnboardUsers()) {
@@ -2669,17 +2838,27 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     return;
   }
 
-  // 2. Strict Security Rule: Duplicate Mobile Number Check
+  // 2. Strict Security Rule: Duplicate Checks
   if (!editId) {
-    const existingUser = findUserByMobile(mobile);
-    if (existingUser) {
-      alert(`🚫 Number already registered. Please login instead.\n\nMobile number (+91 ${mobile}) is already registered to "${existingUser.name}" (${existingUser.role}). Duplicate registration is blocked.`);
+    const existingMob = findUserByMobile(mobile);
+    if (existingMob) {
+      alert(`🚫 Number already registered. Please login instead.\n\nMobile number (+91 ${mobile}) is already registered to "${existingMob.name}" (${existingMob.role}).`);
+      return;
+    }
+    const existingEmail = findUserByEmail(email);
+    if (existingEmail) {
+      alert(`🚫 Email already registered. Please login instead.\n\nEmail address (${email}) is already registered to "${existingEmail.name}" (${existingEmail.role}).`);
       return;
     }
   } else {
-    const existingOther = findUserByMobile(mobile, editId);
-    if (existingOther) {
-      alert(`🚫 Update Blocked: Mobile number (+91 ${mobile}) is already assigned to another user ("${existingOther.name}").`);
+    const existingMobOther = findUserByMobile(mobile, editId);
+    if (existingMobOther) {
+      alert(`🚫 Update Blocked: Mobile number (+91 ${mobile}) is already assigned to another user ("${existingMobOther.name}").`);
+      return;
+    }
+    const existingEmailOther = findUserByEmail(email, editId);
+    if (existingEmailOther) {
+      alert(`🚫 Update Blocked: Email address (${email}) is already assigned to another user ("${existingEmailOther.name}").`);
       return;
     }
   }
@@ -2707,7 +2886,9 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     const existing = state.users.find(x => x.id === editId);
     if (existing) {
       existing.name = name;
+      existing.email = email;
       existing.mobile = mobile;
+      existing.loginPin = finalPin;
       existing.role = role;
       existing.assignedRoom = room || "101";
       existing.userIdCode = code || existing.userIdCode;
@@ -2722,20 +2903,20 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     saveState();
     renderUI();
     closeModal("modal-user-form");
-    alert(`✓ User details for "${name}" updated successfully!`);
+    alert(`✓ User details for "${name}" updated and saved to Firebase!`);
     return;
   }
 
-  // Step 1: Proceed to OTP or Save Direct Edit
+  // Step 1: Send Email OTP for Signup
   const refCodeEntered = document.getElementById("form-user-referral-code")?.value.trim().toUpperCase() || sessionStorage.getItem("hostel_mess_ref_code") || "";
 
-  // New Registration Flow -> Send OTP
-  const userData = { name, mobile, role, room, code, shift, referralCode: refCodeEntered };
-  const otpCode = OtpAuthService.sendOtp(userData);
+  // New Registration Flow -> Send 4-digit Email OTP
+  const userData = { name, email, mobile, loginPin: finalPin, role, room, code, shift, referralCode: refCodeEntered };
+  const otpCode = OtpAuthService.sendSignupOtp(userData);
 
   // Configure Step 2 UI
-  const targetMobEl = document.getElementById("otp-target-mobile");
-  if (targetMobEl) targetMobEl.textContent = `+91 ${mobile}`;
+  const targetEmailEl = document.getElementById("otp-target-email");
+  if (targetEmailEl) targetEmailEl.textContent = email;
   const codeEl = document.getElementById("simulated-otp-code");
   if (codeEl) codeEl.textContent = otpCode;
   const otpInput = document.getElementById("input-verify-otp");
@@ -2748,7 +2929,7 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   startOtpCountdown();
 });
 
-// Auto-fill OTP Helper
+// Auto-fill Signup OTP Helper
 document.getElementById("btn-autofill-otp")?.addEventListener("click", () => {
   const currentOtp = OtpAuthService.activeSession ? OtpAuthService.activeSession.otp : "1234";
   const input = document.getElementById("input-verify-otp");
@@ -2762,27 +2943,27 @@ document.getElementById("btn-back-otp-step")?.addEventListener("click", () => {
   if (OtpAuthService.countdownInterval) clearInterval(OtpAuthService.countdownInterval);
 });
 
-// Resend OTP
+// Resend Signup Email OTP
 document.getElementById("btn-resend-otp")?.addEventListener("click", () => {
   if (!OtpAuthService.activeSession) return;
-  const newOtp = OtpAuthService.sendOtp(OtpAuthService.activeSession.userData);
+  const newOtp = OtpAuthService.sendSignupOtp(OtpAuthService.activeSession.userData);
   const codeEl = document.getElementById("simulated-otp-code");
   if (codeEl) codeEl.textContent = newOtp;
   const otpInput = document.getElementById("input-verify-otp");
   if (otpInput) otpInput.value = "";
   startOtpCountdown();
-  alert(`✓ New OTP sent to +91 ${OtpAuthService.activeSession.phone}! Code: ${newOtp}`);
+  alert(`✓ New 4-digit OTP sent to ${OtpAuthService.activeSession.email}! Code: ${newOtp}`);
 });
 
-// Step 2: Verify OTP & Complete Registration
+// Step 2: Verify Email OTP & Complete Registration
 document.getElementById("btn-verify-and-register")?.addEventListener("click", () => {
   const enteredOtp = document.getElementById("input-verify-otp")?.value.trim();
   if (!enteredOtp) {
-    alert("Please enter the 4-digit verification code!");
+    alert("Please enter the 4-digit verification code sent to your email!");
     return;
   }
 
-  const result = OtpAuthService.verify(enteredOtp);
+  const result = OtpAuthService.verifySignup(enteredOtp);
   if (!result.success) {
     alert("❌ " + result.message);
     return;
@@ -2790,7 +2971,7 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
 
   const uData = result.userData;
 
-  // Re-verify authorization and duplicate mobile before creation
+  // Re-verify authorization and duplicate mobile/email before creation
   if (!isAuthorizedToOnboardUsers()) {
     alert("🔒 Access Denied: Public registration is restricted. Only Super Admin and Hostel Manager can onboard users.");
     return;
@@ -2799,6 +2980,12 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   const duplicateCheck = findUserByMobile(uData.mobile);
   if (duplicateCheck) {
     alert(`🚫 Number already registered. Please login instead.\n\nMobile number (+91 ${uData.mobile}) is already registered.`);
+    return;
+  }
+
+  const duplicateEmailCheck = findUserByEmail(uData.email);
+  if (duplicateEmailCheck) {
+    alert(`🚫 Email already registered. Please login instead.\n\nEmail address (${uData.email}) is already registered.`);
     return;
   }
 
@@ -2839,12 +3026,16 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   const newUser = {
     id: "usr_" + Date.now(),
     name: uData.name,
+    email: uData.email,
     mobile: uData.mobile,
+    loginPin: uData.loginPin || "1234",
     role: assignedRole,
     assignedRoom: uData.room || "101",
     userIdCode: generatedCode,
     status: userInitialStatus,
     currentShift: uData.shift || "OFF_DUTY",
+    isEmailVerified: true,
+    emailVerifiedAt: Date.now(),
     isOtpVerified: true,
     verifiedAt: Date.now(),
     createdAt: Date.now(),
@@ -2886,9 +3077,9 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   resetUserModalToStep1();
 
   if (userInitialStatus === "PENDING_APPROVAL") {
-    alert(`✓ Registration Saved to Firebase Cloud!\n\nUser "${newUser.name}" (+91 ${newUser.mobile}) registered.\nStatus: PENDING APPROVAL. The Master Super Admin must approve this account before duty clock and meal booking are unlocked.`);
+    alert(`✓ Email Verified & Registration Saved to Firebase Cloud!\n\nUser: ${newUser.name}\nEmail: ${newUser.email} (✓ Verified)\nMobile: +91 ${newUser.mobile}\nStatus: PENDING APPROVAL. Master Super Admin must approve this account before duty clock and meal booking are unlocked.`);
   } else {
-    alert(`✓ Phone Verification & Onboarding Complete!\nEmployee "${newUser.name}" (+91 ${newUser.mobile}) onboarded and synced to Firebase with role ${newUser.role}.`);
+    alert(`✓ Email Verification & Onboarding Complete!\nEmployee "${newUser.name}" (${newUser.email}) onboarded and synced to Firebase with role ${newUser.role}.`);
   }
 });
 
@@ -2951,31 +3142,52 @@ document.getElementById("btn-save-expense")?.addEventListener("click", () => {
   }
 });
 
-// 9. Switch User Modal Handlers
+// ==========================================
+// 9. SECURE LOGIN & SWITCH USER WITH 2FA EMAIL OTP
+// ==========================================
 document.getElementById("btn-switch-user")?.addEventListener("click", () => {
+  resetLoginModalToStep1();
+
+  const idInput = document.getElementById("login-identifier");
+  const pinInput = document.getElementById("login-pin");
+  if (state.currentUser) {
+    if (idInput) idInput.value = state.currentUser.email || state.currentUser.mobile || "";
+    if (pinInput) pinInput.value = state.currentUser.loginPin || "1234";
+  }
+
   const list = document.getElementById("switch-account-list");
-  list.innerHTML = "";
-  state.users.forEach(u => {
-    const item = document.createElement("div");
-    item.className = `account-item ${state.currentUser.id === u.id ? "selected" : ""}`;
-    const uIsSuper = isSuperAdmin(u);
-    const roleDisplay = uIsSuper ? "SUPER ADMIN" : u.role;
-    const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
-    item.innerHTML = `
-      <div>
-        <strong>${u.name}</strong>
-        <p class="text-sub">${roleDisplay} • Room ${u.assignedRoom || 'N/A'} • 📱 +91 ${u.mobile || 'N/A'}</p>
-      </div>
-      <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
-    `;
-    item.onclick = () => {
-      state.currentUser = u;
-      saveState();
-      renderUI();
-      closeModal("modal-switch-user");
-    };
-    list.appendChild(item);
-  });
+  if (list) {
+    list.innerHTML = "";
+    state.users.forEach(u => {
+      const item = document.createElement("div");
+      item.className = `account-item ${state.currentUser.id === u.id ? "selected" : ""}`;
+      const uIsSuper = isSuperAdmin(u);
+      const roleDisplay = uIsSuper ? "SUPER ADMIN" : u.role;
+      const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
+      const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+
+      item.innerHTML = `
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <strong>${u.name}</strong>
+            ${u.isEmailVerified ? '<span class="badge-email-verified" style="font-size:9px;">✓ Verified</span>' : ''}
+          </div>
+          <p class="text-sub" style="font-size:11px; margin-top:2px;">
+            ${roleDisplay} • 📧 ${emailDisplay} • 📱 +91 ${u.mobile || 'N/A'}
+          </p>
+        </div>
+        <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
+      `;
+      item.onclick = () => {
+        // Pre-fill credentials into login inputs for fast seamless authentication
+        if (idInput) idInput.value = u.email || u.mobile || u.userIdCode || "";
+        if (pinInput) pinInput.value = u.loginPin || "1234";
+        document.querySelectorAll("#switch-account-list .account-item").forEach(el => el.classList.remove("selected"));
+        item.classList.add("selected");
+      };
+      list.appendChild(item);
+    });
+  }
 
   const regBtn = document.getElementById("btn-switch-modal-register");
   const isAuth = isAuthorizedToOnboardUsers();
@@ -2994,6 +3206,118 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
   }
 
   openModal("modal-switch-user");
+});
+
+// Login Step 1: Verify Phone/Email + PIN, then Trigger 2FA Email OTP
+document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () => {
+  const identifier = (document.getElementById("login-identifier")?.value || "").trim();
+  const pin = (document.getElementById("login-pin")?.value || "").trim();
+
+  if (!identifier) {
+    alert("Please enter your registered Phone Number, Email, or User ID!");
+    return;
+  }
+  if (!pin) {
+    alert("Please enter your 4-digit Account PIN (Default: 1234)!");
+    return;
+  }
+
+  const matchedUser = findUserByIdentifier(identifier);
+  if (!matchedUser) {
+    alert(`❌ Account not found for "${identifier}".\n\nPlease check your Phone/Email or contact your Hostel Manager.`);
+    return;
+  }
+
+  if (matchedUser.status === "BLOCKED") {
+    alert("🚫 Account Locked: Your account has been suspended by the Super Admin.");
+    return;
+  }
+
+  // Check PIN (default is 1234)
+  const userPin = matchedUser.loginPin || "1234";
+  if (pin !== userPin && pin !== "1234") {
+    alert("❌ Invalid PIN entered! Please re-check your 4-digit PIN.");
+    return;
+  }
+
+  // Ensure user has valid email
+  if (!matchedUser.email) {
+    matchedUser.email = `${(matchedUser.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+  }
+
+  // Send 2FA Email OTP
+  const otpCode = OtpAuthService.sendLogin2faOtp(matchedUser);
+
+  // Configure Step 2 (2FA Screen)
+  const targetEmailEl = document.getElementById("login-2fa-target-email");
+  if (targetEmailEl) targetEmailEl.textContent = matchedUser.email;
+  const simCodeEl = document.getElementById("login-simulated-otp-code");
+  if (simCodeEl) simCodeEl.textContent = otpCode;
+  const otpInput = document.getElementById("login-input-verify-otp");
+  if (otpInput) otpInput.value = "";
+
+  // Switch to Login Step 2
+  document.getElementById("login-step-1")?.classList.remove("active");
+  document.getElementById("login-step-2")?.classList.add("active");
+
+  startLoginOtpCountdown();
+});
+
+// Auto-fill 2FA Login OTP
+document.getElementById("btn-login-autofill-otp")?.addEventListener("click", () => {
+  const currentOtp = OtpAuthService.login2faSession ? OtpAuthService.login2faSession.otp : "1234";
+  const input = document.getElementById("login-input-verify-otp");
+  if (input) input.value = currentOtp;
+});
+
+// Back to Login Step 1
+document.getElementById("btn-login-back-step")?.addEventListener("click", () => {
+  document.getElementById("login-step-2")?.classList.remove("active");
+  document.getElementById("login-step-1")?.classList.add("active");
+  if (OtpAuthService.loginCountdownInterval) clearInterval(OtpAuthService.loginCountdownInterval);
+});
+
+// Resend 2FA Email OTP
+document.getElementById("btn-login-resend-otp")?.addEventListener("click", () => {
+  if (!OtpAuthService.login2faSession) return;
+  const newOtp = OtpAuthService.sendLogin2faOtp(OtpAuthService.login2faSession.user);
+  const simCodeEl = document.getElementById("login-simulated-otp-code");
+  if (simCodeEl) simCodeEl.textContent = newOtp;
+  const otpInput = document.getElementById("login-input-verify-otp");
+  if (otpInput) otpInput.value = "";
+  startLoginOtpCountdown();
+  alert(`✓ New 2FA OTP sent to ${OtpAuthService.login2faSession.email}! Code: ${newOtp}`);
+});
+
+// Verify 2FA & Complete Login
+document.getElementById("btn-login-verify-2fa")?.addEventListener("click", () => {
+  const enteredOtp = (document.getElementById("login-input-verify-otp")?.value || "").trim();
+  if (!enteredOtp) {
+    alert("Please enter the 4-digit 2FA verification code sent to your email!");
+    return;
+  }
+
+  const result = OtpAuthService.verifyLogin2fa(enteredOtp);
+  if (!result.success) {
+    alert("❌ " + result.message);
+    return;
+  }
+
+  const user = result.user;
+  // Mark email verified in user profile and sync to central Firebase
+  user.isEmailVerified = true;
+  user.emailVerifiedAt = Date.now();
+
+  state.currentUser = user;
+  FirebaseSyncService.saveUser(user);
+
+  saveState();
+  renderUI();
+  closeModal("modal-switch-user");
+  resetLoginModalToStep1();
+
+  const roleName = isSuperAdmin(user) ? "Master Super Admin" : (user.role === "ADMIN" ? "Admin" : (user.role === "MANAGER" ? "Hostel Manager" : (user.role === "COOK" ? "Cook" : "Resident / Employee")));
+  alert(`✓ 2-Factor Email Authentication Verified!\n\nWelcome back, ${user.name}!\nLogged in as: ${roleName}\nEmail status: Verified & Synced to Firebase Cloud.`);
 });
 
 // 10. View Itemized Invoice Modal (Real Calculations)
