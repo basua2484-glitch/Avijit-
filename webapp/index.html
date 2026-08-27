@@ -193,10 +193,25 @@
 
         <!-- Today's Meals Card -->
         <div class="card">
-          <div class="card-header">
-            <h3>Today's Meals</h3>
+          <div class="card-header flex-between" style="flex-wrap:wrap; gap:8px;">
+            <div>
+              <h3>Today's Meals (दैनिक भोजन)</h3>
+              <p class="text-sub" style="font-size:11px; margin-top:2px;">Turn meal ON or OFF before cut-off timing. Night/Off shifts default to Auto-ON.</p>
+            </div>
             <span class="badge badge-alert" id="resident-meal-cutoff-badge">Cut-off: 4:30 PM</span>
           </div>
+
+          <!-- Current Mess Meal Defaults & Cut-offs Info Banner -->
+          <div class="meal-defaults-banner" id="resident-meal-defaults-banner" style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:10px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span style="font-size:11px; font-weight:800; color:#166534;">📋 MESS DEFAULTS:</span>
+              <span class="badge badge-success" id="res-banner-base-rate" style="font-size:10px;">Base: ₹50/plate</span>
+              <span class="badge badge-blue" id="res-banner-lunch-cutoff" style="font-size:10px;">Lunch Cut-off: 8:30 AM</span>
+              <span class="badge badge-lilac" id="res-banner-dinner-cutoff" style="font-size:10px;">Dinner Cut-off: 4:30 PM</span>
+            </div>
+            <span class="text-sub" style="font-size:11px; color:#15803D; font-weight:600;">👑 Super Admin Configured</span>
+          </div>
+
           <div class="meal-list" id="resident-meal-list">
             <!-- Rendered dynamically -->
           </div>
@@ -593,6 +608,89 @@
               <span class="dark-sub">CURRENT RATE</span>
               <div class="text-success font-bold text-lg" id="admin-rate-display">₹0.00</div>
             </div>
+          </div>
+        </div>
+
+        <!-- 👑 SUPER ADMIN MEAL DEFAULTS & MESS POLICY CONTROL -->
+        <div class="card" id="admin-meal-defaults-card">
+          <div class="card-header flex-between" style="flex-wrap:wrap; gap:8px;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="role-pill super_admin" style="font-size:10px; font-weight:800;">EXCLUSIVE MASTER CONTROL</span>
+                <h3 style="margin:0;">👑 Super Admin Meal Defaults & Mess Policy</h3>
+              </div>
+              <p class="text-sub" style="margin-top:4px;">
+                Configure mess-wide default meal options, base plate rates, cut-off timings, and auto-booking rules. Only Super Admin can modify these defaults.
+              </p>
+            </div>
+            <span class="badge badge-success" id="admin-meal-settings-status">● Live Synced (hostel_mess_data)</span>
+          </div>
+
+          <div class="grid-2 mt-3" style="gap:14px;">
+            <div class="form-group">
+              <label>Default Daily Meal Count *</label>
+              <select id="cfg-meal-count" class="form-select">
+                <option value="2">2 Meals / Day (Lunch & Dinner)</option>
+                <option value="3">3 Meals / Day (Breakfast, Lunch & Dinner)</option>
+                <option value="1">1 Meal / Day (Single Meal)</option>
+              </select>
+              <span class="text-sub" style="font-size:11px;">Standard meals allocated on resident portal</span>
+            </div>
+
+            <div class="form-group">
+              <label>Daily Base Meal Rate (₹ / Plate) *</label>
+              <input type="number" id="cfg-base-plate-rate" value="50" min="0" step="1" placeholder="e.g. 50">
+              <span class="text-sub" style="font-size:11px;">Base rate per meal plate</span>
+            </div>
+
+            <div class="form-group">
+              <label>Lunch Booking Cut-Off Time *</label>
+              <input type="time" id="cfg-lunch-cutoff" value="08:30">
+              <span class="text-sub" style="font-size:11px;">Time limit for lunch booking/skipping</span>
+            </div>
+
+            <div class="form-group">
+              <label>Dinner Booking Cut-Off Time *</label>
+              <input type="time" id="cfg-dinner-cutoff" value="16:30">
+              <span class="text-sub" style="font-size:11px;">Time limit for dinner booking/skipping</span>
+            </div>
+
+            <div class="form-group">
+              <label>Guest / Extra Plate Rate (₹) *</label>
+              <input type="number" id="cfg-guest-plate-rate" value="60" min="0" step="1" placeholder="e.g. 60">
+              <span class="text-sub" style="font-size:11px;">Rate for guest / unbooked extra plates</span>
+            </div>
+
+            <div class="form-group">
+              <label>Monthly Room Rent Per Resident (₹) *</label>
+              <input type="number" id="cfg-room-rent" value="1500" min="0" step="1" placeholder="e.g. 1500">
+              <span class="text-sub" style="font-size:11px;">Standard monthly room accommodation fee</span>
+            </div>
+
+            <div class="form-group">
+              <label>Shift Auto-Booking Policy *</label>
+              <select id="cfg-auto-booking-mode" class="form-select">
+                <option value="SHIFT_BASED">Shift-Based (Off-Duty/Night = Auto-ON, Day Shifts = Auto-OFF)</option>
+                <option value="ALWAYS_ON">Always ON (Residents manually skip if dining outside)</option>
+                <option value="MANUAL">Manual Opt-In (Residents turn ON explicitly)</option>
+              </select>
+              <span class="text-sub" style="font-size:11px;">Automatic food headcount rule on shift change</span>
+            </div>
+
+            <div class="form-group">
+              <label>Mess Group Name</label>
+              <input type="text" id="cfg-mess-name" value="Hostel Central Mess" placeholder="Mess Group Name">
+              <span class="text-sub" style="font-size:11px;">Public group identifier across shared invites</span>
+            </div>
+          </div>
+
+          <div class="mt-3 flex-between" style="flex-wrap:wrap; gap:10px; border-top:1px solid #E2E8F0; padding-top:12px;">
+            <div id="cfg-permission-notice" style="font-size:12px; color:#475569; display:flex; align-items:center; gap:6px;">
+              <span>👑 <strong>Super Admin Authority:</strong> Changes broadcast instantly to all connected devices.</span>
+            </div>
+            <button class="btn btn-primary" id="btn-save-meal-defaults">
+              💾 Save & Broadcast Meal Defaults
+            </button>
           </div>
         </div>
 

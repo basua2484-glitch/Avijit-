@@ -2,6 +2,18 @@
 // Complete state management, Multi-Role RBAC (Admin, Manager, Resident, Cook), 
 // Real-time Expense Ledger & 3-Step Auto-Accounting (No fake dummy data)
 
+const DEFAULT_MEAL_CONFIG = {
+  defaultMealCount: 2,          // 2 meals (Lunch & Dinner), 3 (Breakfast, Lunch & Dinner), 1 (Single)
+  dailyBaseMealRate: 50,         // Base plate rate in ₹
+  lunchCutOffTime: "08:30",      // Lunch cut-off time (e.g. 08:30)
+  dinnerCutOffTime: "16:30",     // Dinner cut-off time (e.g. 16:30)
+  autoMealBookingMode: "SHIFT_BASED", // "SHIFT_BASED" (Off-Duty/Night Auto-ON), "ALWAYS_ON", "MANUAL"
+  guestMealRate: 60,             // Extra/Guest plate price in ₹
+  roomRentPerPerson: 1500,       // Standard monthly room rent in ₹
+  mealCutOffStrict: true,
+  messName: "Hostel Central Mess"
+};
+
 const CLEAN_INITIAL_STATE = {
   currentUser: {
     id: "usr_super_admin",
@@ -43,6 +55,7 @@ const CLEAN_INITIAL_STATE = {
   meals: [],
   pendingLeaves: [],
   expensesLog: [], // Real actual expenses ledger
+  mealDefaults: Object.assign({}, DEFAULT_MEAL_CONFIG),
   roomRentPerPerson: 1500,
   activeKitchenMeal: "LUNCH",
   selectedOtHours: 2,
@@ -66,6 +79,12 @@ let state = (function() {
       if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
       if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
+
+      // Ensure mealDefaults exist
+      parsed.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, parsed.mealDefaults || {});
+      if (typeof parsed.roomRentPerPerson === "undefined") {
+        parsed.roomRentPerPerson = parsed.mealDefaults.roomRentPerPerson || 1500;
+      }
 
       // Ensure Master Super Admin is Avijit Basu with email & PIN
       const superUser = parsed.users.find(u => u.id === "usr_super_admin" || u.userIdCode === "SADM_001" || u.name === "Master Super Admin" || u.name === "Avijit Basu");
@@ -434,6 +453,9 @@ const FirebaseSyncService = {
       else if (data.pendingLeaves && typeof data.pendingLeaves === "object") state.pendingLeaves = Object.values(data.pendingLeaves);
       else state.pendingLeaves = [];
 
+      if (data.mealDefaults && typeof data.mealDefaults === "object") {
+        state.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, data.mealDefaults);
+      }
       if (typeof data.roomRentPerPerson === "number") {
         state.roomRentPerPerson = data.roomRentPerPerson;
       }
@@ -508,6 +530,7 @@ const FirebaseSyncService = {
       expensesLog: state.expensesLog || [],
       meals: state.meals || [],
       pendingLeaves: state.pendingLeaves || [],
+      mealDefaults: state.mealDefaults || DEFAULT_MEAL_CONFIG,
       roomRentPerPerson: state.roomRentPerPerson || 1500,
       lastUpdated: Date.now(),
       updatedBy: (state.currentUser && state.currentUser.name) || "Super Admin"
@@ -618,8 +641,26 @@ const FirebaseSyncService = {
   async saveSettings(settings) {
     if (settings && typeof settings.roomRentPerPerson === "number") {
       state.roomRentPerPerson = settings.roomRentPerPerson;
+      if (!state.mealDefaults) state.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG);
+      state.mealDefaults.roomRentPerPerson = settings.roomRentPerPerson;
     }
     await this.syncAllToCloud();
+  },
+
+  async saveMealDefaults(newDefaults) {
+    const current = state.currentUser || state.users[0];
+    if (!isSuperAdmin(current)) {
+      alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to modify mess meal defaults and rates.");
+      return false;
+    }
+    state.mealDefaults = Object.assign({}, state.mealDefaults || DEFAULT_MEAL_CONFIG, newDefaults);
+    if (typeof newDefaults.roomRentPerPerson === "number") {
+      state.roomRentPerPerson = newDefaults.roomRentPerPerson;
+    }
+    await this.syncAllToCloud();
+    saveLocalState();
+    renderUI();
+    return true;
   },
 
   async resetDatabase() {
@@ -630,6 +671,7 @@ const FirebaseSyncService = {
       expensesLog: [],
       meals: [],
       pendingLeaves: [],
+      mealDefaults: Object.assign({}, DEFAULT_MEAL_CONFIG),
       roomRentPerPerson: 1500,
       lastUpdated: Date.now(),
       resetAt: Date.now(),
@@ -824,6 +866,19 @@ function formatTimeShort(dateObj) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+function formatTimeAMPMString(timeStr) {
+  if (!timeStr) return "N/A";
+  const parts = timeStr.split(":");
+  if (parts.length < 2) return timeStr;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (isNaN(h)) return timeStr;
+  const period = h >= 12 ? "PM" : "AM";
+  const hours12 = h % 12 || 12;
+  const mins = !isNaN(m) ? String(m).padStart(2, "0") : "00";
+  return `${hours12}:${mins} ${period}`;
+}
+
 function calculateDutyShift(inTimestamp, outTimestamp) {
   const diffMs = outTimestamp - inTimestamp;
   const totalHours = Math.max(0, diffMs / (1000 * 60 * 60));
@@ -911,10 +966,12 @@ function getTotalConsumedPlates() {
 function getDynamicPlateRate() {
   const expenses = calculateExpenseTotals();
   const totalPlates = getTotalConsumedPlates();
+  const baseRate = (state.mealDefaults && typeof state.mealDefaults.dailyBaseMealRate === "number") ? state.mealDefaults.dailyBaseMealRate : 50;
   if (totalPlates <= 0 || expenses.GROCERY <= 0) {
-    return 0.00;
+    return baseRate;
   }
-  return Math.round((expenses.GROCERY / totalPlates) * 100) / 100;
+  const calculatedRate = Math.round((expenses.GROCERY / totalPlates) * 100) / 100;
+  return Math.max(calculatedRate, baseRate);
 }
 
 // Navigation & Tab Switching with Clean URL & Hash Routing
@@ -1368,14 +1425,27 @@ function renderResidentScreen() {
   if (shiftDisplay) shiftDisplay.textContent = onLeave ? `${user.currentShift || "OFF_DUTY"} (LOCKED)` : (user.currentShift || "OFF_DUTY");
   if (shiftIndicator) shiftIndicator.textContent = onLeave ? "ON LEAVE" : (user.currentShift || "OFF_DUTY");
 
-  const isAutoOn = !onLeave && (user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT");
+  const mealCfg = state.mealDefaults || DEFAULT_MEAL_CONFIG;
+  const autoMode = mealCfg.autoMealBookingMode || "SHIFT_BASED";
+  let isAutoOn = false;
+  if (!onLeave) {
+    if (autoMode === "ALWAYS_ON") {
+      isAutoOn = true;
+    } else if (autoMode === "MANUAL") {
+      isAutoOn = false;
+    } else {
+      // SHIFT_BASED
+      isAutoOn = (user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT");
+    }
+  }
+
   const pill = document.getElementById("resident-logic-pill");
   if (pill) {
     if (onLeave) {
       pill.textContent = "🔒 View-Only Mode";
       pill.className = "pill-badge badge-leave";
     } else {
-      pill.textContent = isAutoOn ? "Auto-ON (Night/Off)" : "Auto-OFF (Day Shift)";
+      pill.textContent = isAutoOn ? "Auto-ON (Eating)" : "Auto-OFF (Skip/Day)";
       pill.className = `pill-badge ${isAutoOn ? "badge-success" : "badge-alert"}`;
     }
   }
@@ -1386,10 +1456,26 @@ function renderResidentScreen() {
       ruleBox.innerHTML = "🏖️ <strong>ON LEAVE ACTIVE:</strong> You are on leave. Meals, shifts, and attendance are completely frozen. Click <strong>'Request Leave End'</strong> upon return.";
     } else {
       ruleBox.innerHTML = isAutoOn
-        ? "💡 <strong>Rule:</strong> Off-Duty / Night Shift has <strong>Auto-ON</strong> meals. You can skip if dining outside."
-        : "⚠️ <strong>Rule:</strong> Day Shifts (Morning/Evening) are <strong>Auto-OFF</strong>. Toggle ON before cut-off to eat.";
+        ? "💡 <strong>Policy:</strong> Auto-ON meals active. Toggle OFF before cut-off if dining outside."
+        : "⚠️ <strong>Policy:</strong> Auto-OFF active. Toggle ON before cut-off to book plate.";
     }
   }
+
+  // Update Resident Meal Defaults Banner Info
+  const lunchCutOffFormatted = formatTimeAMPMString(mealCfg.lunchCutOffTime || "08:30");
+  const dinnerCutOffFormatted = formatTimeAMPMString(mealCfg.dinnerCutOffTime || "16:30");
+
+  const bannerBaseRate = document.getElementById("res-banner-base-rate");
+  if (bannerBaseRate) bannerBaseRate.textContent = `Base: ₹${mealCfg.dailyBaseMealRate || 50}/plate`;
+
+  const bannerLunchCutoff = document.getElementById("res-banner-lunch-cutoff");
+  if (bannerLunchCutoff) bannerLunchCutoff.textContent = `Lunch: ${lunchCutOffFormatted}`;
+
+  const bannerDinnerCutoff = document.getElementById("res-banner-dinner-cutoff");
+  if (bannerDinnerCutoff) bannerDinnerCutoff.textContent = `Dinner: ${dinnerCutOffFormatted}`;
+
+  const cutoffBadge = document.getElementById("resident-meal-cutoff-badge");
+  if (cutoffBadge) cutoffBadge.textContent = `Cut-off: ${dinnerCutOffFormatted}`;
 
   // Update shift buttons active and disabled state
   document.querySelectorAll(".shift-btn").forEach(btn => {
@@ -1405,15 +1491,19 @@ function renderResidentScreen() {
     }
   });
 
-  // Render Resident Meals
+  // Render Resident Meals based on configured meal count
   const userMeals = (state.meals || []).filter(m => m.userId === user.id);
   const listEl = document.getElementById("resident-meal-list");
   listEl.innerHTML = "";
 
-  const defaultMeals = [
-    { type: "LUNCH", time: "12:00 PM - 2:30 PM", cutOff: "Cut-off: 8:30 AM" },
-    { type: "DINNER", time: "7:30 PM - 10:00 PM", cutOff: "Cut-off: 4:30 PM" }
-  ];
+  const defaultMeals = [];
+  if (mealCfg.defaultMealCount >= 3) {
+    defaultMeals.push({ type: "BREAKFAST", time: "7:30 AM - 9:30 AM", cutOff: "Cut-off: 7:00 AM" });
+  }
+  defaultMeals.push({ type: "LUNCH", time: "12:00 PM - 2:30 PM", cutOff: `Cut-off: ${lunchCutOffFormatted}` });
+  if (mealCfg.defaultMealCount >= 2) {
+    defaultMeals.push({ type: "DINNER", time: "7:30 PM - 10:00 PM", cutOff: `Cut-off: ${dinnerCutOffFormatted}` });
+  }
 
   defaultMeals.forEach(dm => {
     let existing = userMeals.find(m => m.mealType === dm.type);
@@ -2303,18 +2393,55 @@ document.querySelectorAll(".exp-chip").forEach(chip => {
 // Save Room Rent
 document.getElementById("btn-save-room-rent")?.addEventListener("click", () => {
   const user = state.currentUser || state.users[0];
-  if (!isSuperAdmin(user) && !isNormalAdmin(user) && !isManager(user)) {
-    alert("🔒 Access Denied: Only Admin and Manager can configure room rent.");
+  if (!isSuperAdmin(user)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) can configure room rent and fixed fees.");
     return;
   }
   const val = parseFloat(document.getElementById("setting-room-rent").value) || 0;
   state.roomRentPerPerson = val;
-  if (db) {
-    db.collection("settings").doc("hostel_config").set({ roomRentPerPerson: val }, { merge: true });
-  }
+  if (!state.mealDefaults) state.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG);
+  state.mealDefaults.roomRentPerPerson = val;
+  FirebaseSyncService.saveSettings({ roomRentPerPerson: val });
   saveState();
   renderUI();
-  alert("✓ Standard Monthly Room Rent updated to ₹" + val);
+  alert("✓ Standard Monthly Room Rent updated to ₹" + val + " by Super Admin.");
+});
+
+// Super Admin Save & Broadcast Meal Defaults
+document.getElementById("btn-save-meal-defaults")?.addEventListener("click", async () => {
+  const current = state.currentUser || state.users[0];
+  if (!isSuperAdmin(current)) {
+    alert("🔒 Access Denied: Only Master Super Admin (Avijit Basu) has authority to modify mess meal defaults and rates.");
+    return;
+  }
+
+  const mealCount = parseInt(document.getElementById("cfg-meal-count")?.value, 10) || 2;
+  const baseRate = parseFloat(document.getElementById("cfg-base-plate-rate")?.value) || 50;
+  const lunchCutoff = document.getElementById("cfg-lunch-cutoff")?.value || "08:30";
+  const dinnerCutoff = document.getElementById("cfg-dinner-cutoff")?.value || "16:30";
+  const guestRate = parseFloat(document.getElementById("cfg-guest-plate-rate")?.value) || 60;
+  const roomRent = parseFloat(document.getElementById("cfg-room-rent")?.value) || 1500;
+  const autoMode = document.getElementById("cfg-auto-booking-mode")?.value || "SHIFT_BASED";
+  const messName = (document.getElementById("cfg-mess-name")?.value || "").trim() || "Hostel Central Mess";
+
+  const newDefaults = {
+    defaultMealCount: mealCount,
+    dailyBaseMealRate: baseRate,
+    lunchCutOffTime: lunchCutoff,
+    dinnerCutOffTime: dinnerCutoff,
+    guestMealRate: guestRate,
+    roomRentPerPerson: roomRent,
+    autoMealBookingMode: autoMode,
+    mealCutOffStrict: true,
+    messName: messName
+  };
+
+  const success = await FirebaseSyncService.saveMealDefaults(newDefaults);
+  if (success) {
+    const lunchFmt = formatTimeAMPMString(lunchCutoff);
+    const dinnerFmt = formatTimeAMPMString(dinnerCutoff);
+    alert(`✓ Super Admin Meal Defaults Saved & Broadcast!\n\n• Daily Meals: ${mealCount} Meals / Day\n• Base Plate Rate: ₹${baseRate}\n• Lunch Cut-Off: ${lunchFmt}\n• Dinner Cut-Off: ${dinnerFmt}\n• Room Rent: ₹${roomRent}/month\n• Auto-Booking Policy: ${autoMode}\n\nAll connected members and devices will sync to these defaults in real-time.`);
+  }
 });
 
 // 6. Admin Screen Rendering (User & Role Management CRUD + Attendance & OT Report)
@@ -2346,6 +2473,56 @@ function renderAdminScreen() {
   if (recPunchBtn) recPunchBtn.style.display = (isSuperAdm || isNormAdm || isMgr) ? "inline-flex" : "none";
   if (resetDbBtn) resetDbBtn.style.display = isSuperAdm ? "inline-flex" : "none";
   if (dbControlsCard) dbControlsCard.style.display = isSuperAdm ? "block" : "none";
+
+  // 0. Render Super Admin Meal Defaults & Mess Policy Controls
+  const cfgCard = document.getElementById("admin-meal-defaults-card");
+  const cfgNotice = document.getElementById("cfg-permission-notice");
+  const btnSaveCfg = document.getElementById("btn-save-meal-defaults");
+
+  const mealCountInput = document.getElementById("cfg-meal-count");
+  const baseRateInput = document.getElementById("cfg-base-plate-rate");
+  const lunchCutoffInput = document.getElementById("cfg-lunch-cutoff");
+  const dinnerCutoffInput = document.getElementById("cfg-dinner-cutoff");
+  const guestRateInput = document.getElementById("cfg-guest-plate-rate");
+  const roomRentInput = document.getElementById("cfg-room-rent");
+  const autoModeInput = document.getElementById("cfg-auto-booking-mode");
+  const messNameInput = document.getElementById("cfg-mess-name");
+
+  const mealCfg = state.mealDefaults || DEFAULT_MEAL_CONFIG;
+
+  if (mealCountInput) mealCountInput.value = mealCfg.defaultMealCount || 2;
+  if (baseRateInput) baseRateInput.value = mealCfg.dailyBaseMealRate || 50;
+  if (lunchCutoffInput) lunchCutoffInput.value = mealCfg.lunchCutOffTime || "08:30";
+  if (dinnerCutoffInput) dinnerCutoffInput.value = mealCfg.dinnerCutOffTime || "16:30";
+  if (guestRateInput) guestRateInput.value = mealCfg.guestMealRate || 60;
+  if (roomRentInput) roomRentInput.value = mealCfg.roomRentPerPerson || state.roomRentPerPerson || 1500;
+  if (autoModeInput) autoModeInput.value = mealCfg.autoMealBookingMode || "SHIFT_BASED";
+  if (messNameInput) messNameInput.value = mealCfg.messName || "Hostel Central Mess";
+
+  const allCfgInputs = [mealCountInput, baseRateInput, lunchCutoffInput, dinnerCutoffInput, guestRateInput, roomRentInput, autoModeInput, messNameInput];
+
+  if (!isSuperAdm) {
+    // Non-Super Admins are strictly View-Only
+    allCfgInputs.forEach(inp => { if (inp) inp.disabled = true; });
+    if (btnSaveCfg) {
+      btnSaveCfg.disabled = true;
+      btnSaveCfg.className = "btn btn-secondary";
+      btnSaveCfg.innerHTML = `🔒 Super Admin Authority Only`;
+    }
+    if (cfgNotice) {
+      cfgNotice.innerHTML = `🔒 <strong>View-Only Mode:</strong> Only Master Super Admin (Avijit Basu) can modify default meal rates & mess policies.`;
+    }
+  } else {
+    allCfgInputs.forEach(inp => { if (inp) inp.disabled = false; });
+    if (btnSaveCfg) {
+      btnSaveCfg.disabled = false;
+      btnSaveCfg.className = "btn btn-primary";
+      btnSaveCfg.innerHTML = `💾 Save & Broadcast Meal Defaults`;
+    }
+    if (cfgNotice) {
+      cfgNotice.innerHTML = `👑 <strong>Super Admin Authority:</strong> Changes broadcast instantly to all connected devices in <strong>hostel_mess_data</strong>.`;
+    }
+  }
 
   // 1. Render Attendance & OT Report Table
   renderAttendanceReport();
