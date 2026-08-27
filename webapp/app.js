@@ -1812,6 +1812,9 @@ function renderManagerScreen() {
       rList.appendChild(div);
     });
   }
+
+  // 4. Pending User Registration Approvals
+  renderPendingUserApprovals();
 }
 
 // Process Leave Start & Leave End Requests
@@ -2446,79 +2449,156 @@ function renderAttendanceReport() {
 }
 
 function handleApprovePendingUser(userId) {
-  const selectEl = document.getElementById(`pending-role-select-${userId}`);
+  const selectEl = document.getElementById(`pending-role-select-${userId}`) || document.getElementById(`mgr-pending-role-select-${userId}`);
   const selectedRole = selectEl ? selectEl.value : "RESIDENT";
   approveUserRegistration(userId, selectedRole);
 }
 
-function renderPendingUserApprovals() {
-  const container = document.getElementById("admin-pending-users-list");
-  const countBadge = document.getElementById("admin-pending-users-count");
-  if (!container) return;
-
+function approveUserRegistration(userId, newRole) {
   const current = state.currentUser || state.users[0];
-  const isSuperAdm = isSuperAdmin(current);
-
-  const pendingUsers = (state.users || []).filter(u => u.status === "PENDING_APPROVAL");
-  if (countBadge) {
-    countBadge.textContent = `${pendingUsers.length} Pending`;
-    countBadge.className = pendingUsers.length > 0 ? "badge badge-alert" : "badge badge-success";
-  }
-
-  container.innerHTML = "";
-  if (pendingUsers.length === 0) {
-    container.innerHTML = `
-      <div class="empty-state" style="padding:14px; font-size:12px;">
-        ✓ Zero pending user registrations. All user accounts in Firebase Cloud are approved and active.
-      </div>
-    `;
+  if (!isSuperAdmin(current) && !isNormalAdmin(current) && !isManager(current)) {
+    alert("🔒 Access Denied: Only Super Admin, Admin, and Hostel Manager have authorization to approve user registrations.");
     return;
   }
 
-  pendingUsers.forEach(u => {
-    const card = document.createElement("div");
-    card.className = "pending-user-card";
-    const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : getTodayString();
+  const u = (state.users || []).find(x => x.id === userId);
+  if (!u) return;
 
-    const actionsHtml = isSuperAdm ? `
-      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-        <select id="pending-role-select-${u.id}" class="pending-role-select" title="Assign Role on Approval">
-          <option value="RESIDENT" ${u.role === 'RESIDENT' || u.role === 'EMPLOYEE' ? 'selected' : ''}>Employee / Resident</option>
-          <option value="MANAGER" ${u.role === 'MANAGER' ? 'selected' : ''}>Hostel Manager</option>
-          <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>Admin</option>
-          <option value="COOK" ${u.role === 'COOK' ? 'selected' : ''}>Kitchen Cook</option>
-        </select>
-        <button class="btn btn-success btn-sm" onclick="handleApprovePendingUser('${u.id}')">
-          ✓ Approve & Activate
-        </button>
-        <button class="btn btn-alert btn-sm" onclick="rejectUserRegistration('${u.id}')" title="Reject Request">
-          ✕ Reject
-        </button>
-      </div>
-    ` : `<span class="badge badge-amber" style="font-size:10px;">Awaiting Master Super Admin Approval</span>`;
+  const assignedRole = newRole || u.role || "RESIDENT";
+  u.status = "ACTIVE";
+  u.role = assignedRole;
+  u.approvedBy = current.name;
+  u.approvedAt = Date.now();
+  u.isEmailVerified = true;
 
-    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+  // Initialize today's meals if Resident / Employee
+  if (u.role === "RESIDENT" || u.role === "EMPLOYEE") {
+    const isAutoOn = (u.currentShift === "OFF_DUTY" || u.currentShift === "NIGHT");
+    ["LUNCH", "DINNER"].forEach(type => {
+      const existingMeal = (state.meals || []).find(m => m.userId === u.id && m.mealType === type);
+      if (!existingMeal) {
+        const meal = {
+          id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 4),
+          userId: u.id,
+          userName: u.name,
+          roomNumber: u.assignedRoom || "101",
+          mealType: type,
+          status: isAutoOn ? "ON" : "OFF",
+          otHours: 0,
+          shiftAtTime: u.currentShift || "OFF_DUTY"
+        };
+        state.meals.push(meal);
+        FirebaseSyncService.saveMeal(meal);
+      }
+    });
+  }
 
-    card.innerHTML = `
-      <div class="pending-user-info">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <h4>${u.name}</h4>
-          <span class="badge badge-alert">⏳ AWAITING SUPER ADMIN APPROVAL</span>
-          ${u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : ''}
+  FirebaseSyncService.saveUser(u);
+  saveState();
+  renderUI();
+  alert(`✓ Registration Approved!\n\nUser "${u.name}" (${u.email}) is now ACTIVE as "${assignedRole}". Changes synced to Firebase Cloud.`);
+}
+
+function rejectUserRegistration(userId) {
+  const current = state.currentUser || state.users[0];
+  if (!isSuperAdmin(current) && !isNormalAdmin(current) && !isManager(current)) {
+    alert("🔒 Access Denied: Only Super Admin, Admin, and Hostel Manager have authorization to reject registrations.");
+    return;
+  }
+
+  const u = (state.users || []).find(x => x.id === userId);
+  if (!u) return;
+
+  if (confirm(`Are you sure you want to reject and remove registration request for "${u.name}" (${u.email})?`)) {
+    u.status = "REJECTED";
+    u.rejectedBy = current.name;
+    u.rejectedAt = Date.now();
+    FirebaseSyncService.saveUser(u);
+    // Remove from active list if rejected
+    state.users = state.users.filter(x => x.id !== userId);
+    FirebaseSyncService.deleteUser(userId);
+    saveState();
+    renderUI();
+    alert(`✓ Registration request for "${u.name}" rejected.`);
+  }
+}
+
+function renderPendingUserApprovals() {
+  const adminContainer = document.getElementById("admin-pending-users-list");
+  const adminCountBadge = document.getElementById("admin-pending-users-count");
+  const mgrContainer = document.getElementById("manager-pending-users-list");
+  const mgrCountBadge = document.getElementById("manager-pending-users-count");
+
+  const current = state.currentUser || state.users[0];
+  const canApprove = isSuperAdmin(current) || isNormalAdmin(current) || isManager(current);
+
+  const pendingUsers = (state.users || []).filter(u => u.status === "PENDING_APPROVAL");
+
+  if (adminCountBadge) {
+    adminCountBadge.textContent = `${pendingUsers.length} Pending`;
+    adminCountBadge.className = pendingUsers.length > 0 ? "badge badge-alert" : "badge badge-success";
+  }
+  if (mgrCountBadge) {
+    mgrCountBadge.textContent = `${pendingUsers.length} Pending`;
+    mgrCountBadge.className = pendingUsers.length > 0 ? "badge badge-alert" : "badge badge-success";
+  }
+
+  const buildPendingHtml = (prefixId) => {
+    if (pendingUsers.length === 0) {
+      return `
+        <div class="empty-state" style="padding:14px; font-size:12px;">
+          ✓ Zero pending registrations. All user accounts in Firebase Cloud are approved and active.
         </div>
-        <p class="pending-user-meta" style="margin-top:4px;">
-          📧 Email: <strong>${emailDisplay}</strong> • 📱 Mobile: <strong>+91 ${u.mobile}</strong> • Applied Role: <strong>${u.role}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
-        </p>
-        <p class="text-sub" style="font-size:10px; margin-top:2px; color:#64748B;">
-          Applied on: ${dateStr} • 2FA Ready
-        </p>
-      </div>
-      <div class="pending-user-actions">
-        ${actionsHtml}
-      </div>
-    `;
-    container.appendChild(card);
-  });
+      `;
+    }
+
+    return pendingUsers.map(u => {
+      const dateStr = u.createdAt ? new Date(u.createdAt).toLocaleDateString() : getTodayString();
+      const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+
+      const actionsHtml = canApprove ? `
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <select id="${prefixId}-pending-role-select-${u.id}" class="pending-role-select" title="Assign Role on Approval" style="padding:6px; font-size:12px; border-radius:6px; border:1px solid #CBD5E1;">
+            <option value="RESIDENT" ${u.role === 'RESIDENT' || u.role === 'EMPLOYEE' ? 'selected' : ''}>Employee / Resident</option>
+            <option value="MANAGER" ${u.role === 'MANAGER' ? 'selected' : ''}>Hostel Manager</option>
+            <option value="ADMIN" ${u.role === 'ADMIN' ? 'selected' : ''}>Admin</option>
+            <option value="COOK" ${u.role === 'COOK' ? 'selected' : ''}>Kitchen Cook</option>
+          </select>
+          <button class="btn btn-success btn-sm" onclick="handleApprovePendingUser('${u.id}')">
+            ✓ Approve & Activate
+          </button>
+          <button class="btn btn-alert btn-sm" onclick="rejectUserRegistration('${u.id}')" title="Reject Request">
+            ✕ Reject
+          </button>
+        </div>
+      ` : `<span class="badge badge-amber" style="font-size:10px;">Awaiting Manager / Admin Approval</span>`;
+
+      return `
+        <div class="pending-user-card" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+          <div class="pending-user-info" style="flex:1; min-width:240px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <h4 style="margin:0; font-size:14px; font-weight:700;">${u.name}</h4>
+              <span class="badge badge-alert" style="font-size:10px;">⏳ PENDING APPROVAL</span>
+              ${u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : ''}
+              ${u.referrerName ? `<span class="badge badge-blue" style="font-size:9px;">🎁 Referred by: ${u.referrerName}</span>` : ''}
+            </div>
+            <p class="pending-user-meta" style="margin:4px 0 0; font-size:12px; color:#475569;">
+              📧 <strong>${emailDisplay}</strong> • 📱 <strong>+91 ${u.mobile}</strong> • Room: <strong>${u.assignedRoom || '101'}</strong> • Shift: <strong>${u.currentShift || 'OFF_DUTY'}</strong>
+            </p>
+            <p class="text-sub" style="font-size:11px; margin:2px 0 0; color:#64748B;">
+              PIN: <strong>${u.loginPin || '1234'}</strong> • Registered on: ${dateStr} • 2FA Ready
+            </p>
+          </div>
+          <div class="pending-user-actions">
+            ${actionsHtml}
+          </div>
+        </div>
+      `;
+    }).join("");
+  };
+
+  if (adminContainer) adminContainer.innerHTML = buildPendingHtml("pending-role-select");
+  if (mgrContainer) mgrContainer.innerHTML = buildPendingHtml("mgr-pending-role-select");
 }
 
 function deleteAttendance(id) {
@@ -3138,8 +3218,10 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
   resetLoginModalToStep1();
 
   const idInput = document.getElementById("login-identifier");
+  const pinInput = document.getElementById("login-pin");
   if (state.currentUser) {
     if (idInput) idInput.value = state.currentUser.email || "";
+    if (pinInput) pinInput.value = state.currentUser.loginPin || "1234";
   }
 
   const list = document.getElementById("switch-account-list");
@@ -3160,13 +3242,14 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
             ${u.isEmailVerified ? '<span class="badge-email-verified" style="font-size:9px;">✓ Email Verified</span>' : ''}
           </div>
           <p class="text-sub" style="font-size:11px; margin-top:2px;">
-            ${roleDisplay} • 📧 ${emailDisplay}
+            ${roleDisplay} • 📧 ${emailDisplay} • 🔑 PIN: ${u.loginPin || '1234'}
           </p>
         </div>
         <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
       `;
       item.onclick = () => {
         if (idInput) idInput.value = emailDisplay;
+        if (pinInput) pinInput.value = u.loginPin || "1234";
         document.querySelectorAll("#switch-account-list .account-item").forEach(el => el.classList.remove("selected"));
         item.classList.add("selected");
       };
@@ -3196,9 +3279,15 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
 // Login Step 1: Request Email OTP for login
 document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () => {
   const identifier = (document.getElementById("login-identifier")?.value || "").trim().toLowerCase();
+  const enteredPin = (document.getElementById("login-pin")?.value || "").trim();
 
   if (!identifier) {
     alert("Please enter your registered Email Address!");
+    return;
+  }
+
+  if (!enteredPin) {
+    alert("Please enter your 4-digit Account PIN! (Default: 1234)");
     return;
   }
 
@@ -3210,6 +3299,13 @@ document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () =
 
   if (matchedUser.status === "BLOCKED") {
     alert("🚫 Account Locked: Your account has been suspended by the Super Admin.");
+    return;
+  }
+
+  // Validate 4-digit PIN
+  const userPin = matchedUser.loginPin || "1234";
+  if (enteredPin !== userPin) {
+    alert(`❌ Invalid Account PIN entered!\n\nPlease enter the correct 4-digit security PIN for ${matchedUser.name}.`);
     return;
   }
 
@@ -3928,12 +4024,22 @@ function copyReferralCode(u) {
 }
 
 // Wire Referral Buttons
+document.getElementById("btn-header-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-resident-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-mgr-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-admin-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-share-whatsapp")?.addEventListener("click", () => shareReferralOnWhatsApp());
 document.getElementById("btn-copy-invite-url")?.addEventListener("click", () => copyReferralLink());
 document.getElementById("btn-copy-ref-code")?.addEventListener("click", () => copyReferralCode());
+
+// Expose helper functions globally for inline onclick handlers
+window.handleApprovePendingUser = handleApprovePendingUser;
+window.approveUserRegistration = approveUserRegistration;
+window.rejectUserRegistration = rejectUserRegistration;
+window.openReferralModal = openReferralModal;
+window.shareReferralOnWhatsApp = shareReferralOnWhatsApp;
+window.copyReferralLink = copyReferralLink;
+window.copyReferralCode = copyReferralCode;
 
 // Initial boot render, Firebase Realtime Database connection & routing
 renderUI();

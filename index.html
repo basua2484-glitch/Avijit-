@@ -29,6 +29,9 @@
           </div>
         </div>
         <div class="header-actions">
+          <button class="btn btn-secondary btn-sm" id="btn-header-refer" title="Refer & Invite Friend via WhatsApp" style="display:flex; align-items:center; gap:4px; padding:6px 10px; font-size:12px; font-weight:600; background:rgba(255,255,255,0.15); color:#FFFFFF; border:1px solid rgba(255,255,255,0.25);">
+            🎁 Refer Friend
+          </button>
           <span class="role-tag" id="current-role-badge">ADMIN</span>
           <button class="icon-btn" id="btn-switch-user" title="Switch User Role">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
@@ -352,6 +355,20 @@
             <span class="badge badge-amber" id="mgr-expenses-badge">0 Pending</span>
           </div>
           <div id="manager-pending-expenses-list">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+
+        <!-- Pending User Registration Approvals (Manager) -->
+        <div class="card" id="manager-pending-users-card">
+          <div class="card-header flex-between" style="gap:8px; flex-wrap:wrap;">
+            <div>
+              <h3>Pending Registration Requests (New Account Approvals)</h3>
+              <p class="text-sub">Review new user registrations with verified Email OTP. Approve to activate duty shift & meal access.</p>
+            </div>
+            <span class="badge badge-alert" id="manager-pending-users-count">0 Pending</span>
+          </div>
+          <div class="pending-users-list" id="manager-pending-users-list">
             <!-- Populated via JS -->
           </div>
         </div>
@@ -790,15 +807,19 @@
         </div>
         <p class="text-sub">Authentication is strictly verified via a 4-digit OTP sent directly to your registered Email address.</p>
 
-        <!-- LOGIN STEP 1: Email Input & Quick Select -->
+        <!-- LOGIN STEP 1: Email Input, 4-Digit PIN & Quick Select -->
         <div id="login-step-1" class="login-step active">
           <div class="login-auth-box">
             <div class="form-group">
               <label>Registered Email Address *</label>
               <input type="email" id="login-identifier" placeholder="e.g. basua2484@gmail.com" autocomplete="email">
             </div>
+            <div class="form-group">
+              <label>4-Digit Account PIN *</label>
+              <input type="password" id="login-pin" placeholder="Default PIN: 1234" maxlength="4" style="letter-spacing:4px; font-weight:700;" autocomplete="current-password">
+            </div>
             <button class="btn btn-primary full-width mt-2" id="btn-login-proceed-2fa">
-              📧 Send 4-Digit Login Email OTP
+              📧 Verify PIN & Send 4-Digit Email OTP
             </button>
           </div>
 
