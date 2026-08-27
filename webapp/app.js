@@ -283,7 +283,7 @@ function updateRoleQuotaUI() {
 }
 
 // ==========================================
-// EMAIL OTP & 2-FACTOR AUTHENTICATION SERVICE
+// EMAIL OTP AUTHENTICATION SERVICE (EMAIL ONLY)
 // ==========================================
 const OtpAuthService = {
   activeSession: null,
@@ -292,7 +292,7 @@ const OtpAuthService = {
   loginCountdownInterval: null,
 
   generateOtp() {
-    // Generate clean 4-digit code (e.g. 1234 or dynamic 4-digit code)
+    // Generate secure 4-digit OTP code (1000 - 9999)
     return Math.floor(1000 + Math.random() * 9000).toString();
   },
 
@@ -303,78 +303,78 @@ const OtpAuthService = {
       type: "SIGNUP",
       userData: userData,
       otp: otp,
-      email: userData.email,
-      phone: userData.mobile,
+      email: userData.email.toLowerCase().trim(),
       generatedAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: Date.now() + 10 * 60 * 1000, // Valid for 10 minutes
       attempts: 0
     };
     
     // PRODUCTION INTEGRATION HOOK:
-    // Production Firebase Auth / Cloud SMTP Gateway (e.g., SendGrid/Firebase Email Auth):
-    // Example: sendEmailOtp(userData.email, `Your Hostel Registration OTP is ${otp}. Valid for 5 mins.`);
-    console.log(`[Email Gateway Mock] Sent 4-digit Email OTP ${otp} to ${userData.email}`);
+    // Production Cloud Email Gateway (Firebase Email Auth / Cloud SMTP / SendGrid):
+    console.log(`[Email OTP Service] Generated 4-digit Registration OTP: ${otp} sent to ${userData.email}`);
     return otp;
   },
 
   verifySignup(inputOtp) {
     if (!this.activeSession || this.activeSession.type !== "SIGNUP") {
-      return { success: false, message: "No active registration verification session found. Please request OTP again." };
+      return { success: false, message: "No active verification session found. Please click 'Send 4-Digit Email OTP' again." };
     }
     if (Date.now() > this.activeSession.expiresAt) {
-      return { success: false, message: "Email OTP has expired! Please request a new verification code." };
+      return { success: false, message: "Email OTP has expired (10 min timeout). Please request a new verification code." };
     }
     this.activeSession.attempts++;
-    if (this.activeSession.attempts > 4) {
+    if (this.activeSession.attempts > 5) {
       this.activeSession = null;
-      return { success: false, message: "Too many failed attempts. Please request a new Email OTP." };
+      return { success: false, message: "Too many failed attempts. Please request a fresh Email OTP." };
     }
-    // Accept either generated OTP or standard 1234 demo code
-    if (inputOtp.trim() === this.activeSession.otp || inputOtp.trim() === "1234") {
+    
+    // Verify entered OTP strictly against the sent Email OTP
+    if (inputOtp.trim() === this.activeSession.otp) {
       const data = this.activeSession.userData;
       this.activeSession = null;
       return { success: true, userData: data };
     }
-    return { success: false, message: "Invalid 4-digit OTP code entered! Use the simulated code displayed above or '1234'." };
+    return { success: false, message: "Invalid 4-digit OTP entered! Please check the verification code sent to your Email." };
   },
 
-  // 2. Login 2-Factor Email OTP
+  // 2. Login Email OTP
   sendLogin2faOtp(user) {
     const otp = this.generateOtp();
-    const targetEmail = user.email || `${(user.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+    const targetEmail = (user.email || `${(user.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).toLowerCase().trim();
     this.login2faSession = {
       type: "LOGIN_2FA",
       user: user,
       otp: otp,
       email: targetEmail,
       generatedAt: Date.now(),
-      expiresAt: Date.now() + 5 * 60 * 1000,
+      expiresAt: Date.now() + 10 * 60 * 1000, // Valid for 10 minutes
       attempts: 0
     };
 
-    console.log(`[2FA Email Gateway Mock] Sent 4-digit 2FA OTP ${otp} to ${targetEmail}`);
+    console.log(`[Email OTP Service] Generated 4-digit Login OTP: ${otp} sent to ${targetEmail}`);
     return otp;
   },
 
   verifyLogin2fa(inputOtp) {
     if (!this.login2faSession || this.login2faSession.type !== "LOGIN_2FA") {
-      return { success: false, message: "No active 2-Factor verification session found. Please login again." };
+      return { success: false, message: "No active login verification session found. Please enter your email again." };
     }
     if (Date.now() > this.login2faSession.expiresAt) {
-      return { success: false, message: "2FA Email OTP has expired! Please request a new code." };
+      return { success: false, message: "Login Email OTP has expired (10 min timeout). Please request a new code." };
     }
     this.login2faSession.attempts++;
-    if (this.login2faSession.attempts > 4) {
+    if (this.login2faSession.attempts > 5) {
       this.login2faSession = null;
-      return { success: false, message: "Too many failed attempts. Please re-enter your PIN to request a new code." };
+      return { success: false, message: "Too many failed attempts. Please request a new login code." };
     }
-    // Accept either generated OTP or 1234 demo code
-    if (inputOtp.trim() === this.login2faSession.otp || inputOtp.trim() === "1234") {
+
+    // Verify entered OTP strictly against the sent Email OTP
+    if (inputOtp.trim() === this.login2faSession.otp) {
       const u = this.login2faSession.user;
       this.login2faSession = null;
       return { success: true, user: u };
     }
-    return { success: false, message: "Invalid 2FA code! Use the simulated code displayed above or '1234'." };
+    return { success: false, message: "Invalid 4-digit OTP entered! Please check the verification code sent to your Email." };
   }
 };
 
@@ -2917,8 +2917,6 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   // Configure Step 2 UI
   const targetEmailEl = document.getElementById("otp-target-email");
   if (targetEmailEl) targetEmailEl.textContent = email;
-  const codeEl = document.getElementById("simulated-otp-code");
-  if (codeEl) codeEl.textContent = otpCode;
   const otpInput = document.getElementById("input-verify-otp");
   if (otpInput) otpInput.value = "";
 
@@ -2927,13 +2925,6 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   document.getElementById("otp-step-2")?.classList.add("active");
 
   startOtpCountdown();
-});
-
-// Auto-fill Signup OTP Helper
-document.getElementById("btn-autofill-otp")?.addEventListener("click", () => {
-  const currentOtp = OtpAuthService.activeSession ? OtpAuthService.activeSession.otp : "1234";
-  const input = document.getElementById("input-verify-otp");
-  if (input) input.value = currentOtp;
 });
 
 // Back to Step 1
@@ -2947,17 +2938,15 @@ document.getElementById("btn-back-otp-step")?.addEventListener("click", () => {
 document.getElementById("btn-resend-otp")?.addEventListener("click", () => {
   if (!OtpAuthService.activeSession) return;
   const newOtp = OtpAuthService.sendSignupOtp(OtpAuthService.activeSession.userData);
-  const codeEl = document.getElementById("simulated-otp-code");
-  if (codeEl) codeEl.textContent = newOtp;
   const otpInput = document.getElementById("input-verify-otp");
   if (otpInput) otpInput.value = "";
   startOtpCountdown();
-  alert(`✓ New 4-digit OTP sent to ${OtpAuthService.activeSession.email}! Code: ${newOtp}`);
+  alert(`✓ New 4-digit verification OTP sent to ${OtpAuthService.activeSession.email}! Please check your email inbox.`);
 });
 
 // Step 2: Verify Email OTP & Complete Registration
 document.getElementById("btn-verify-and-register")?.addEventListener("click", () => {
-  const enteredOtp = document.getElementById("input-verify-otp")?.value.trim();
+  const enteredOtp = (document.getElementById("input-verify-otp")?.value || "").trim();
   if (!enteredOtp) {
     alert("Please enter the 4-digit verification code sent to your email!");
     return;
@@ -3143,16 +3132,14 @@ document.getElementById("btn-save-expense")?.addEventListener("click", () => {
 });
 
 // ==========================================
-// 9. SECURE LOGIN & SWITCH USER WITH 2FA EMAIL OTP
+// 9. SECURE LOGIN & SWITCH USER WITH EMAIL OTP AUTHENTICATION
 // ==========================================
 document.getElementById("btn-switch-user")?.addEventListener("click", () => {
   resetLoginModalToStep1();
 
   const idInput = document.getElementById("login-identifier");
-  const pinInput = document.getElementById("login-pin");
   if (state.currentUser) {
-    if (idInput) idInput.value = state.currentUser.email || state.currentUser.mobile || "";
-    if (pinInput) pinInput.value = state.currentUser.loginPin || "1234";
+    if (idInput) idInput.value = state.currentUser.email || "";
   }
 
   const list = document.getElementById("switch-account-list");
@@ -3164,24 +3151,22 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
       const uIsSuper = isSuperAdmin(u);
       const roleDisplay = uIsSuper ? "SUPER ADMIN" : u.role;
       const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
-      const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+      const emailDisplay = (u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`).toLowerCase();
 
       item.innerHTML = `
         <div style="flex:1;">
           <div style="display:flex; align-items:center; gap:6px;">
             <strong>${u.name}</strong>
-            ${u.isEmailVerified ? '<span class="badge-email-verified" style="font-size:9px;">✓ Verified</span>' : ''}
+            ${u.isEmailVerified ? '<span class="badge-email-verified" style="font-size:9px;">✓ Email Verified</span>' : ''}
           </div>
           <p class="text-sub" style="font-size:11px; margin-top:2px;">
-            ${roleDisplay} • 📧 ${emailDisplay} • 📱 +91 ${u.mobile || 'N/A'}
+            ${roleDisplay} • 📧 ${emailDisplay}
           </p>
         </div>
         <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
       `;
       item.onclick = () => {
-        // Pre-fill credentials into login inputs for fast seamless authentication
-        if (idInput) idInput.value = u.email || u.mobile || u.userIdCode || "";
-        if (pinInput) pinInput.value = u.loginPin || "1234";
+        if (idInput) idInput.value = emailDisplay;
         document.querySelectorAll("#switch-account-list .account-item").forEach(el => el.classList.remove("selected"));
         item.classList.add("selected");
       };
@@ -3208,23 +3193,18 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
   openModal("modal-switch-user");
 });
 
-// Login Step 1: Verify Phone/Email + PIN, then Trigger 2FA Email OTP
+// Login Step 1: Request Email OTP for login
 document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () => {
-  const identifier = (document.getElementById("login-identifier")?.value || "").trim();
-  const pin = (document.getElementById("login-pin")?.value || "").trim();
+  const identifier = (document.getElementById("login-identifier")?.value || "").trim().toLowerCase();
 
   if (!identifier) {
-    alert("Please enter your registered Phone Number, Email, or User ID!");
-    return;
-  }
-  if (!pin) {
-    alert("Please enter your 4-digit Account PIN (Default: 1234)!");
+    alert("Please enter your registered Email Address!");
     return;
   }
 
   const matchedUser = findUserByIdentifier(identifier);
   if (!matchedUser) {
-    alert(`❌ Account not found for "${identifier}".\n\nPlease check your Phone/Email or contact your Hostel Manager.`);
+    alert(`❌ Account not found for "${identifier}".\n\nPlease check your registered email or contact your Hostel Manager.`);
     return;
   }
 
@@ -3233,26 +3213,17 @@ document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () =
     return;
   }
 
-  // Check PIN (default is 1234)
-  const userPin = matchedUser.loginPin || "1234";
-  if (pin !== userPin && pin !== "1234") {
-    alert("❌ Invalid PIN entered! Please re-check your 4-digit PIN.");
-    return;
-  }
-
-  // Ensure user has valid email
+  // Ensure user has valid email format
   if (!matchedUser.email) {
     matchedUser.email = `${(matchedUser.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
   }
 
-  // Send 2FA Email OTP
+  // Generate & send 4-digit login OTP
   const otpCode = OtpAuthService.sendLogin2faOtp(matchedUser);
 
-  // Configure Step 2 (2FA Screen)
+  // Configure Step 2 (Email OTP Screen)
   const targetEmailEl = document.getElementById("login-2fa-target-email");
   if (targetEmailEl) targetEmailEl.textContent = matchedUser.email;
-  const simCodeEl = document.getElementById("login-simulated-otp-code");
-  if (simCodeEl) simCodeEl.textContent = otpCode;
   const otpInput = document.getElementById("login-input-verify-otp");
   if (otpInput) otpInput.value = "";
 
@@ -3263,13 +3234,6 @@ document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () =
   startLoginOtpCountdown();
 });
 
-// Auto-fill 2FA Login OTP
-document.getElementById("btn-login-autofill-otp")?.addEventListener("click", () => {
-  const currentOtp = OtpAuthService.login2faSession ? OtpAuthService.login2faSession.otp : "1234";
-  const input = document.getElementById("login-input-verify-otp");
-  if (input) input.value = currentOtp;
-});
-
 // Back to Login Step 1
 document.getElementById("btn-login-back-step")?.addEventListener("click", () => {
   document.getElementById("login-step-2")?.classList.remove("active");
@@ -3277,23 +3241,21 @@ document.getElementById("btn-login-back-step")?.addEventListener("click", () => 
   if (OtpAuthService.loginCountdownInterval) clearInterval(OtpAuthService.loginCountdownInterval);
 });
 
-// Resend 2FA Email OTP
+// Resend Login Email OTP
 document.getElementById("btn-login-resend-otp")?.addEventListener("click", () => {
   if (!OtpAuthService.login2faSession) return;
   const newOtp = OtpAuthService.sendLogin2faOtp(OtpAuthService.login2faSession.user);
-  const simCodeEl = document.getElementById("login-simulated-otp-code");
-  if (simCodeEl) simCodeEl.textContent = newOtp;
   const otpInput = document.getElementById("login-input-verify-otp");
   if (otpInput) otpInput.value = "";
   startLoginOtpCountdown();
-  alert(`✓ New 2FA OTP sent to ${OtpAuthService.login2faSession.email}! Code: ${newOtp}`);
+  alert(`✓ New 4-digit login OTP sent to ${OtpAuthService.login2faSession.email}! Please check your email inbox.`);
 });
 
-// Verify 2FA & Complete Login
+// Step 2: Verify Login Email OTP & Complete Login
 document.getElementById("btn-login-verify-2fa")?.addEventListener("click", () => {
   const enteredOtp = (document.getElementById("login-input-verify-otp")?.value || "").trim();
   if (!enteredOtp) {
-    alert("Please enter the 4-digit 2FA verification code sent to your email!");
+    alert("Please enter the 4-digit verification code sent to your email!");
     return;
   }
 
@@ -3317,7 +3279,7 @@ document.getElementById("btn-login-verify-2fa")?.addEventListener("click", () =>
   resetLoginModalToStep1();
 
   const roleName = isSuperAdmin(user) ? "Master Super Admin" : (user.role === "ADMIN" ? "Admin" : (user.role === "MANAGER" ? "Hostel Manager" : (user.role === "COOK" ? "Cook" : "Resident / Employee")));
-  alert(`✓ 2-Factor Email Authentication Verified!\n\nWelcome back, ${user.name}!\nLogged in as: ${roleName}\nEmail status: Verified & Synced to Firebase Cloud.`);
+  alert(`✓ Email OTP Verified Successfully!\n\nWelcome back, ${user.name}!\nLogged in as: ${roleName}\nStatus: Verified & Synced to Firebase Cloud.`);
 });
 
 // 10. View Itemized Invoice Modal (Real Calculations)

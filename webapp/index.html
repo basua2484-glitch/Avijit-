@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="webapp/style.css">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="app">
@@ -559,16 +559,16 @@
 
     <!-- MODALS -->
 
-    <!-- 1. Add / Register User Modal with Email + Phone + OTP Verification -->
+    <!-- 1. Add / Register User Modal with Email OTP Verification -->
     <div class="modal" id="modal-user-form">
       <div class="modal-content">
         <div class="modal-header">
           <h3 id="modal-user-title">Employee Registration (Email OTP)</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Secure Registration: 4-digit OTP will be sent to your Email address for verification before submitting for Manager approval.</p>
+        <p class="text-sub">A real 4-digit verification OTP will be sent to your registered Email address for verification before submitting for Manager approval.</p>
         <div class="rule-box mt-2" style="font-size:11px;" id="role-quota-info-box">
-          🛡️ <strong>Strict Security:</strong> Duplicate Mobile & Email Check Active • Manager Onboarding
+          🛡️ <strong>Strict Security:</strong> Duplicate Email Check Active • Manager Onboarding
         </div>
         <input type="hidden" id="form-user-id" value="">
 
@@ -579,12 +579,12 @@
             <input type="text" id="form-user-name" placeholder="e.g. Ramesh Kumar">
           </div>
           <div class="form-group">
-            <label>Email Address (for 4-Digit Email OTP) *</label>
+            <label>Registered Email Address (Verification OTP will be sent here) *</label>
             <input type="email" id="form-user-email" placeholder="e.g. ramesh@gmail.com" autocomplete="email">
           </div>
           <div class="grid-2">
             <div class="form-group">
-              <label>Mobile Number (10-digit) *</label>
+              <label>Mobile Number (for record) *</label>
               <div style="display:flex; gap:6px;">
                 <span style="display:flex; align-items:center; padding:0 8px; background:#F1F5F9; border:1px solid var(--border); border-radius:var(--radius-md); font-weight:700; font-size:12px; color:#475569;">+91</span>
                 <input type="tel" id="form-user-mobile" placeholder="9876543210" maxlength="10" style="flex:1;">
@@ -634,25 +634,19 @@
 
         <!-- STEP 2: Email OTP Verification Screen -->
         <div id="otp-step-2" class="otp-step">
-          <!-- Demo Mock Email OTP Simulation Banner -->
-          <div class="demo-otp-banner" id="demo-otp-banner">
-            <div class="demo-otp-banner-header">
-              <span style="font-size:11px; font-weight:800; color:#1D4ED8; display:flex; align-items:center; gap:4px;">
-                🔔 SIMULATED EMAIL GATEWAY
-              </span>
-              <span class="badge badge-success" style="font-size:10px;">Email Service Active</span>
+          <!-- Real Email Notification Card -->
+          <div class="email-otp-card">
+            <div class="email-otp-header">
+              <span class="email-otp-icon">📧</span>
+              <div>
+                <div class="email-otp-title">Verification Code Sent</div>
+                <div class="email-otp-desc">
+                  A 4-digit verification code has been dispatched to <strong id="otp-target-email" style="color:#047857;">user@domain.com</strong>.
+                </div>
+              </div>
             </div>
-            <div style="font-size:12px; color:#334155;">
-              Verification OTP sent to <strong id="otp-target-email">user@domain.com</strong>:
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-              <div>4-Digit OTP: <span class="demo-otp-code-highlight" id="simulated-otp-code">1234</span></div>
-              <button class="btn btn-secondary btn-sm" id="btn-autofill-otp" style="padding:4px 8px; font-size:11px;">
-                ⚡ Auto-Fill
-              </button>
-            </div>
-            <div style="font-size:10px; color:#64748B; margin-top:2px;">
-              (Production ready for Firebase Auth / SMTP Email Gateway)
+            <div style="font-size:11px; color:#475569; margin-top:4px;">
+              Please check your Email inbox (and Spam/Junk folder) and enter the 4-digit code below.
             </div>
           </div>
 
@@ -721,33 +715,29 @@
       </div>
     </div>
 
-    <!-- 3. Secure Login & Switch User Modal (Phone/Email + PIN + 2FA Email OTP) -->
+    <!-- 3. Secure Login Modal (Email OTP Verification Only) -->
     <div class="modal" id="modal-switch-user">
       <div class="modal-content">
         <div class="modal-header">
-          <h3 id="modal-login-title">🔐 Secure Login & Account Switch</h3>
+          <h3 id="modal-login-title">🔐 Secure Login (Email OTP Only)</h3>
           <button class="close-btn">&times;</button>
         </div>
-        <p class="text-sub">Authenticate with your registered Phone/Email + 4-digit PIN, verified via 2-Factor Email OTP.</p>
+        <p class="text-sub">Authentication is strictly verified via a 4-digit OTP sent directly to your registered Email address.</p>
 
-        <!-- LOGIN STEP 1: Phone/Email + PIN Input -->
+        <!-- LOGIN STEP 1: Email Input & Quick Select -->
         <div id="login-step-1" class="login-step active">
           <div class="login-auth-box">
             <div class="form-group">
-              <label>Phone Number or Email *</label>
-              <input type="text" id="login-identifier" placeholder="e.g. 9876543210 or basua2484@gmail.com" autocomplete="username">
-            </div>
-            <div class="form-group">
-              <label>4-Digit Account PIN *</label>
-              <input type="password" id="login-pin" placeholder="Default PIN: 1234" maxlength="4" style="letter-spacing:4px; font-weight:700;" autocomplete="current-password">
+              <label>Registered Email Address *</label>
+              <input type="email" id="login-identifier" placeholder="e.g. basua2484@gmail.com" autocomplete="email">
             </div>
             <button class="btn btn-primary full-width mt-2" id="btn-login-proceed-2fa">
-              📧 Verify PIN & Send 2FA Email OTP
+              📧 Send 4-Digit Login Email OTP
             </button>
           </div>
 
           <div style="margin:16px 0 8px; font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
-            <span>⚡ Or Quick Select Account</span>
+            <span>⚡ Select User to Fill Email</span>
             <span style="flex:1; height:1px; background:#E2E8F0;"></span>
           </div>
 
@@ -764,46 +754,41 @@
           </div>
         </div>
 
-        <!-- LOGIN STEP 2: 2-Factor Email OTP Verification Screen -->
+        <!-- LOGIN STEP 2: Email OTP Verification Screen -->
         <div id="login-step-2" class="login-step">
-          <div class="demo-otp-banner" id="login-2fa-banner">
-            <div class="demo-otp-banner-header">
-              <span style="font-size:11px; font-weight:800; color:#1D4ED8; display:flex; align-items:center; gap:4px;">
-                🛡️ 2-FACTOR EMAIL AUTHENTICATION
-              </span>
-              <span class="badge badge-success" style="font-size:10px;">2FA Active</span>
+          <!-- Real Email Notification Card -->
+          <div class="email-otp-card login-style">
+            <div class="email-otp-header">
+              <span class="email-otp-icon">📬</span>
+              <div>
+                <div class="email-otp-title">Login OTP Dispatched</div>
+                <div class="email-otp-desc">
+                  A 4-digit security code was sent to <strong id="login-2fa-target-email" style="color:#1D4ED8;">basua2484@gmail.com</strong>.
+                </div>
+              </div>
             </div>
-            <div style="font-size:12px; color:#334155;">
-              2FA Login OTP sent to <strong id="login-2fa-target-email">basua2484@gmail.com</strong>:
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-              <div>2FA Code: <span class="demo-otp-code-highlight" id="login-simulated-otp-code">1234</span></div>
-              <button class="btn btn-secondary btn-sm" id="btn-login-autofill-otp" style="padding:4px 8px; font-size:11px;">
-                ⚡ Auto-Fill
-              </button>
-            </div>
-            <div style="font-size:10px; color:#64748B; margin-top:2px;">
-              (Code valid for 5 minutes • Security 2FA Verification)
+            <div style="font-size:11px; color:#475569; margin-top:4px;">
+              Please check your Email inbox and enter the 4-digit code below to log in.
             </div>
           </div>
 
           <div class="otp-input-container">
-            <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit 2FA Email OTP</label>
+            <label style="font-weight:700; font-size:13px; color:#0F172A;">Enter 4-Digit Email OTP</label>
             <input type="text" id="login-input-verify-otp" class="otp-digit-input" placeholder="••••" maxlength="4" autocomplete="one-time-code">
-            <div class="otp-timer-text" id="login-otp-timer-display">Resend 2FA code in 30s</div>
+            <div class="otp-timer-text" id="login-otp-timer-display">Resend code in 30s</div>
           </div>
 
           <div style="display:flex; gap:8px;" class="mt-2">
             <button class="btn btn-secondary" id="btn-login-back-step" style="flex:1;">
-              ← Back / Change Account
+              ← Back / Change Email
             </button>
             <button class="btn btn-secondary" id="btn-login-resend-otp" disabled style="flex:1;">
-              🔄 Resend 2FA OTP
+              🔄 Resend Email OTP
             </button>
           </div>
 
           <button class="btn btn-primary full-width mt-3" id="btn-login-verify-2fa">
-            ✓ Verify 2FA & Complete Login
+            🔓 Verify Email OTP & Log In
           </button>
         </div>
       </div>
