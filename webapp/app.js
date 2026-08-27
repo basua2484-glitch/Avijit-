@@ -2,6 +2,14 @@
 // Complete state management, Multi-Role RBAC (Admin, Manager, Resident, Cook), 
 // Real-time Expense Ledger & 3-Step Auto-Accounting (No fake dummy data)
 
+const DEFAULT_SHIFT_MEAL_RULES = {
+  NIGHT: { LUNCH: "OFF", DINNER: "ON", BREAKFAST: "OFF" },       // Night Shift -> Pre-select Dinner
+  EVENING: { LUNCH: "ON", DINNER: "OFF", BREAKFAST: "OFF" },     // Evening Shift -> Pre-select Lunch
+  MORNING: { LUNCH: "OFF", DINNER: "ON", BREAKFAST: "OFF" },     // Morning Shift -> Pre-select Dinner
+  OFF_DUTY: { LUNCH: "ON", DINNER: "ON", BREAKFAST: "OFF" },     // Off-Duty -> Pre-select Both
+  GENERAL: { LUNCH: "ON", DINNER: "ON", BREAKFAST: "OFF" }
+};
+
 const DEFAULT_MEAL_CONFIG = {
   defaultMealCount: 2,          // 2 meals (Lunch & Dinner), 3 (Breakfast, Lunch & Dinner), 1 (Single)
   dailyBaseMealRate: 50,         // Base plate rate in ₹
@@ -11,8 +19,35 @@ const DEFAULT_MEAL_CONFIG = {
   guestMealRate: 60,             // Extra/Guest plate price in ₹
   roomRentPerPerson: 1500,       // Standard monthly room rent in ₹
   mealCutOffStrict: true,
-  messName: "Hostel Central Mess"
+  messName: "Hostel Central Mess",
+  shiftMealRules: Object.assign({}, DEFAULT_SHIFT_MEAL_RULES)
 };
+
+function getShiftDefaultMealStatus(shift, mealType) {
+  const cfg = state && state.mealDefaults ? state.mealDefaults : DEFAULT_MEAL_CONFIG;
+  const rules = (cfg && cfg.shiftMealRules) ? cfg.shiftMealRules : DEFAULT_SHIFT_MEAL_RULES;
+  const shiftKey = (shift || "OFF_DUTY").toUpperCase();
+  const shiftRule = rules[shiftKey] || DEFAULT_SHIFT_MEAL_RULES[shiftKey] || { LUNCH: "OFF", DINNER: "OFF", BREAKFAST: "OFF" };
+  const mealKey = (mealType || "LUNCH").toUpperCase();
+  return shiftRule[mealKey] || "OFF";
+}
+
+function convertRuleToSelectValue(rule) {
+  if (!rule) return "BOTH";
+  const lunchOn = rule.LUNCH === "ON";
+  const dinnerOn = rule.DINNER === "ON";
+  if (lunchOn && dinnerOn) return "BOTH";
+  if (dinnerOn && !lunchOn) return "DINNER";
+  if (lunchOn && !dinnerOn) return "LUNCH";
+  return "NONE";
+}
+
+function convertSelectValueToRule(val) {
+  if (val === "DINNER") return { LUNCH: "OFF", DINNER: "ON", BREAKFAST: "OFF" };
+  if (val === "LUNCH") return { LUNCH: "ON", DINNER: "OFF", BREAKFAST: "OFF" };
+  if (val === "BOTH") return { LUNCH: "ON", DINNER: "ON", BREAKFAST: "OFF" };
+  return { LUNCH: "OFF", DINNER: "OFF", BREAKFAST: "OFF" };
+}
 
 const CLEAN_INITIAL_STATE = {
   currentUser: {
@@ -82,6 +117,7 @@ let state = (function() {
 
       // Ensure mealDefaults exist
       parsed.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, parsed.mealDefaults || {});
+      parsed.mealDefaults.shiftMealRules = Object.assign({}, DEFAULT_SHIFT_MEAL_RULES, (parsed.mealDefaults && parsed.mealDefaults.shiftMealRules) || {});
       if (typeof parsed.roomRentPerPerson === "undefined") {
         parsed.roomRentPerPerson = parsed.mealDefaults.roomRentPerPerson || 1500;
       }
@@ -1427,38 +1463,54 @@ function renderResidentScreen() {
 
   const mealCfg = state.mealDefaults || DEFAULT_MEAL_CONFIG;
   const autoMode = mealCfg.autoMealBookingMode || "SHIFT_BASED";
-  let isAutoOn = false;
-  if (!onLeave) {
-    if (autoMode === "ALWAYS_ON") {
-      isAutoOn = true;
-    } else if (autoMode === "MANUAL") {
-      isAutoOn = false;
+  const userShift = (user.currentShift || "OFF_DUTY").toUpperCase();
+
+  let logicPillText = "Auto-OFF (Skip)";
+  let logicPillClass = "pill-badge badge-alert";
+  let explanationText = "";
+
+  if (onLeave) {
+    logicPillText = "🔒 View-Only Mode";
+    logicPillClass = "pill-badge badge-leave";
+    explanationText = "🏖️ <strong>ON LEAVE ACTIVE:</strong> You are on leave. Meals, shifts, and attendance are completely frozen. Click <strong>'Request Leave End'</strong> upon return.";
+  } else if (autoMode === "ALWAYS_ON") {
+    logicPillText = "Always ON (Eating)";
+    logicPillClass = "pill-badge badge-success";
+    explanationText = "💡 <strong>Policy:</strong> All meals Auto-ON. Toggle OFF before cut-off if dining outside.";
+  } else if (autoMode === "MANUAL") {
+    logicPillText = "Manual Opt-In";
+    logicPillClass = "pill-badge badge-alert";
+    explanationText = "⚠️ <strong>Policy:</strong> Manual Opt-In active. Toggle ON before cut-off to book plate.";
+  } else {
+    // SHIFT_BASED
+    if (userShift === "NIGHT") {
+      logicPillText = "Pre-select Dinner";
+      logicPillClass = "pill-badge badge-success";
+      explanationText = "🌙 <strong>Night Shift (10 PM - 6 AM):</strong> Pre-selected for <strong>Dinner (Auto-ON)</strong>. Lunch is Auto-OFF (toggle ON if dining before 8:30 AM).";
+    } else if (userShift === "EVENING") {
+      logicPillText = "Pre-select Lunch";
+      logicPillClass = "pill-badge badge-success";
+      explanationText = "🌅 <strong>Evening Shift (2 PM - 10 PM):</strong> Pre-selected for <strong>Lunch (Auto-ON)</strong>. Dinner is Auto-OFF (toggle ON if eating after duty before 4:30 PM).";
+    } else if (userShift === "MORNING") {
+      logicPillText = "Pre-select Dinner";
+      logicPillClass = "pill-badge badge-success";
+      explanationText = "☀️ <strong>Morning Shift (6 AM - 2 PM):</strong> Pre-selected for <strong>Dinner (Auto-ON)</strong>. Lunch is Auto-OFF (toggle ON before 8:30 AM if needed).";
     } else {
-      // SHIFT_BASED
-      isAutoOn = (user.currentShift === "OFF_DUTY" || user.currentShift === "NIGHT");
+      logicPillText = "Auto-ON (Lunch & Dinner)";
+      logicPillClass = "pill-badge badge-success";
+      explanationText = "🏡 <strong>Off-Duty / Rest Day:</strong> Pre-selected for <strong>Both Lunch & Dinner (Auto-ON)</strong>.";
     }
   }
 
   const pill = document.getElementById("resident-logic-pill");
   if (pill) {
-    if (onLeave) {
-      pill.textContent = "🔒 View-Only Mode";
-      pill.className = "pill-badge badge-leave";
-    } else {
-      pill.textContent = isAutoOn ? "Auto-ON (Eating)" : "Auto-OFF (Skip/Day)";
-      pill.className = `pill-badge ${isAutoOn ? "badge-success" : "badge-alert"}`;
-    }
+    pill.textContent = logicPillText;
+    pill.className = logicPillClass;
   }
 
   const ruleBox = document.getElementById("rule-explanation-box");
   if (ruleBox) {
-    if (onLeave) {
-      ruleBox.innerHTML = "🏖️ <strong>ON LEAVE ACTIVE:</strong> You are on leave. Meals, shifts, and attendance are completely frozen. Click <strong>'Request Leave End'</strong> upon return.";
-    } else {
-      ruleBox.innerHTML = isAutoOn
-        ? "💡 <strong>Policy:</strong> Auto-ON meals active. Toggle OFF before cut-off if dining outside."
-        : "⚠️ <strong>Policy:</strong> Auto-OFF active. Toggle ON before cut-off to book plate.";
-    }
+    ruleBox.innerHTML = explanationText;
   }
 
   // Update Resident Meal Defaults Banner Info
@@ -1507,7 +1559,16 @@ function renderResidentScreen() {
 
   defaultMeals.forEach(dm => {
     let existing = userMeals.find(m => m.mealType === dm.type);
-    let status = pendingApproval ? "LOCKED (PENDING)" : (onLeave ? "OFF (LEAVE)" : (existing ? existing.status : (isAutoOn ? "ON" : "OFF")));
+    let defaultStatusForMeal = "OFF";
+    if (autoMode === "ALWAYS_ON") {
+      defaultStatusForMeal = "ON";
+    } else if (autoMode === "MANUAL") {
+      defaultStatusForMeal = "OFF";
+    } else {
+      defaultStatusForMeal = getShiftDefaultMealStatus(user.currentShift, dm.type);
+    }
+
+    let status = pendingApproval ? "LOCKED (PENDING)" : (onLeave ? "OFF (LEAVE)" : (existing ? existing.status : defaultStatusForMeal));
     let isOn = !onLeave && !pendingApproval && (status === "ON" || status === "PACK_TIFFIN" || status === "LATE_COVERED");
 
     const isLocked = onLeave || pendingApproval;
@@ -1632,26 +1693,41 @@ function setShift(shift) {
     FirebaseSyncService.saveUser(u);
   }
 
-  const isAutoOn = shift === "OFF_DUTY" || shift === "NIGHT";
+  const mealCfg = state.mealDefaults || DEFAULT_MEAL_CONFIG;
+  const autoMode = mealCfg.autoMealBookingMode || "SHIFT_BASED";
   
-  // Auto sync today's meals based on rules
-  ["LUNCH", "DINNER"].forEach(type => {
+  // Auto sync today's meals based on rules:
+  // Night Shift -> Pre-select Dinner (Dinner ON, Lunch OFF)
+  // Evening Shift -> Pre-select Lunch (Lunch ON, Dinner OFF)
+  // Morning Shift -> Pre-select Dinner (Dinner ON, Lunch OFF)
+  // Off-Duty -> Pre-select Both (Lunch ON, Dinner ON)
+  const mealTypes = ["BREAKFAST", "LUNCH", "DINNER"];
+  mealTypes.forEach(type => {
+    let shouldBeOn = false;
+    if (autoMode === "ALWAYS_ON") {
+      shouldBeOn = true;
+    } else if (autoMode === "MANUAL") {
+      shouldBeOn = false;
+    } else {
+      shouldBeOn = (getShiftDefaultMealStatus(shift, type) === "ON");
+    }
+
     let meal = state.meals.find(m => m.userId === state.currentUser.id && m.mealType === type);
     if (!meal) {
       meal = {
-        id: "m_" + Date.now() + "_" + type,
+        id: "m_" + Date.now() + "_" + type + "_" + Math.random().toString(36).substring(2, 5),
         userId: state.currentUser.id,
         userName: state.currentUser.name,
         roomNumber: state.currentUser.assignedRoom || "101",
         mealType: type,
-        status: isAutoOn ? "ON" : "OFF",
+        status: shouldBeOn ? "ON" : "OFF",
         otHours: 0,
         shiftAtTime: shift
       };
       state.meals.push(meal);
     } else {
       if (meal.status !== "PACK_TIFFIN" && meal.status !== "LATE_COVERED") {
-        meal.status = isAutoOn ? "ON" : "OFF";
+        meal.status = shouldBeOn ? "ON" : "OFF";
       }
       meal.shiftAtTime = shift;
     }
@@ -2424,6 +2500,20 @@ document.getElementById("btn-save-meal-defaults")?.addEventListener("click", asy
   const autoMode = document.getElementById("cfg-auto-booking-mode")?.value || "SHIFT_BASED";
   const messName = (document.getElementById("cfg-mess-name")?.value || "").trim() || "Hostel Central Mess";
 
+  // Shift-Meal default mappings configured by Super Admin
+  const nightVal = document.getElementById("cfg-shift-night")?.value || "DINNER";
+  const eveningVal = document.getElementById("cfg-shift-evening")?.value || "LUNCH";
+  const morningVal = document.getElementById("cfg-shift-morning")?.value || "DINNER";
+  const offdutyVal = document.getElementById("cfg-shift-offduty")?.value || "BOTH";
+
+  const updatedShiftRules = {
+    NIGHT: convertSelectValueToRule(nightVal),
+    EVENING: convertSelectValueToRule(eveningVal),
+    MORNING: convertSelectValueToRule(morningVal),
+    OFF_DUTY: convertSelectValueToRule(offdutyVal),
+    GENERAL: convertSelectValueToRule(offdutyVal)
+  };
+
   const newDefaults = {
     defaultMealCount: mealCount,
     dailyBaseMealRate: baseRate,
@@ -2432,6 +2522,7 @@ document.getElementById("btn-save-meal-defaults")?.addEventListener("click", asy
     guestMealRate: guestRate,
     roomRentPerPerson: roomRent,
     autoMealBookingMode: autoMode,
+    shiftMealRules: updatedShiftRules,
     mealCutOffStrict: true,
     messName: messName
   };
@@ -2440,7 +2531,7 @@ document.getElementById("btn-save-meal-defaults")?.addEventListener("click", asy
   if (success) {
     const lunchFmt = formatTimeAMPMString(lunchCutoff);
     const dinnerFmt = formatTimeAMPMString(dinnerCutoff);
-    alert(`✓ Super Admin Meal Defaults Saved & Broadcast!\n\n• Daily Meals: ${mealCount} Meals / Day\n• Base Plate Rate: ₹${baseRate}\n• Lunch Cut-Off: ${lunchFmt}\n• Dinner Cut-Off: ${dinnerFmt}\n• Room Rent: ₹${roomRent}/month\n• Auto-Booking Policy: ${autoMode}\n\nAll connected members and devices will sync to these defaults in real-time.`);
+    alert(`✓ Super Admin Meal Defaults Saved & Broadcast to Firebase!\n\n• Daily Meals: ${mealCount} Meals / Day\n• Base Plate Rate: ₹${baseRate}\n• Lunch Cut-Off: ${lunchFmt}\n• Dinner Cut-Off: ${dinnerFmt}\n• Shift Mapping:\n   - Night Shift -> ${nightVal}\n   - Evening Shift -> ${eveningVal}\n   - Morning Shift -> ${morningVal}\n   - Off-Duty -> ${offdutyVal}\n• Auto-Booking Policy: ${autoMode}\n\nAll connected members and devices will sync to these rules in real-time under root node 'hostel_mess_data'.`);
   }
 });
 
@@ -2488,6 +2579,11 @@ function renderAdminScreen() {
   const autoModeInput = document.getElementById("cfg-auto-booking-mode");
   const messNameInput = document.getElementById("cfg-mess-name");
 
+  const shiftNightSelect = document.getElementById("cfg-shift-night");
+  const shiftEveningSelect = document.getElementById("cfg-shift-evening");
+  const shiftMorningSelect = document.getElementById("cfg-shift-morning");
+  const shiftOffdutySelect = document.getElementById("cfg-shift-offduty");
+
   const mealCfg = state.mealDefaults || DEFAULT_MEAL_CONFIG;
 
   if (mealCountInput) mealCountInput.value = mealCfg.defaultMealCount || 2;
@@ -2499,7 +2595,17 @@ function renderAdminScreen() {
   if (autoModeInput) autoModeInput.value = mealCfg.autoMealBookingMode || "SHIFT_BASED";
   if (messNameInput) messNameInput.value = mealCfg.messName || "Hostel Central Mess";
 
-  const allCfgInputs = [mealCountInput, baseRateInput, lunchCutoffInput, dinnerCutoffInput, guestRateInput, roomRentInput, autoModeInput, messNameInput];
+  const rules = mealCfg.shiftMealRules || DEFAULT_SHIFT_MEAL_RULES;
+  if (shiftNightSelect) shiftNightSelect.value = convertRuleToSelectValue(rules.NIGHT || DEFAULT_SHIFT_MEAL_RULES.NIGHT);
+  if (shiftEveningSelect) shiftEveningSelect.value = convertRuleToSelectValue(rules.EVENING || DEFAULT_SHIFT_MEAL_RULES.EVENING);
+  if (shiftMorningSelect) shiftMorningSelect.value = convertRuleToSelectValue(rules.MORNING || DEFAULT_SHIFT_MEAL_RULES.MORNING);
+  if (shiftOffdutySelect) shiftOffdutySelect.value = convertRuleToSelectValue(rules.OFF_DUTY || DEFAULT_SHIFT_MEAL_RULES.OFF_DUTY);
+
+  const allCfgInputs = [
+    mealCountInput, baseRateInput, lunchCutoffInput, dinnerCutoffInput, 
+    guestRateInput, roomRentInput, autoModeInput, messNameInput,
+    shiftNightSelect, shiftEveningSelect, shiftMorningSelect, shiftOffdutySelect
+  ];
 
   if (!isSuperAdm) {
     // Non-Super Admins are strictly View-Only
@@ -2510,7 +2616,7 @@ function renderAdminScreen() {
       btnSaveCfg.innerHTML = `🔒 Super Admin Authority Only`;
     }
     if (cfgNotice) {
-      cfgNotice.innerHTML = `🔒 <strong>View-Only Mode:</strong> Only Master Super Admin (Avijit Basu) can modify default meal rates & mess policies.`;
+      cfgNotice.innerHTML = `🔒 <strong>View-Only Mode:</strong> Only Master Super Admin (Avijit Basu) can modify shift-meal rules & default mess settings.`;
     }
   } else {
     allCfgInputs.forEach(inp => { if (inp) inp.disabled = false; });

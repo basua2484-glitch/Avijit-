@@ -717,7 +717,7 @@
             <div class="form-group">
               <label>Shift Auto-Booking Policy *</label>
               <select id="cfg-auto-booking-mode" class="form-select">
-                <option value="SHIFT_BASED">Shift-Based (Off-Duty/Night = Auto-ON, Day Shifts = Auto-OFF)</option>
+                <option value="SHIFT_BASED">Shift-Based Mapping (Custom Shift Rules Below)</option>
                 <option value="ALWAYS_ON">Always ON (Residents manually skip if dining outside)</option>
                 <option value="MANUAL">Manual Opt-In (Residents turn ON explicitly)</option>
               </select>
@@ -728,6 +728,68 @@
               <label>Mess Group Name</label>
               <input type="text" id="cfg-mess-name" value="Hostel Central Mess" placeholder="Mess Group Name">
               <span class="text-sub" style="font-size:11px;">Public group identifier across shared invites</span>
+            </div>
+          </div>
+
+          <!-- Shift-Meal Default Rules Mapping (Exclusive Super Admin Control) -->
+          <div class="shift-rules-config-section mt-3" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+              <div>
+                <strong style="font-size:13px; color:#0F172A; display:flex; align-items:center; gap:6px;">
+                  <span>⚙️ Shift-to-Meal Default Pre-selection Mapping</span>
+                  <span class="badge badge-lilac" style="font-size:9px;">Shift Rules</span>
+                </strong>
+                <p class="text-sub" style="font-size:11px; margin-top:2px;">
+                  Define which meal(s) are automatically turned ON when an employee/resident switches shifts.
+                </p>
+              </div>
+              <span class="role-pill super_admin" style="font-size:9px;">👑 Super Admin Locked</span>
+            </div>
+
+            <div class="grid-2" style="gap:12px;">
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px; font-weight:700; color:#1E293B;">🌙 Night Shift (10 PM - 6 AM) *</label>
+                <select id="cfg-shift-night" class="form-select" style="font-size:12px;">
+                  <option value="DINNER" selected>🍽️ Pre-select Dinner (Dinner ON, Lunch OFF)</option>
+                  <option value="LUNCH">🍲 Lunch Only (Lunch ON, Dinner OFF)</option>
+                  <option value="BOTH">🍱 Both Lunch & Dinner (All ON)</option>
+                  <option value="NONE">❌ None (All OFF)</option>
+                </select>
+                <span class="text-sub" style="font-size:10px;">Night workers sleep by day, eat dinner at night</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px; font-weight:700; color:#1E293B;">🌅 Evening Shift (2 PM - 10 PM) *</label>
+                <select id="cfg-shift-evening" class="form-select" style="font-size:12px;">
+                  <option value="LUNCH" selected>🍲 Pre-select Lunch (Lunch ON, Dinner OFF)</option>
+                  <option value="DINNER">🍽️ Dinner Only (Dinner ON, Lunch OFF)</option>
+                  <option value="BOTH">🍱 Both Lunch & Dinner (All ON)</option>
+                  <option value="NONE">❌ None (All OFF)</option>
+                </select>
+                <span class="text-sub" style="font-size:10px;">Evening workers eat lunch before leaving for duty</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px; font-weight:700; color:#1E293B;">☀️ Morning Shift (6 AM - 2 PM) *</label>
+                <select id="cfg-shift-morning" class="form-select" style="font-size:12px;">
+                  <option value="DINNER" selected>🍽️ Pre-select Dinner (Dinner ON, Lunch OFF)</option>
+                  <option value="LUNCH">🍲 Lunch Only (Lunch ON, Dinner OFF)</option>
+                  <option value="BOTH">🍱 Both Lunch & Dinner (All ON)</option>
+                  <option value="NONE">❌ None (All OFF)</option>
+                </select>
+                <span class="text-sub" style="font-size:10px;">Morning workers return in afternoon, eat dinner at hostel</span>
+              </div>
+
+              <div class="form-group" style="margin-bottom:0;">
+                <label style="font-size:12px; font-weight:700; color:#1E293B;">🏡 Off-Duty / Rest Day *</label>
+                <select id="cfg-shift-offduty" class="form-select" style="font-size:12px;">
+                  <option value="BOTH" selected>🍱 Both Lunch & Dinner (Auto-ON)</option>
+                  <option value="DINNER">🍽️ Dinner Only</option>
+                  <option value="LUNCH">🍲 Lunch Only</option>
+                  <option value="NONE">❌ None (All OFF)</option>
+                </select>
+                <span class="text-sub" style="font-size:10px;">Full day hostel stay, all meals pre-selected</span>
+              </div>
             </div>
           </div>
 
