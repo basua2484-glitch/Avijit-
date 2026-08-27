@@ -1623,7 +1623,313 @@ body {
   animation: fadeIn 0.2s ease-in-out;
 }
 
-
 .referred-user-item:last-child {
   border-bottom: none;
 }
+
+/* ==========================================
+   FRIENDS & MESS MEMBERS TAB & INVITE BANNER
+   ========================================== */
+.invite-welcome-banner {
+  background: linear-gradient(135deg, #4338CA, #6366F1);
+  color: #FFFFFF;
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin: 12px 16px;
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: slideDown 0.3s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.invite-welcome-banner::before {
+  content: "";
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 90px;
+  height: 90px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.invite-banner-content h4 {
+  font-size: 15px;
+  font-weight: 800;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.invite-banner-content p {
+  font-size: 12px;
+  opacity: 0.92;
+  margin: 4px 0 0;
+}
+
+.invite-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-banner-action {
+  background: #FFFFFF;
+  color: #4338CA;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-banner-action:hover {
+  background: #EEF2FF;
+  transform: translateY(-1px);
+}
+
+.btn-banner-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #FFFFFF;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+/* Friends Summary Stats */
+.friends-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.friends-stat-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 8px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.friends-stat-card .val {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0F172A;
+}
+
+.friends-stat-card .lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* Member Cards */
+.member-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.member-card {
+  background: #FFFFFF;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
+}
+
+.member-card:hover {
+  border-color: #CBD5E1;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.06);
+}
+
+.member-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.member-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.member-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #E0E7FF;
+  color: #4338CA;
+  font-weight: 800;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.member-presence-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #FFFFFF;
+  background: #10B981;
+}
+
+.member-presence-dot.on-duty {
+  background: #10B981;
+  box-shadow: 0 0 6px #10B981;
+}
+
+.member-presence-dot.off-duty {
+  background: #64748B;
+}
+
+.member-presence-dot.on-leave {
+  background: #F59E0B;
+}
+
+.member-presence-dot.pending {
+  background: #EF4444;
+}
+
+.member-info h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0F172A;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.member-info-sub {
+  font-size: 12px;
+  color: #64748B;
+  margin-top: 2px;
+}
+
+.member-card-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.member-meals-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.member-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-member-wa {
+  background: #25D366;
+  color: #FFFFFF;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(37, 211, 102, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.btn-member-wa:hover {
+  transform: translateY(-1px);
+  background: #22c35e;
+}
+
+.badge-meal-on {
+  background: #DCFCE7;
+  color: #15803D;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid #BBF7D0;
+}
+
+.badge-meal-off {
+  background: #F1F5F9;
+  color: #64748B;
+  font-weight: 600;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid #E2E8F0;
+}
+
+.badge-meal-tiffin {
+  background: #FEF3C7;
+  color: #B45309;
+  font-weight: 700;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  border: 1px solid #FDE68A;
+}
+
+.badge-shift-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  display: inline-block;
+}
+
+.badge-shift-morning { background: #FEF9C3; color: #854D0E; }
+.badge-shift-evening { background: #FFEDD5; color: #9A3412; }
+.badge-shift-night { background: #EDE9FE; color: #5B21B6; }
+.badge-shift-off { background: #F1F5F9; color: #475569; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+

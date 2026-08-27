@@ -986,6 +986,8 @@ const TAB_HASH_MAP = {
   "resident": "resident-tab",
   "kitchen": "kitchen-tab",
   "manager": "manager-tab",
+  "friends": "friends-tab",
+  "members": "friends-tab",
   "expense": "expense-tab",
   "expenses": "expense-tab",
   "admin": "admin-tab"
@@ -995,6 +997,7 @@ const TAB_ID_TO_HASH = {
   "resident-tab": "resident",
   "kitchen-tab": "kitchen",
   "manager-tab": "manager",
+  "friends-tab": "friends",
   "expense-tab": "expense",
   "admin-tab": "admin"
 };
@@ -1049,16 +1052,38 @@ function handleUrlRouting() {
     window.history.replaceState(null, '', cleanPath + window.location.search + window.location.hash);
   }
 
-  // 2. Capture Referral Code from URL parameters (?ref=REF-XXXX or ?referral=REF-XXXX)
+  // 2. Capture Referral Code & Group parameters (?ref=REF-XXXX, ?messId=hostel_mess_data, ?by=..., ?name=...)
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const refParam = urlParams.get('ref') || urlParams.get('referral');
+    const messIdParam = urlParams.get('messId') || 'hostel_mess_data';
+    const referrerIdParam = urlParams.get('by');
+    const referrerNameParam = urlParams.get('name');
+
     if (refParam) {
       const cleanRef = refParam.trim().toUpperCase();
       sessionStorage.setItem("hostel_mess_ref_code", cleanRef);
+      sessionStorage.setItem("hostel_mess_group_id", messIdParam);
+      if (referrerIdParam) sessionStorage.setItem("hostel_mess_referrer_id", referrerIdParam);
+      if (referrerNameParam) sessionStorage.setItem("hostel_mess_referrer_name", decodeURIComponent(referrerNameParam));
+
       const refInput = document.getElementById("form-user-referral-code");
       if (refInput) refInput.value = cleanRef;
-      console.log("✓ Referral code detected and stored:", cleanRef);
+
+      // Display floating Welcome Invite Banner
+      const banner = document.getElementById("invite-welcome-banner");
+      const bannerTitle = document.getElementById("banner-invite-title");
+      const bannerDesc = document.getElementById("banner-invite-desc");
+      const bannerRefName = document.getElementById("banner-referrer-name");
+
+      if (banner) {
+        banner.style.display = "flex";
+        const inviterName = referrerNameParam ? decodeURIComponent(referrerNameParam) : "Avijit Basu";
+        if (bannerRefName) bannerRefName.textContent = inviterName;
+        if (bannerTitle) bannerTitle.textContent = `You're Invited by ${inviterName}!`;
+        if (bannerDesc) bannerDesc.innerHTML = `Connect to shared Mess Group (<strong>${messIdParam}</strong>) with referral code <strong>${cleanRef}</strong>. Real-time meal bookings, duty shifts, and expenses are live.`;
+      }
+      console.log("✓ Referral code detected and stored:", cleanRef, "Mess Group:", messIdParam);
     }
   } catch (e) {
     console.warn("URL referral check error:", e);
@@ -1091,6 +1116,7 @@ function renderUI() {
   renderResidentScreen();
   renderKitchenScreen();
   renderManagerScreen();
+  renderFriendsScreen();
   renderExpenseScreen();
   renderAdminScreen();
 }
@@ -1912,7 +1938,191 @@ function processExpense(id, approve) {
   renderUI();
 }
 
-// 5. Expense Ledger Screen (Actual Expenses Tracking & Approval Workflow)
+// 5. Friends & Mess Members Screen Rendering (Shared Central Database Directory, Live Presence & WhatsApp Connect)
+function renderFriendsScreen() {
+  const user = state.currentUser || state.users[0];
+  const allUsers = state.users || [];
+  const activeMembers = allUsers.filter(u => u.status === 'ACTIVE');
+  
+  // Real-time duty punch lookups for today
+  const today = getTodayString();
+  const activeAttendance = (state.attendanceLog || []).filter(a => a.date === today && a.status === 'ACTIVE');
+  const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
+
+  // Today's lunch & dinner plate counts
+  const lunchCount = (state.meals || []).filter(m => m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+  const dinnerCount = (state.meals || []).filter(m => m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+
+  // 1. Update Metrics
+  const statTotalEl = document.getElementById("friends-stat-total");
+  const statOnDutyEl = document.getElementById("friends-stat-onduty");
+  const statLunchEl = document.getElementById("friends-stat-lunch");
+  const statDinnerEl = document.getElementById("friends-stat-dinner");
+
+  if (statTotalEl) statTotalEl.textContent = activeMembers.length;
+  if (statOnDutyEl) statOnDutyEl.textContent = onDutyUserIds.size;
+  if (statLunchEl) statLunchEl.textContent = lunchCount;
+  if (statDinnerEl) statDinnerEl.textContent = dinnerCount;
+
+  // 2. Filter Counts
+  const residentCount = allUsers.filter(u => u.role === 'RESIDENT' || u.role === 'EMPLOYEE').length;
+  const onDutyCount = onDutyUserIds.size;
+  const leaveCount = allUsers.filter(u => u.status === 'ON_LEAVE').length;
+  const staffCount = allUsers.filter(u => isSuperAdmin(u) || isNormalAdmin(u) || isManager(u) || isCook(u)).length;
+
+  const countAllEl = document.getElementById("count-friends-all");
+  const countResEl = document.getElementById("count-friends-resident");
+  const countDutyEl = document.getElementById("count-friends-duty");
+  const countLeaveEl = document.getElementById("count-friends-leave");
+  const countStaffEl = document.getElementById("count-friends-staff");
+
+  if (countAllEl) countAllEl.textContent = allUsers.length;
+  if (countResEl) countResEl.textContent = residentCount;
+  if (countDutyEl) countDutyEl.textContent = onDutyCount;
+  if (countLeaveEl) countLeaveEl.textContent = leaveCount;
+  if (countStaffEl) countStaffEl.textContent = staffCount;
+
+  // 3. Filter and Search
+  const filter = state.selectedFriendsFilter || "ALL";
+  const query = (state.friendsSearchQuery || "").trim().toLowerCase();
+
+  let filtered = allUsers.slice();
+
+  if (filter === "RESIDENT") {
+    filtered = filtered.filter(u => u.role === "RESIDENT" || u.role === "EMPLOYEE");
+  } else if (filter === "DUTY_ACTIVE") {
+    filtered = filtered.filter(u => onDutyUserIds.has(u.id));
+  } else if (filter === "LEAVE") {
+    filtered = filtered.filter(u => u.status === "ON_LEAVE");
+  } else if (filter === "STAFF") {
+    filtered = filtered.filter(u => isSuperAdmin(u) || isNormalAdmin(u) || isManager(u) || isCook(u));
+  }
+
+  if (query) {
+    filtered = filtered.filter(u => {
+      const matchName = (u.name || "").toLowerCase().includes(query);
+      const matchRoom = (u.assignedRoom || "").toLowerCase().includes(query);
+      const matchMobile = (u.mobile || "").includes(query);
+      const matchEmail = (u.email || "").toLowerCase().includes(query);
+      const matchRole = (u.role || "").toLowerCase().includes(query);
+      const matchCode = (u.userIdCode || "").toLowerCase().includes(query);
+      const matchShift = (u.currentShift || "").toLowerCase().includes(query);
+      const matchRef = (u.referrerName || "").toLowerCase().includes(query);
+      return matchName || matchRoom || matchMobile || matchEmail || matchRole || matchCode || matchShift || matchRef;
+    });
+  }
+
+  // 4. Render Members List
+  const container = document.getElementById("friends-members-list");
+  if (!container) return;
+  container.innerHTML = "";
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding:28px 16px; text-align:center;">
+        <p style="font-size:15px; font-weight:600; color:var(--text-secondary);">No friends or members match your filter.</p>
+        <p class="text-sub mt-1">Tap <strong>"Invite via WhatsApp"</strong> above to send an invite link to roommates!</p>
+      </div>
+    `;
+    return;
+  }
+
+  filtered.forEach(m => {
+    const isMe = user && m.id === user.id;
+    const isOnDuty = onDutyUserIds.has(m.id);
+    const isOnLeave = m.status === "ON_LEAVE";
+    const isPending = m.status === "PENDING_APPROVAL";
+
+    // Presence Indicator
+    let presenceClass = "off-duty";
+    let presenceText = "Off Duty";
+    if (isOnDuty) {
+      presenceClass = "on-duty";
+      presenceText = "Live On Duty";
+    } else if (isOnLeave) {
+      presenceClass = "on-leave";
+      presenceText = "On Leave (गाँव)";
+    } else if (isPending) {
+      presenceClass = "pending";
+      presenceText = "Pending Approval";
+    }
+
+    // Role pill style
+    const roleClass = isSuperAdmin(m) ? "super_admin" : (m.role === "ADMIN" ? "admin" : (m.role === "MANAGER" ? "manager" : (m.role === "COOK" ? "cook" : "resident")));
+    const roleName = isSuperAdmin(m) ? "👑 Master Super Admin" : (m.role === "ADMIN" ? "🛡️ Admin" : (m.role === "MANAGER" ? "💼 Manager" : (m.role === "COOK" ? "👨‍🍳 Cook" : "🏠 Resident")));
+
+    // Today's Meals status for this member
+    const myLunch = (state.meals || []).find(ml => ml.userId === m.id && ml.mealType === "LUNCH");
+    const myDinner = (state.meals || []).find(ml => ml.userId === m.id && ml.mealType === "DINNER");
+
+    const lunchBadge = myLunch && (myLunch.status === "ON" || myLunch.status === "PACK_TIFFIN" || myLunch.status === "LATE_COVERED")
+      ? `<span class="badge badge-success" style="font-size:10px;">🍽️ Lunch: ${myLunch.status === 'PACK_TIFFIN' ? 'Tiffin' : 'ON'}</span>`
+      : `<span class="badge" style="background:#F1F5F9; color:#64748B; font-size:10px;">🍽️ Lunch: OFF</span>`;
+
+    const dinnerBadge = myDinner && (myDinner.status === "ON" || myDinner.status === "PACK_TIFFIN" || myDinner.status === "LATE_COVERED")
+      ? `<span class="badge badge-lilac" style="font-size:10px;">🍲 Dinner: ${myDinner.status === 'PACK_TIFFIN' ? 'Tiffin' : 'ON'}</span>`
+      : `<span class="badge" style="background:#F1F5F9; color:#64748B; font-size:10px;">🍲 Dinner: OFF</span>`;
+
+    // Active attendance punch details
+    const activePunch = activeAttendance.find(a => a.userId === m.id);
+    const punchInfoHtml = activePunch 
+      ? `<div class="duty-badge on-duty" style="font-size:11px; padding:3px 8px; border-radius:6px;">🟢 Punched In at ${activePunch.punchInTime || '08:00 AM'}</div>`
+      : `<div class="duty-badge off-duty" style="font-size:11px; padding:3px 8px; border-radius:6px; color:#64748B; background:#F1F5F9;">⚪ Shift: ${m.currentShift || 'OFF_DUTY'}</div>`;
+
+    // Referral badge
+    const refBadge = m.referrerName 
+      ? `<span class="badge badge-blue" style="font-size:9px;" title="Referred by ${m.referrerName}">🎁 Ref by: ${m.referrerName}</span>` 
+      : (m.referralCode ? `<span class="badge badge-primary-light" style="font-size:9px;">Code: ${m.referralCode}</span>` : '');
+
+    const initials = (m.name || "U").split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2) || "U";
+
+    // Direct WhatsApp message URL to chat with this member
+    const directWaMsg = encodeURIComponent(`Hi ${m.name}, connecting via Hostel Mess Management Portal (hostel_mess_data)!`);
+    const directWaUrl = `https://wa.me/91${m.mobile}?text=${directWaMsg}`;
+
+    const card = document.createElement("div");
+    card.className = "member-card";
+    card.innerHTML = `
+      <div class="member-card-header">
+        <div class="member-avatar-wrap">
+          <div class="member-avatar">${initials}</div>
+          <span class="presence-dot ${presenceClass}" title="${presenceText}"></span>
+        </div>
+        <div class="member-meta">
+          <div class="member-name-row">
+            <h4>${m.name} ${isMe ? '<span class="badge badge-primary-light" style="font-size:9px;">(You)</span>' : ''}</h4>
+            <span class="role-pill ${roleClass}" style="font-size:10px;">${roleName}</span>
+          </div>
+          <div class="member-sub-info">
+            <span>🚪 Room: <strong>${m.assignedRoom || '101'}</strong></span>
+            <span>📱 +91 ${m.mobile}</span>
+            ${m.userIdCode ? `<span>🏷️ ${m.userIdCode}</span>` : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="member-status-pills" style="margin-top:10px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        ${punchInfoHtml}
+        ${lunchBadge}
+        ${dinnerBadge}
+        ${refBadge}
+      </div>
+
+      <div class="member-card-actions" style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap; border-top:1px solid #F1F5F9; padding-top:10px;">
+        <a href="${directWaUrl}" target="_blank" rel="noopener" class="btn btn-whatsapp btn-sm" style="flex:1; justify-content:center; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:700;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.711 2.598 2.669-.699c.969.54 1.772.82 2.791.82 3.181 0 5.767-2.586 5.767-5.766.001-3.181-2.585-5.766-5.767-5.766zm9.969 5.766c0 5.485-4.484 9.969-9.969 9.969-1.722 0-3.339-.441-4.757-1.213l-5.274 1.381 1.41-5.143c-.886-1.488-1.379-3.217-1.379-5.063 0-5.485 4.485-9.969 10-9.969 5.485 0 9.969 4.485 9.969 9.969z"/></svg>
+          WhatsApp Chat
+        </a>
+        <button class="btn btn-secondary btn-sm" onclick="shareReferralOnWhatsApp()" style="font-size:12px; display:inline-flex; align-items:center; gap:4px;">
+          🎁 Invite Friends
+        </button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+// 6. Expense Ledger Screen (Actual Expenses Tracking & Approval Workflow)
 function renderExpenseScreen() {
   const user = state.currentUser || state.users[0];
   const isManagerOrAdmin = user.role === "ADMIN" || user.role === "MANAGER";
@@ -3922,10 +4132,13 @@ function getUserReferralCode(user) {
 }
 
 function getInviteLink(user) {
-  const code = getUserReferralCode(user);
+  const u = user || state.currentUser || state.users[0];
+  const code = getUserReferralCode(u);
   const cleanPath = window.location.pathname.replace(/\/index\.html\/?$/, '/') || '/';
   const base = window.location.origin + cleanPath;
-  return `${base}?ref=${encodeURIComponent(code)}`;
+  const inviterName = encodeURIComponent(u.name || "Avijit Basu");
+  const inviterId = encodeURIComponent(u.id || "usr_super_admin");
+  return `${base}?ref=${encodeURIComponent(code)}&messId=hostel_mess_data&by=${inviterId}&name=${inviterName}`;
 }
 
 function openReferralModal() {
@@ -3988,7 +4201,7 @@ function shareReferralOnWhatsApp(u) {
   if (!user) return;
   const code = getUserReferralCode(user);
   const inviteUrl = getInviteLink(user);
-  const msg = `👋 *Hostel & Mess Management Portal*\n\nHey! *${user.name}* invited you to join our Hostel Mess, Shifts & Meal portal.\n\n🔗 *Join Link:* ${inviteUrl}\n🎟️ *Referral Code:* *${code}*\n\n✨ *Features:*\n• Live Duty Punch In/Out & GPS Shifts\n• Meal Booking & Tiffin Status\n• Transparent Mess Expenses & Billing`;
+  const msg = `👋 *Hostel & Mess Management Portal*\n\nHey! *${user.name}* invited you to join our Hostel Mess, Shifts & Meal group (*hostel_mess_data*).\n\n🔗 *Tap to Join:* ${inviteUrl}\n🎟️ *Referral Code:* *${code}*\n🏢 *Mess Group ID:* *hostel_mess_data*\n\n✨ *Features:*\n• Live Duty Punch In/Out & GPS Shifts\n• Daily Meal Booking & Kitchen Count\n• Shared Transparent Mess Expenses & Billing\n• Real-Time Member Directory`;
   const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, "_blank");
 }
@@ -4023,7 +4236,7 @@ function copyReferralCode(u) {
   }
 }
 
-// Wire Referral Buttons
+// Wire Referral & Friends Buttons
 document.getElementById("btn-header-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-resident-refer")?.addEventListener("click", openReferralModal);
 document.getElementById("btn-mgr-refer")?.addEventListener("click", openReferralModal);
@@ -4031,6 +4244,45 @@ document.getElementById("btn-admin-refer")?.addEventListener("click", openReferr
 document.getElementById("btn-share-whatsapp")?.addEventListener("click", () => shareReferralOnWhatsApp());
 document.getElementById("btn-copy-invite-url")?.addEventListener("click", () => copyReferralLink());
 document.getElementById("btn-copy-ref-code")?.addEventListener("click", () => copyReferralCode());
+
+// Wire Friends Tab Controls
+document.getElementById("btn-friends-tab-invite")?.addEventListener("click", () => shareReferralOnWhatsApp());
+document.getElementById("btn-friends-copy-link")?.addEventListener("click", () => copyReferralLink());
+document.getElementById("btn-resident-share-wa")?.addEventListener("click", () => shareReferralOnWhatsApp());
+document.getElementById("btn-resident-view-friends")?.addEventListener("click", () => switchTab("friends-tab"));
+
+// Wire Invite Banner Action Buttons
+document.getElementById("btn-banner-join")?.addEventListener("click", () => {
+  const banner = document.getElementById("invite-welcome-banner");
+  if (banner) banner.style.display = "none";
+  resetUserModalToStep1();
+  updateRoleQuotaUI();
+  document.getElementById("modal-user-title").textContent = "Join Hostel Mess Group (Invited Member)";
+  const storedRef = sessionStorage.getItem("hostel_mess_ref_code") || "";
+  const refInput = document.getElementById("form-user-referral-code");
+  if (refInput) refInput.value = storedRef;
+  openModal("modal-user-form");
+});
+
+document.getElementById("btn-banner-dismiss")?.addEventListener("click", () => {
+  const banner = document.getElementById("invite-welcome-banner");
+  if (banner) banner.style.display = "none";
+});
+
+// Friends Search & Filter Listeners
+document.getElementById("friends-search-input")?.addEventListener("input", (e) => {
+  state.friendsSearchQuery = e.target.value;
+  renderFriendsScreen();
+});
+
+document.querySelectorAll("#friends-role-filter-bar .filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#friends-role-filter-bar .filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    state.selectedFriendsFilter = btn.getAttribute("data-friends-filter") || "ALL";
+    renderFriendsScreen();
+  });
+});
 
 // Expose helper functions globally for inline onclick handlers
 window.handleApprovePendingUser = handleApprovePendingUser;
@@ -4040,6 +4292,7 @@ window.openReferralModal = openReferralModal;
 window.shareReferralOnWhatsApp = shareReferralOnWhatsApp;
 window.copyReferralLink = copyReferralLink;
 window.copyReferralCode = copyReferralCode;
+window.renderFriendsScreen = renderFriendsScreen;
 
 // Initial boot render, Firebase Realtime Database connection & routing
 renderUI();
