@@ -110,7 +110,8 @@ function isCook(u) {
 // Check if currently authenticated user has authorization to onboard new employees/residents
 function isAuthorizedToOnboardUsers(u) {
   const user = u || state.currentUser || (state.users && state.users[0]);
-  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
+  const hasRefCode = Boolean(sessionStorage.getItem("hostel_mess_ref_code") || (document.getElementById("form-user-referral-code") && document.getElementById("form-user-referral-code").value.trim()));
+  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user) || hasRefCode;
 }
 
 // Check if user has permission to approve employee kitchen purchase requests
@@ -944,7 +945,22 @@ function handleUrlRouting() {
     window.history.replaceState(null, '', cleanPath + window.location.search + window.location.hash);
   }
 
-  // 2. Resolve target tab from hash
+  // 2. Capture Referral Code from URL parameters (?ref=REF-XXXX or ?referral=REF-XXXX)
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref') || urlParams.get('referral');
+    if (refParam) {
+      const cleanRef = refParam.trim().toUpperCase();
+      sessionStorage.setItem("hostel_mess_ref_code", cleanRef);
+      const refInput = document.getElementById("form-user-referral-code");
+      if (refInput) refInput.value = cleanRef;
+      console.log("✓ Referral code detected and stored:", cleanRef);
+    }
+  } catch (e) {
+    console.warn("URL referral check error:", e);
+  }
+
+  // 3. Resolve target tab from hash
   const rawHash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
   if (rawHash && TAB_HASH_MAP[rawHash]) {
     switchTab(TAB_HASH_MAP[rawHash], false);
@@ -1676,11 +1692,14 @@ function renderManagerScreen() {
         ? `<span class="badge badge-leave">🏖️ ON LEAVE</span>` 
         : (u.status === "BLOCKED" ? `<span class="badge badge-alert">BLOCKED</span>` : `<span class="badge badge-success">ACTIVE</span>`);
 
+      const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
+
       div.innerHTML = `
         <div>
-          <div style="display:flex; align-items:center; gap:6px;">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
             <strong>${u.name} (Room ${u.assignedRoom || '101'})</strong>
             ${statusPill}
+            ${refBadge}
           </div>
           <p class="text-sub">${u.userIdCode || 'EMP'} • 📱 +91 ${u.mobile} ${u.isOtpVerified ? '• <span class="text-success font-bold">✓ OTP Verified</span>' : ''}</p>
         </div>
@@ -2136,17 +2155,20 @@ function renderAdminScreen() {
     }
 
     const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
+    const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
+    const myCodeDisplay = u.referralCode || getUserReferralCode(u);
 
     div.innerHTML = `
       <div>
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <strong>${u.name}</strong>
           <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
           ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
           ${u.isOtpVerified ? '<span class="badge badge-blue" style="font-size:9px;">✓ OTP VERIFIED</span>' : ''}
+          ${refBadge}
         </div>
         <p class="text-sub" style="margin-top:2px;">
-          Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'}
+          Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
         </p>
       </div>
       <div class="user-card-actions">
@@ -2521,6 +2543,11 @@ document.getElementById("btn-open-add-user")?.addEventListener("click", () => {
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
   document.getElementById("form-user-shift").value = "OFF_DUTY";
+  
+  const storedRef = sessionStorage.getItem("hostel_mess_ref_code") || "";
+  const refInput = document.getElementById("form-user-referral-code");
+  if (refInput) refInput.value = storedRef;
+
   const procBtn = document.getElementById("btn-proceed-otp");
   if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
   openModal("modal-user-form");
@@ -2541,6 +2568,11 @@ document.getElementById("btn-mgr-add-resident")?.addEventListener("click", () =>
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
   document.getElementById("form-user-shift").value = "OFF_DUTY";
+
+  const storedRef = sessionStorage.getItem("hostel_mess_ref_code") || "";
+  const refInput = document.getElementById("form-user-referral-code");
+  if (refInput) refInput.value = storedRef;
+
   const procBtn = document.getElementById("btn-proceed-otp");
   if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
   openModal("modal-user-form");
@@ -2562,6 +2594,11 @@ document.getElementById("btn-switch-modal-register")?.addEventListener("click", 
   document.getElementById("form-user-room").value = "";
   document.getElementById("form-user-code").value = "";
   document.getElementById("form-user-shift").value = "OFF_DUTY";
+
+  const storedRef = sessionStorage.getItem("hostel_mess_ref_code") || "";
+  const refInput = document.getElementById("form-user-referral-code");
+  if (refInput) refInput.value = storedRef;
+
   const procBtn = document.getElementById("btn-proceed-otp");
   if (procBtn) procBtn.textContent = "📲 Send Verification OTP";
   openModal("modal-user-form");
@@ -2689,8 +2726,11 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     return;
   }
 
+  // Step 1: Proceed to OTP or Save Direct Edit
+  const refCodeEntered = document.getElementById("form-user-referral-code")?.value.trim().toUpperCase() || sessionStorage.getItem("hostel_mess_ref_code") || "";
+
   // New Registration Flow -> Send OTP
-  const userData = { name, mobile, role, room, code, shift };
+  const userData = { name, mobile, role, room, code, shift, referralCode: refCodeEntered };
   const otpCode = OtpAuthService.sendOtp(userData);
 
   // Configure Step 2 UI
@@ -2781,6 +2821,21 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
   // Force default role to RESIDENT/EMPLOYEE unless Master Super Admin directly specifies otherwise
   const assignedRole = isMasterAdminCreating ? uData.role : "RESIDENT";
 
+  // Referral System: Lookup Referrer User
+  const submittedRefCode = (uData.referralCode || "").trim().toUpperCase();
+  let referrerUser = null;
+  if (submittedRefCode) {
+    referrerUser = (state.users || []).find(u => {
+      const uRefCode = (u.referralCode || getUserReferralCode(u)).toUpperCase();
+      return uRefCode === submittedRefCode || 
+             (u.mobile && u.mobile === submittedRefCode) ||
+             u.id === submittedRefCode ||
+             (u.userIdCode && u.userIdCode.toUpperCase() === submittedRefCode);
+    });
+  }
+
+  const myGeneratedRefCode = `REF-${uData.name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}${uData.mobile.slice(-4)}`;
+
   const newUser = {
     id: "usr_" + Date.now(),
     name: uData.name,
@@ -2792,7 +2847,11 @@ document.getElementById("btn-verify-and-register")?.addEventListener("click", ()
     currentShift: uData.shift || "OFF_DUTY",
     isOtpVerified: true,
     verifiedAt: Date.now(),
-    createdAt: Date.now()
+    createdAt: Date.now(),
+    referralCode: myGeneratedRefCode,
+    referredBy: referrerUser ? referrerUser.id : (submittedRefCode || null),
+    referrerName: referrerUser ? referrerUser.name : (submittedRefCode || null),
+    referredCode: submittedRefCode || null
   };
 
   state.users.push(newUser);
@@ -3468,6 +3527,127 @@ document.getElementById("btn-reset-db")?.addEventListener("click", async () => {
     alert("✓ Firebase Cloud Database Reset Cleanly!\n\nAll collections cleared and re-initialized with Super Admin Avijit Basu. Connected devices will sync immediately in real-time.");
   }
 });
+
+// ==========================================
+// 16. REFER & INVITE FRIEND SYSTEM (WHATSAPP + FIREBASE SYNC)
+// ==========================================
+function getUserReferralCode(user) {
+  if (!user) return "REF-HOSTEL";
+  if (user.referralCode) return user.referralCode;
+  const cleanName = (user.name || "USER").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+  const suffix = user.mobile ? user.mobile.slice(-4) : (user.id || "101").slice(-4).toUpperCase();
+  return `REF-${cleanName}${suffix}`;
+}
+
+function getInviteLink(user) {
+  const code = getUserReferralCode(user);
+  const cleanPath = window.location.pathname.replace(/\/index\.html\/?$/, '/') || '/';
+  const base = window.location.origin + cleanPath;
+  return `${base}?ref=${encodeURIComponent(code)}`;
+}
+
+function openReferralModal() {
+  const user = state.currentUser || state.users[0];
+  if (!user) return;
+  const code = getUserReferralCode(user);
+  const codeDisplay = document.getElementById("modal-ref-code-display");
+  if (codeDisplay) codeDisplay.textContent = code;
+
+  // Calculate referred users
+  const allUsers = state.users || [];
+  const referred = allUsers.filter(u => 
+    u.referredBy === user.id || 
+    u.referredBy === code || 
+    u.referredCode === code ||
+    (u.referredBy && u.referredBy === user.mobile)
+  );
+
+  const countEl = document.getElementById("modal-ref-count-display");
+  const activeEl = document.getElementById("modal-ref-active-display");
+  if (countEl) countEl.textContent = referred.length;
+  if (activeEl) {
+    const activeCount = referred.filter(u => u.status === "ACTIVE").length;
+    activeEl.textContent = `${activeCount} Active`;
+  }
+
+  const listContainer = document.getElementById("modal-referred-list-container");
+  if (listContainer) {
+    if (referred.length === 0) {
+      listContainer.innerHTML = `
+        <div class="empty-state" style="padding:12px; font-size:11px; text-align:center;">
+          No friends referred yet. Share your code on WhatsApp to invite roommates!
+        </div>
+      `;
+    } else {
+      listContainer.innerHTML = "";
+      referred.forEach(rf => {
+        const item = document.createElement("div");
+        item.className = "referred-user-item";
+        const isAct = rf.status === "ACTIVE";
+        item.innerHTML = `
+          <div>
+            <strong>${rf.name}</strong> 
+            <span class="text-sub" style="font-size:11px;">(${rf.role} • Room ${rf.assignedRoom || '101'})</span>
+          </div>
+          <span class="badge ${isAct ? 'badge-success' : 'badge-alert'}" style="font-size:9px;">
+            ${isAct ? '✓ ACTIVE' : '⏳ PENDING'}
+          </span>
+        `;
+        listContainer.appendChild(item);
+      });
+    }
+  }
+
+  openModal("modal-referral");
+}
+
+function shareReferralOnWhatsApp(u) {
+  const user = u || state.currentUser || state.users[0];
+  if (!user) return;
+  const code = getUserReferralCode(user);
+  const inviteUrl = getInviteLink(user);
+  const msg = `👋 *Hostel & Mess Management Portal*\n\nHey! *${user.name}* invited you to join our Hostel Mess, Shifts & Meal portal.\n\n🔗 *Join Link:* ${inviteUrl}\n🎟️ *Referral Code:* *${code}*\n\n✨ *Features:*\n• Live Duty Punch In/Out & GPS Shifts\n• Meal Booking & Tiffin Status\n• Transparent Mess Expenses & Billing`;
+  const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  window.open(waUrl, "_blank");
+}
+
+function copyReferralLink(u) {
+  const user = u || state.currentUser || state.users[0];
+  if (!user) return;
+  const inviteUrl = getInviteLink(user);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      alert(`✓ Invite Link copied to clipboard!\n\n${inviteUrl}\n\nShare this link with friends to register!`);
+    }).catch(() => {
+      prompt("Copy your invite link below:", inviteUrl);
+    });
+  } else {
+    prompt("Copy your invite link below:", inviteUrl);
+  }
+}
+
+function copyReferralCode(u) {
+  const user = u || state.currentUser || state.users[0];
+  if (!user) return;
+  const code = getUserReferralCode(user);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(() => {
+      alert(`✓ Referral Code "${code}" copied to clipboard!`);
+    }).catch(() => {
+      prompt("Copy your referral code below:", code);
+    });
+  } else {
+    prompt("Copy your referral code below:", code);
+  }
+}
+
+// Wire Referral Buttons
+document.getElementById("btn-resident-refer")?.addEventListener("click", openReferralModal);
+document.getElementById("btn-mgr-refer")?.addEventListener("click", openReferralModal);
+document.getElementById("btn-admin-refer")?.addEventListener("click", openReferralModal);
+document.getElementById("btn-share-whatsapp")?.addEventListener("click", () => shareReferralOnWhatsApp());
+document.getElementById("btn-copy-invite-url")?.addEventListener("click", () => copyReferralLink());
+document.getElementById("btn-copy-ref-code")?.addEventListener("click", () => copyReferralCode());
 
 // Initial boot render, Firebase Realtime Database connection & routing
 renderUI();
