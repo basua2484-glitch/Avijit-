@@ -49,7 +49,41 @@ function convertSelectValueToRule(val) {
   return { LUNCH: "OFF", DINNER: "OFF", BREAKFAST: "OFF" };
 }
 
+const DB_ROOT_PATH = "hostel_mess_data";
+const DEFAULT_GROUP_ID = "main_mess";
+
+function getActiveGroupId() {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gFromUrl = urlParams.get('groupId') || urlParams.get('messId');
+    if (gFromUrl && gFromUrl.trim()) return gFromUrl.trim();
+  } catch (e) {}
+
+  const fromStorage = sessionStorage.getItem("hostel_mess_group_id");
+  if (fromStorage && fromStorage.trim()) return fromStorage.trim();
+
+  if (typeof state !== "undefined" && state) {
+    if (state.currentUser && (state.currentUser.groupId || state.currentUser.messGroupId)) {
+      return state.currentUser.groupId || state.currentUser.messGroupId;
+    }
+    if (state.currentGroupId) return state.currentGroupId;
+    if (state.groupId) return state.groupId;
+  }
+
+  return DEFAULT_GROUP_ID;
+}
+
+function getGroupDbPath(groupId = getActiveGroupId()) {
+  return `${DB_ROOT_PATH}/groups/${groupId}`;
+}
+
+function getUsersDbPath(groupId = getActiveGroupId()) {
+  return `${DB_ROOT_PATH}/groups/${groupId}/users`;
+}
+
 const CLEAN_INITIAL_STATE = {
+  groupId: DEFAULT_GROUP_ID,
+  currentGroupId: DEFAULT_GROUP_ID,
   currentUser: {
     id: "usr_super_admin",
     name: "Avijit Basu",
@@ -62,7 +96,8 @@ const CLEAN_INITIAL_STATE = {
     status: "ACTIVE",
     currentShift: "OFF_DUTY",
     referralCode: "101001",
-    messGroupId: "hostel_mess_data",
+    groupId: DEFAULT_GROUP_ID,
+    messGroupId: DEFAULT_GROUP_ID,
     isEmailVerified: true,
     emailVerifiedAt: Date.now(),
     isOtpVerified: true
@@ -80,7 +115,8 @@ const CLEAN_INITIAL_STATE = {
       status: "ACTIVE",
       currentShift: "OFF_DUTY",
       referralCode: "101001",
-      messGroupId: "hostel_mess_data",
+      groupId: DEFAULT_GROUP_ID,
+      messGroupId: DEFAULT_GROUP_ID,
       isEmailVerified: true,
       emailVerifiedAt: Date.now(),
       isOtpVerified: true
@@ -114,6 +150,8 @@ let state = (function() {
       if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
       if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
+      if (!parsed.groupId) parsed.groupId = DEFAULT_GROUP_ID;
+      if (!parsed.currentGroupId) parsed.currentGroupId = DEFAULT_GROUP_ID;
 
       // Ensure mealDefaults exist
       parsed.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, parsed.mealDefaults || {});
@@ -122,7 +160,7 @@ let state = (function() {
         parsed.roomRentPerPerson = parsed.mealDefaults.roomRentPerPerson || 1500;
       }
 
-      // Ensure Master Super Admin is Avijit Basu with email & PIN
+      // Ensure Master Super Admin is Avijit Basu with email & PIN & main_mess groupId
       const superUser = parsed.users.find(u => u.id === "usr_super_admin" || u.userIdCode === "SADM_001" || u.name === "Master Super Admin" || u.name === "Avijit Basu");
       if (superUser) {
         superUser.name = "Avijit Basu";
@@ -130,8 +168,9 @@ let state = (function() {
         superUser.userIdCode = "SADM_001";
         if (!superUser.email) superUser.email = "basua2484@gmail.com";
         if (!superUser.loginPin) superUser.loginPin = "1234";
-        if (!superUser.referralCode) superUser.referralCode = "MESS101";
-        superUser.messGroupId = "hostel_mess_data";
+        if (!superUser.referralCode) superUser.referralCode = "101001";
+        superUser.groupId = DEFAULT_GROUP_ID;
+        superUser.messGroupId = DEFAULT_GROUP_ID;
         superUser.isEmailVerified = true;
       }
       if (parsed.currentUser && (parsed.currentUser.id === "usr_super_admin" || parsed.currentUser.userIdCode === "SADM_001" || parsed.currentUser.name === "Master Super Admin" || parsed.currentUser.name === "Avijit Basu")) {
@@ -140,8 +179,9 @@ let state = (function() {
         parsed.currentUser.userIdCode = "SADM_001";
         if (!parsed.currentUser.email) parsed.currentUser.email = "basua2484@gmail.com";
         if (!parsed.currentUser.loginPin) parsed.currentUser.loginPin = "1234";
-        if (!parsed.currentUser.referralCode) parsed.currentUser.referralCode = "MESS101";
-        parsed.currentUser.messGroupId = "hostel_mess_data";
+        if (!parsed.currentUser.referralCode) parsed.currentUser.referralCode = "101001";
+        parsed.currentUser.groupId = DEFAULT_GROUP_ID;
+        parsed.currentUser.messGroupId = DEFAULT_GROUP_ID;
         parsed.currentUser.isEmailVerified = true;
       }
 
@@ -151,9 +191,10 @@ let state = (function() {
         if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
         if (!u.referralCode) {
           const num = 100 + (idx % 890);
-          u.referralCode = `MESS${num}`;
+          u.referralCode = isSuperAdmin(u) ? "101001" : `MESS${num}`;
         }
-        if (!u.messGroupId) u.messGroupId = "hostel_mess_data";
+        u.groupId = u.groupId || DEFAULT_GROUP_ID;
+        u.messGroupId = u.messGroupId || DEFAULT_GROUP_ID;
         if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
       });
 
@@ -395,11 +436,12 @@ function updateCloudSyncStatus(isOnline, message) {
   const dot = document.getElementById("cloud-sync-dot");
   const text = document.getElementById("cloud-sync-text");
   const time = document.getElementById("cloud-sync-time");
+  const currentGroupId = getActiveGroupId();
   if (dot) {
     dot.className = isOnline ? "pulse-indicator" : "pulse-indicator offline";
   }
   if (text) {
-    text.textContent = message || (isOnline ? "☁️ Realtime DB: Connected • hostel_mess_data" : "⚠️ Local Cache Active");
+    text.textContent = message || (isOnline ? `☁️ Realtime DB: Connected • ${getGroupDbPath(currentGroupId)}` : "⚠️ Local Cache Active");
   }
   if (time) {
     time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -423,11 +465,13 @@ const FirebaseSyncService = {
         firebase.initializeApp(firebaseConfig);
       }
 
+      const activeGroupId = getActiveGroupId();
+
       // Initialize Firebase Realtime Database
       if (typeof firebase.database === "function") {
         try {
           rtdb = firebase.database();
-          rtdb.ref(CENTRAL_DB_NODE).keepSynced(true);
+          rtdb.ref(getGroupDbPath(activeGroupId)).keepSynced(true);
         } catch (e) {
           console.warn("RTDB keepSynced warning:", e);
         }
@@ -441,8 +485,8 @@ const FirebaseSyncService = {
       }
 
       this.isInitialized = true;
-      updateCloudSyncStatus(true, "☁️ Realtime DB: Connected • hostel_mess_data");
-      console.log("✓ Central Realtime Database Connected at node:", CENTRAL_DB_NODE);
+      updateCloudSyncStatus(true, `☁️ Realtime DB: Connected • ${getGroupDbPath(activeGroupId)}`);
+      console.log("✓ Central Realtime Database Connected at group path:", getGroupDbPath(activeGroupId));
 
       this.setupCentralListener();
     } catch (e) {
@@ -457,38 +501,81 @@ const FirebaseSyncService = {
       return;
     }
 
-    this.dbRef = rtdb.ref(CENTRAL_DB_NODE);
+    const activeGroupId = getActiveGroupId();
+    const groupPath = getGroupDbPath(activeGroupId);
+    this.dbRef = rtdb.ref(groupPath);
 
-    // Single Central Realtime Database Listener for all devices
+    // Global Live Realtime Database Listener for Super Admin and all group members
     this.dbRef.on("value", (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        console.log("Empty central database, seeding initial data...");
-        this.seedInitialSuperAdmin();
+        console.log("Empty central group database, seeding initial Super Admin data...");
+        this.seedInitialSuperAdmin(activeGroupId);
         return;
       }
 
-      // Sync all data modules from single central node
-      if (Array.isArray(data.users)) state.users = data.users;
-      else if (data.users && typeof data.users === "object") state.users = Object.values(data.users);
-      else state.users = CLEAN_INITIAL_STATE.users;
+      // 1. Process Users (Supports both object map and array)
+      let loadedUsers = [];
+      if (Array.isArray(data.users)) {
+        loadedUsers = data.users.filter(Boolean);
+      } else if (data.users && typeof data.users === "object") {
+        loadedUsers = Object.values(data.users).filter(Boolean);
+      }
 
-      if (Array.isArray(data.attendanceLog)) state.attendanceLog = data.attendanceLog;
-      else if (data.attendanceLog && typeof data.attendanceLog === "object") state.attendanceLog = Object.values(data.attendanceLog);
+      // Ensure Master Super Admin (Avijit Basu) is always included under the main groupId
+      const superAdminFound = loadedUsers.find(u => isSuperAdmin(u));
+      if (!superAdminFound) {
+        const defaultSuperAdmin = Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+          groupId: activeGroupId,
+          messGroupId: activeGroupId
+        });
+        loadedUsers.unshift(defaultSuperAdmin);
+      } else {
+        superAdminFound.name = "Avijit Basu";
+        superAdminFound.role = "SUPER_ADMIN";
+        superAdminFound.userIdCode = "SADM_001";
+        superAdminFound.email = superAdminFound.email || "basua2484@gmail.com";
+        superAdminFound.loginPin = superAdminFound.loginPin || "1234";
+        superAdminFound.referralCode = superAdminFound.referralCode || "101001";
+        superAdminFound.groupId = activeGroupId;
+        superAdminFound.messGroupId = activeGroupId;
+      }
+
+      // Normalize all users
+      loadedUsers.forEach((u, idx) => {
+        u.groupId = activeGroupId;
+        u.messGroupId = activeGroupId;
+        if (!u.loginPin) u.loginPin = "1234";
+        if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+        if (!u.referralCode) {
+          u.referralCode = isSuperAdmin(u) ? "101001" : `MESS${100 + (idx % 890)}`;
+        }
+        if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
+      });
+
+      state.users = loadedUsers;
+
+      // 2. Process Attendance Log
+      if (Array.isArray(data.attendanceLog)) state.attendanceLog = data.attendanceLog.filter(Boolean);
+      else if (data.attendanceLog && typeof data.attendanceLog === "object") state.attendanceLog = Object.values(data.attendanceLog).filter(Boolean);
       else state.attendanceLog = [];
 
-      if (Array.isArray(data.expensesLog)) state.expensesLog = data.expensesLog;
-      else if (data.expensesLog && typeof data.expensesLog === "object") state.expensesLog = Object.values(data.expensesLog);
+      // 3. Process Expenses Log
+      if (Array.isArray(data.expensesLog)) state.expensesLog = data.expensesLog.filter(Boolean);
+      else if (data.expensesLog && typeof data.expensesLog === "object") state.expensesLog = Object.values(data.expensesLog).filter(Boolean);
       else state.expensesLog = [];
 
-      if (Array.isArray(data.meals)) state.meals = data.meals;
-      else if (data.meals && typeof data.meals === "object") state.meals = Object.values(data.meals);
+      // 4. Process Meals
+      if (Array.isArray(data.meals)) state.meals = data.meals.filter(Boolean);
+      else if (data.meals && typeof data.meals === "object") state.meals = Object.values(data.meals).filter(Boolean);
       else state.meals = [];
 
-      if (Array.isArray(data.pendingLeaves)) state.pendingLeaves = data.pendingLeaves;
-      else if (data.pendingLeaves && typeof data.pendingLeaves === "object") state.pendingLeaves = Object.values(data.pendingLeaves);
+      // 5. Process Pending Leaves
+      if (Array.isArray(data.pendingLeaves)) state.pendingLeaves = data.pendingLeaves.filter(Boolean);
+      else if (data.pendingLeaves && typeof data.pendingLeaves === "object") state.pendingLeaves = Object.values(data.pendingLeaves).filter(Boolean);
       else state.pendingLeaves = [];
 
+      // 6. Process Settings & Defaults
       if (data.mealDefaults && typeof data.mealDefaults === "object") {
         state.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, data.mealDefaults);
       }
@@ -496,7 +583,7 @@ const FirebaseSyncService = {
         state.roomRentPerPerson = data.roomRentPerPerson;
       }
 
-      // Preserve or update current session
+      // Preserve active user session or link to Super Admin
       const currentId = state.currentUser ? state.currentUser.id : "usr_super_admin";
       const matched = (state.users || []).find(u => u.id === currentId);
       if (matched) {
@@ -506,11 +593,11 @@ const FirebaseSyncService = {
         state.currentUser = superAdm || state.users[0];
       }
 
-      // Save local cache and render UI across all active devices
+      // Auto-recalculate and render all UI components in real time
       saveLocalState();
       renderUI();
       updateRoleQuotaUI();
-      updateCloudSyncStatus(true, "☁️ Realtime DB: Synced Live • hostel_mess_data");
+      updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${groupPath}`);
     }, (error) => {
       console.error("RTDB value listener error:", error);
       updateCloudSyncStatus(false, "⚠️ Sync Disconnected");
@@ -558,10 +645,28 @@ const FirebaseSyncService = {
     });
   },
 
-  // Save whole state to single central node in Realtime DB
+  // Save whole state to shared group path in Realtime DB
   async syncAllToCloud() {
+    const groupId = getActiveGroupId();
+    const groupPath = getGroupDbPath(groupId);
+
+    const usersMap = {};
+    (state.users || []).forEach(u => {
+      if (u && u.id) {
+        u.groupId = groupId;
+        u.messGroupId = groupId;
+        usersMap[u.id] = u;
+      }
+    });
+
     const payload = {
-      users: state.users || [],
+      info: {
+        groupId: groupId,
+        name: (state.mealDefaults && state.mealDefaults.messName) || "Hostel Central Mess",
+        masterAdmin: "Avijit Basu",
+        updatedAt: Date.now()
+      },
+      users: usersMap,
       attendanceLog: state.attendanceLog || [],
       expensesLog: state.expensesLog || [],
       meals: state.meals || [],
@@ -574,8 +679,8 @@ const FirebaseSyncService = {
 
     if (rtdb) {
       try {
-        await rtdb.ref(CENTRAL_DB_NODE).set(payload);
-        updateCloudSyncStatus(true, "☁️ Realtime DB: Synced Live • hostel_mess_data");
+        await rtdb.ref(groupPath).set(payload);
+        updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${groupPath}`);
         return;
       } catch (e) {
         console.warn("RTDB set error:", e);
@@ -584,7 +689,7 @@ const FirebaseSyncService = {
 
     // Direct REST push fallback
     try {
-      fetch(`https://hostel-management-96f81-default-rtdb.firebaseio.com/${CENTRAL_DB_NODE}.json`, {
+      fetch(`https://hostel-management-96f81-default-rtdb.firebaseio.com/${groupPath}.json`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -603,78 +708,185 @@ const FirebaseSyncService = {
     }
   },
 
-  async seedInitialSuperAdmin() {
-    const adminUser = CLEAN_INITIAL_STATE.currentUser;
+  async seedInitialSuperAdmin(groupId = getActiveGroupId()) {
+    const adminUser = Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+      groupId: groupId,
+      messGroupId: groupId
+    });
     state.users = [adminUser];
+    state.currentUser = adminUser;
     await this.syncAllToCloud();
-    console.log("✓ Initial Super Admin seeded in hostel_mess_data!");
+    console.log("✓ Initial Super Admin seeded in group path:", getGroupDbPath(groupId));
   },
 
   async saveUser(user) {
     if (!user || !user.id) return;
+    const groupId = user.groupId || getActiveGroupId();
+    user.groupId = groupId;
+    user.messGroupId = groupId;
+
     const idx = (state.users || []).findIndex(u => u.id === user.id);
     if (idx >= 0) state.users[idx] = user;
-    else state.users.push(user);
+    else (state.users = state.users || []).push(user);
+
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/users/${user.id}`).set(user);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+        updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${getGroupDbPath(groupId)}/users`);
+        return;
+      } catch (e) {
+        console.warn("RTDB saveUser error:", e);
+      }
+    }
     await this.syncAllToCloud();
   },
 
   async deleteUser(userId) {
     if (!userId) return;
+    const groupId = getActiveGroupId();
     state.users = (state.users || []).filter(u => u.id !== userId);
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/users/${userId}`).remove();
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+      } catch (e) {
+        console.warn("RTDB deleteUser error:", e);
+      }
+    }
     await this.syncAllToCloud();
   },
 
   async saveAttendance(record) {
     if (!record || !record.id) return;
+    const groupId = getActiveGroupId();
     const idx = (state.attendanceLog || []).findIndex(r => r.id === record.id);
     if (idx >= 0) state.attendanceLog[idx] = record;
-    else state.attendanceLog.push(record);
+    else (state.attendanceLog = state.attendanceLog || []).push(record);
+
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/attendanceLog`).set(state.attendanceLog);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+        updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${getGroupDbPath(groupId)}`);
+        return;
+      } catch (e) {
+        console.warn("RTDB saveAttendance error:", e);
+      }
+    }
     await this.syncAllToCloud();
   },
 
   async deleteAttendance(recordId) {
     if (!recordId) return;
+    const groupId = getActiveGroupId();
     state.attendanceLog = (state.attendanceLog || []).filter(r => r.id !== recordId);
+    saveLocalState();
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/attendanceLog`).set(state.attendanceLog);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+      } catch (e) {}
+    }
     await this.syncAllToCloud();
   },
 
   async saveExpense(expense) {
     if (!expense || !expense.id) return;
+    const groupId = getActiveGroupId();
     const idx = (state.expensesLog || []).findIndex(e => e.id === expense.id);
     if (idx >= 0) state.expensesLog[idx] = expense;
-    else state.expensesLog.push(expense);
+    else (state.expensesLog = state.expensesLog || []).push(expense);
+
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/expensesLog`).set(state.expensesLog);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+        updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${getGroupDbPath(groupId)}`);
+        return;
+      } catch (e) {}
+    }
     await this.syncAllToCloud();
   },
 
   async deleteExpense(expenseId) {
     if (!expenseId) return;
+    const groupId = getActiveGroupId();
     state.expensesLog = (state.expensesLog || []).filter(e => e.id !== expenseId);
+    saveLocalState();
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/expensesLog`).set(state.expensesLog);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+      } catch (e) {}
+    }
     await this.syncAllToCloud();
   },
 
   async saveLeave(leave) {
     if (!leave || !leave.id) return;
+    const groupId = getActiveGroupId();
     const idx = (state.pendingLeaves || []).findIndex(l => l.id === leave.id);
     if (idx >= 0) state.pendingLeaves[idx] = leave;
-    else state.pendingLeaves.push(leave);
+    else (state.pendingLeaves = state.pendingLeaves || []).push(leave);
+
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/pendingLeaves`).set(state.pendingLeaves);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+      } catch (e) {}
+    }
     await this.syncAllToCloud();
   },
 
   async deleteLeave(leaveId) {
     if (!leaveId) return;
+    const groupId = getActiveGroupId();
     state.pendingLeaves = (state.pendingLeaves || []).filter(l => l.id !== leaveId);
+    saveLocalState();
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/pendingLeaves`).set(state.pendingLeaves);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+      } catch (e) {}
+    }
     await this.syncAllToCloud();
   },
 
   async saveMeal(meal) {
     if (!meal || !meal.id) return;
+    const groupId = getActiveGroupId();
     const idx = (state.meals || []).findIndex(m => m.id === meal.id);
     if (idx >= 0) state.meals[idx] = meal;
-    else state.meals.push(meal);
+    else (state.meals = state.meals || []).push(meal);
+
+    saveLocalState();
+
+    if (rtdb) {
+      try {
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/meals`).set(state.meals);
+        await rtdb.ref(`${DB_ROOT_PATH}/groups/${groupId}/lastUpdated`).set(Date.now());
+        updateCloudSyncStatus(true, `☁️ Realtime DB: Synced Live • ${getGroupDbPath(groupId)}`);
+        return;
+      } catch (e) {
+        console.warn("RTDB saveMeal error:", e);
+      }
+    }
     await this.syncAllToCloud();
   },
 
   async saveSettings(settings) {
+    const groupId = getActiveGroupId();
     if (settings && typeof settings.roomRentPerPerson === "number") {
       state.roomRentPerPerson = settings.roomRentPerPerson;
       if (!state.mealDefaults) state.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG);
@@ -700,9 +912,21 @@ const FirebaseSyncService = {
   },
 
   async resetDatabase() {
-    updateCloudSyncStatus(true, "⏳ Resetting Realtime Database (hostel_mess_data)...");
+    const groupId = getActiveGroupId();
+    updateCloudSyncStatus(true, `⏳ Resetting Realtime Database (${getGroupDbPath(groupId)})...`);
+    const defaultAdmin = Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+      groupId: groupId,
+      messGroupId: groupId
+    });
+
     const freshPayload = {
-      users: [CLEAN_INITIAL_STATE.currentUser],
+      info: {
+        groupId: groupId,
+        name: "Hostel Central Mess",
+        masterAdmin: "Avijit Basu",
+        updatedAt: Date.now()
+      },
+      users: { [defaultAdmin.id]: defaultAdmin },
       attendanceLog: [],
       expensesLog: [],
       meals: [],
@@ -715,7 +939,7 @@ const FirebaseSyncService = {
     };
 
     if (rtdb) {
-      await rtdb.ref(CENTRAL_DB_NODE).set(freshPayload);
+      await rtdb.ref(getGroupDbPath(groupId)).set(freshPayload);
     }
     if (db) {
       const collections = ["attendance", "expenses", "leaves", "meals", "users"];
@@ -727,14 +951,19 @@ const FirebaseSyncService = {
           await batch.commit().catch(() => {});
         }
       }
-      await db.collection("users").doc(freshPayload.users[0].id).set(freshPayload.users[0]);
+      await db.collection("users").doc(defaultAdmin.id).set(defaultAdmin);
     }
 
     state = JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
+    state.groupId = groupId;
+    state.currentGroupId = groupId;
+    state.users = [defaultAdmin];
+    state.currentUser = defaultAdmin;
+
     saveLocalState();
     renderUI();
-    updateCloudSyncStatus(true, "☁️ Realtime DB: Fresh Database Ready");
-    console.log("✓ Central Realtime Database Reset Cleanly!");
+    updateCloudSyncStatus(true, `☁️ Realtime DB: Fresh Database Ready (${getGroupDbPath(groupId)})`);
+    console.log("✓ Central Realtime Database Reset Cleanly for group:", groupId);
   }
 };
 
@@ -2543,15 +2772,32 @@ function renderAdminScreen() {
   const isMgr = isManager(user);
   const isEmp = isEmployee(user) || isCook(user);
 
-  const activeUsers = (state.users || []).filter(u => u.status === 'ACTIVE').length;
+  const allUsers = state.users || [];
+  const activeUsers = allUsers.filter(u => u.status === 'ACTIVE').length;
+  
+  // Real-time live duty punch & meal metrics
+  const today = getTodayString();
+  const activeAttendance = (state.attendanceLog || []).filter(a => a.date === today && a.status === 'ACTIVE');
+  const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
+  const onDutyCount = onDutyUserIds.size;
+
+  const lunchCount = (state.meals || []).filter(m => m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+  const dinnerCount = (state.meals || []).filter(m => m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+
   const totalPlates = getTotalConsumedPlates();
   const plateRate = getDynamicPlateRate();
 
   const memCountEl = document.getElementById("admin-members-count");
+  const onDutyEl = document.getElementById("admin-onduty-count");
+  const lunchCountEl = document.getElementById("admin-lunch-count");
+  const dinnerCountEl = document.getElementById("admin-dinner-count");
   const platesCountEl = document.getElementById("admin-plates-count");
   const rateDisplayEl = document.getElementById("admin-rate-display");
 
   if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
+  if (onDutyEl) onDutyEl.textContent = isEmp ? "🔒" : onDutyCount;
+  if (lunchCountEl) lunchCountEl.textContent = isEmp ? "🔒" : lunchCount;
+  if (dinnerCountEl) dinnerCountEl.textContent = isEmp ? "🔒" : dinnerCount;
   if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
   if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${plateRate.toFixed(2)}`;
 
@@ -3347,13 +3593,45 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     });
   }
 
-  // Generate unique 6-digit Referral ID (e.g. MESS101 - MESS999)
+  // Force groupId to match referrer's (Super Admin's) groupId
+  const targetGroupId = (referrerUser && (referrerUser.groupId || referrerUser.messGroupId)) || getActiveGroupId() || DEFAULT_GROUP_ID;
+
+  // Check if a user with same mobile or email already exists to prevent duplicate isolated local profiles
+  const existingDuplicate = (state.users || []).find(u => 
+    (cleanMobile && u.mobile && u.mobile === cleanMobile) || 
+    (finalEmail && u.email && u.email.toLowerCase() === finalEmail.toLowerCase())
+  );
+
+  if (existingDuplicate) {
+    // Update existing user profile bound to target group
+    existingDuplicate.name = name;
+    existingDuplicate.email = finalEmail;
+    existingDuplicate.mobile = cleanMobile;
+    existingDuplicate.loginPin = finalPin;
+    existingDuplicate.role = role;
+    existingDuplicate.assignedRoom = room || existingDuplicate.assignedRoom || "101";
+    existingDuplicate.currentShift = shift || existingDuplicate.currentShift || "OFF_DUTY";
+    existingDuplicate.groupId = targetGroupId;
+    existingDuplicate.messGroupId = targetGroupId;
+    if (referrerUser) {
+      existingDuplicate.referredBy = referrerUser.id;
+      existingDuplicate.referrerName = referrerUser.name;
+      existingDuplicate.referredCode = refCodeEntered;
+    }
+
+    state.currentUser = existingDuplicate;
+    FirebaseSyncService.saveUser(existingDuplicate);
+    saveState();
+    renderUI();
+    closeModal("modal-user-form");
+    alert(`🎉 Welcome back, ${existingDuplicate.name}!\n\nYour profile has been connected to Group: "${targetGroupId}"\nShared Path: ${getGroupDbPath(targetGroupId)}/users\nReferral ID: ${existingDuplicate.referralCode}`);
+    return;
+  }
+
+  // Generate unique 6-digit Referral ID (e.g. 100000 - 999999)
   const myUniqueRefId = ReferralService.generateUniqueReferralId();
   const prefix = role === "ADMIN" ? "ADM" : (role === "MANAGER" ? "MGR" : (role === "COOK" ? "CK" : "EMP"));
   const generatedCode = code || `${prefix}_${Math.floor(100 + Math.random() * 900)}`;
-
-  const currentActor = state.currentUser || state.users[0];
-  const isMasterAdminCreating = currentActor && isSuperAdmin(currentActor);
 
   const newUser = {
     id: "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
@@ -3367,10 +3645,11 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     status: "ACTIVE",
     currentShift: shift || "OFF_DUTY",
     referralCode: myUniqueRefId,
-    messGroupId: "hostel_mess_data",
-    referredBy: referrerUser ? referrerUser.id : (refCodeEntered || null),
-    referrerName: referrerUser ? referrerUser.name : (refCodeEntered ? "Mess Member" : null),
-    referredCode: refCodeEntered || null,
+    groupId: targetGroupId,
+    messGroupId: targetGroupId,
+    referredBy: referrerUser ? referrerUser.id : (refCodeEntered || "usr_super_admin"),
+    referrerName: referrerUser ? referrerUser.name : (refCodeEntered ? "Mess Member" : "Avijit Basu"),
+    referredCode: refCodeEntered || "101001",
     isEmailVerified: true,
     isOtpVerified: true,
     createdAt: Date.now()
@@ -3403,7 +3682,7 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   renderUI();
   closeModal("modal-user-form");
 
-  alert(`🎉 Welcome to Hostel Mess, ${newUser.name}!\n\nYour Unique Referral ID: ${newUser.referralCode}\nGroup Database: hostel_mess_data\nAccount PIN: ${newUser.loginPin}\n\nYou are now logged in and connected to the shared mess group!`);
+  alert(`🎉 Welcome to Hostel Mess, ${newUser.name}!\n\nYour Unique Referral ID: ${newUser.referralCode}\nGroup: ${targetGroupId} (${getGroupDbPath(targetGroupId)})\nAccount PIN: ${newUser.loginPin}\n\nYou are now logged in and synced to the central mess database!`);
 });
 
 // ==========================================
@@ -4044,11 +4323,12 @@ function getUserReferralCode(user) {
 function getInviteLink(user) {
   const u = user || state.currentUser || state.users[0];
   const code = getUserReferralCode(u);
+  const groupId = (u && (u.groupId || u.messGroupId)) || getActiveGroupId() || DEFAULT_GROUP_ID;
   const cleanPath = window.location.pathname.replace(/\/index\.html\/?$/, '/') || '/';
   const base = window.location.origin + cleanPath;
   const inviterName = encodeURIComponent(u.name || "Avijit Basu");
   const inviterId = encodeURIComponent(u.id || "usr_super_admin");
-  return `${base}?ref=${encodeURIComponent(code)}&messId=hostel_mess_data&by=${inviterId}&name=${inviterName}`;
+  return `${base}?ref=${encodeURIComponent(code)}&groupId=${encodeURIComponent(groupId)}&messId=${encodeURIComponent(groupId)}&by=${inviterId}&name=${inviterName}`;
 }
 
 function openReferralModal() {
@@ -4110,8 +4390,9 @@ function shareReferralOnWhatsApp(u) {
   const user = u || state.currentUser || state.users[0];
   if (!user) return;
   const code = getUserReferralCode(user);
+  const groupId = (user && (user.groupId || user.messGroupId)) || getActiveGroupId() || DEFAULT_GROUP_ID;
   const inviteUrl = getInviteLink(user);
-  const msg = `👋 *Hostel & Mess Management Portal*\n\nHey! *${user.name}* invited you to join our Hostel Mess, Shifts & Meal group (*hostel_mess_data*).\n\n🔗 *Tap to Join:* ${inviteUrl}\n🎟️ *Referral Code:* *${code}*\n🏢 *Mess Group ID:* *hostel_mess_data*\n\n✨ *Features:*\n• Live Duty Punch In/Out & GPS Shifts\n• Daily Meal Booking & Kitchen Count\n• Shared Transparent Mess Expenses & Billing\n• Real-Time Member Directory`;
+  const msg = `👋 *Hostel & Mess Management Portal*\n\nHey! *${user.name}* invited you to join our Hostel Mess, Shifts & Meal group (*${groupId}*).\n\n🔗 *Tap to Join:* ${inviteUrl}\n🎟️ *Referral Code:* *${code}*\n🏢 *Mess Group ID:* *${groupId}*\n\n✨ *Features:*\n• Live Duty Punch In/Out & GPS Shifts\n• Daily Meal Booking & Kitchen Count\n• Shared Transparent Mess Expenses & Billing\n• Real-Time Member Directory`;
   const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
   window.open(waUrl, "_blank");
 }
@@ -4166,7 +4447,10 @@ function joinGroupByReferralId(refId) {
     return uRef === cleanId || (u.mobile && u.mobile === cleanId) || (u.userIdCode && u.userIdCode.toUpperCase() === cleanId);
   });
 
-  user.messGroupId = "hostel_mess_data";
+  const targetGroupId = (referrer && (referrer.groupId || referrer.messGroupId)) || getActiveGroupId() || DEFAULT_GROUP_ID;
+
+  user.groupId = targetGroupId;
+  user.messGroupId = targetGroupId;
   user.referredCode = cleanId;
   if (referrer) {
     user.referredBy = referrer.id;
@@ -4178,9 +4462,9 @@ function joinGroupByReferralId(refId) {
   renderUI();
 
   if (referrer) {
-    alert(`🎉 Successfully Connected!\n\nYou have joined the Mess Group via ${referrer.name}'s Referral ID (${cleanId}).\nShared Database: hostel_mess_data`);
+    alert(`🎉 Successfully Connected!\n\nYou have joined the Mess Group via ${referrer.name}'s Referral ID (${cleanId}).\nShared Database: ${getGroupDbPath(targetGroupId)}`);
   } else {
-    alert(`✓ Connected to Mess Group (${cleanId})!\nShared Database: hostel_mess_data`);
+    alert(`✓ Connected to Mess Group (${cleanId})!\nShared Database: ${getGroupDbPath(targetGroupId)}`);
   }
 }
 
