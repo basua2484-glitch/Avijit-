@@ -488,10 +488,109 @@ const FirebaseSyncService = {
       updateCloudSyncStatus(true, `☁️ Realtime DB: Connected • ${getGroupDbPath(activeGroupId)}`);
       console.log("✓ Central Realtime Database Connected at group path:", getGroupDbPath(activeGroupId));
 
+      // Trigger legacy migration and setup real-time listeners
+      this.checkAndMigrateLegacyUsers();
       this.setupCentralListener();
     } catch (e) {
       console.error("Firebase Realtime DB init error:", e);
       updateCloudSyncStatus(false, "⚠️ Local Cache Active");
+    }
+  },
+
+  // 1. Dynamic Legacy Migration: Auto-migrate any users stored outside hostel_mess_data/groups/main_mess/users
+  async checkAndMigrateLegacyUsers() {
+    if (!rtdb) return;
+
+    try {
+      console.log("🔍 Checking for legacy users to auto-migrate into hostel_mess_data/groups/main_mess/users...");
+      const targetGroup = "main_mess";
+      const targetGroupUsersPath = `${DB_ROOT_PATH}/groups/${targetGroup}/users`;
+
+      // Check legacy root node 'hostel_mess_data/users'
+      rtdb.ref(`${DB_ROOT_PATH}/users`).once("value").then((snapshot) => {
+        const legacyUsersVal = snapshot.val();
+        if (legacyUsersVal) {
+          let legacyList = [];
+          if (Array.isArray(legacyUsersVal)) legacyList = legacyUsersVal.filter(Boolean);
+          else if (typeof legacyUsersVal === "object") legacyList = Object.values(legacyUsersVal).filter(Boolean);
+
+          legacyList.forEach((u) => {
+            if (u && u.id) {
+              const migratedUser = Object.assign({}, u, {
+                groupId: targetGroup,
+                messGroupId: targetGroup
+              });
+              rtdb.ref(`${targetGroupUsersPath}/${u.id}`).set(migratedUser);
+              console.log(`✓ Migrated legacy user ${u.name || u.id} from hostel_mess_data/users to ${targetGroupUsersPath}/${u.id}`);
+            }
+          });
+        }
+      }).catch((e) => console.warn("Legacy users check error:", e));
+
+      // Check if top-level root 'hostel_mess_data' has users directly
+      rtdb.ref(DB_ROOT_PATH).once("value").then((snapshot) => {
+        const rootVal = snapshot.val();
+        if (rootVal && rootVal.users) {
+          let rootUsersList = [];
+          if (Array.isArray(rootVal.users)) rootUsersList = rootVal.users.filter(Boolean);
+          else if (typeof rootVal.users === "object") rootUsersList = Object.values(rootVal.users).filter(Boolean);
+
+          rootUsersList.forEach((u) => {
+            if (u && u.id) {
+              const migratedUser = Object.assign({}, u, {
+                groupId: targetGroup,
+                messGroupId: targetGroup
+              });
+              rtdb.ref(`${targetGroupUsersPath}/${u.id}`).set(migratedUser);
+              console.log(`✓ Migrated user ${u.name || u.id} from root to ${targetGroupUsersPath}/${u.id}`);
+            }
+          });
+        }
+      }).catch((e) => console.warn("Root users migration error:", e));
+
+      // Also migrate current logged in user from local state if missing in group
+      if (state.currentUser && state.currentUser.id) {
+        const curr = Object.assign({}, state.currentUser, {
+          groupId: targetGroup,
+          messGroupId: targetGroup
+        });
+        rtdb.ref(`${targetGroupUsersPath}/${curr.id}`).set(curr);
+      }
+
+      // Check Firestore auxiliary collection for any unmigrated users
+      if (db) {
+        db.collection("users").get().then((snap) => {
+          if (!snap.empty) {
+            snap.forEach((doc) => {
+              const data = doc.data();
+              const uId = doc.id || (data && data.id);
+              if (uId) {
+                const firestoreUser = Object.assign({}, data, {
+                  id: uId,
+                  groupId: targetGroup,
+                  messGroupId: targetGroup
+                });
+                rtdb.ref(`${targetGroupUsersPath}/${uId}`).set(firestoreUser);
+                console.log(`✓ Migrated user ${firestoreUser.name || uId} from Firestore to ${targetGroupUsersPath}/${uId}`);
+              }
+            });
+          }
+        }).catch((e) => {});
+      }
+
+      // Watch for any future direct writes to legacy 'hostel_mess_data/users' and auto-forward them
+      rtdb.ref(`${DB_ROOT_PATH}/users`).on("child_added", (childSnap) => {
+        const val = childSnap.val();
+        if (val && val.id) {
+          const autoMigrated = Object.assign({}, val, {
+            groupId: targetGroup,
+            messGroupId: targetGroup
+          });
+          rtdb.ref(`${targetGroupUsersPath}/${val.id}`).set(autoMigrated);
+        }
+      });
+    } catch (err) {
+      console.warn("checkAndMigrateLegacyUsers error:", err);
     }
   },
 
@@ -503,7 +602,33 @@ const FirebaseSyncService = {
 
     const activeGroupId = getActiveGroupId();
     const groupPath = getGroupDbPath(activeGroupId);
+    const usersPath = `${DB_ROOT_PATH}/groups/${activeGroupId}/users`;
     this.dbRef = rtdb.ref(groupPath);
+
+    // Global Live Realtime Database Listener on the group users node for instant member count reflection
+    rtdb.ref(usersPath).on("value", (usersSnap) => {
+      const usersData = usersSnap.val();
+      if (usersData) {
+        let loadedUsers = [];
+        if (Array.isArray(usersData)) loadedUsers = usersData.filter(Boolean);
+        else if (typeof usersData === "object") loadedUsers = Object.values(usersData).filter(Boolean);
+
+        // Ensure Super Admin exists
+        const superFound = loadedUsers.find(u => isSuperAdmin(u));
+        if (!superFound) {
+          loadedUsers.unshift(Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+            groupId: activeGroupId,
+            messGroupId: activeGroupId
+          }));
+        }
+
+        // Merge loaded users into state
+        state.users = loadedUsers;
+        saveLocalState();
+        renderUI();
+        updateRoleQuotaUI();
+      }
+    });
 
     // Global Live Realtime Database Listener for Super Admin and all group members
     this.dbRef.on("value", (snapshot) => {
