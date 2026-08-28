@@ -121,21 +121,197 @@ const CLEAN_INITIAL_STATE = {
   selectedAttendanceTypeFilter: "ALL"
 };
 
-// Load or initialize state from LocalStorage
+// ==========================================
+// RBAC ROLE HIERARCHY & PERMISSION HELPERS
+// ==========================================
+function isSuperAdmin(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  if (!user) return false;
+  return user.role === "SUPER_ADMIN" || user.userIdCode === "SADM_001" || user.id === "usr_super_admin" || user.name === "Avijit Basu" || (user.role === "ADMIN" && user.userIdCode === "ADM_001");
+}
+
+function isNormalAdmin(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  if (!user) return false;
+  return user.role === "ADMIN" && !isSuperAdmin(user);
+}
+
+function isManager(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  if (!user) return false;
+  return user.role === "MANAGER";
+}
+
+function isEmployee(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  if (!user) return false;
+  return user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "STAFF";
+}
+
+function isCook(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  if (!user) return false;
+  return user.role === "COOK";
+}
+
+// Check if currently authenticated user has authorization to onboard new employees/residents
+function isAuthorizedToOnboardUsers(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const hasRefCode = Boolean(sessionStorage.getItem("hostel_mess_ref_code") || (document.getElementById("form-user-referral-code") && document.getElementById("form-user-referral-code").value.trim()));
+  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user) || hasRefCode;
+}
+
+// Check if user has permission to approve employee kitchen purchase requests
+function canApprovePurchaseRequests(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
+}
+
+// Check if user has permission to approve user registrations (Super Admin exclusive)
+function canApproveUserRegistrations(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  return isSuperAdmin(user);
+}
+
+// Check if user has master deletion permission (Super Admin exclusive)
+function canDeleteData(u) {
+  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  return isSuperAdmin(user);
+}
+
+// ==========================================
+// SINGLE ACCOUNT DEDUPLICATION ENGINE
+// ==========================================
+function deduplicateUsers(userList) {
+  if (!userList) return [];
+  const rawArray = Array.isArray(userList) ? userList : (typeof userList === "object" ? Object.values(userList) : []);
+  if (rawArray.length === 0) return [];
+
+  const uniqueMap = new Map();
+
+  rawArray.forEach((rawUser, idx) => {
+    if (!rawUser) return;
+    const u = Object.assign({}, rawUser);
+
+    // Normalize basic fields with fallbacks
+    u.id = u.id || `usr_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`;
+    u.name = u.name || "Resident";
+    u.role = u.role || "RESIDENT";
+    u.status = u.status || "ACTIVE";
+    u.currentShift = u.currentShift || u.shift || "OFF_DUTY";
+    u.shift = u.currentShift;
+    u.assignedRoom = u.assignedRoom || "101";
+    u.loginPin = u.loginPin || "1234";
+    u.groupId = MAIN_GROUP_ID;
+    u.messGroupId = MAIN_GROUP_ID;
+    if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
+
+    const isSuper = isSuperAdmin(u);
+    const cleanMob = String(u.mobile || "").trim().replace(/\D/g, "");
+    const cleanEmail = String(u.email || "").trim().toLowerCase();
+    const cleanCode = String(u.userIdCode || "").trim().toUpperCase();
+
+    // Match priority: Super Admin key -> Clean Mobile -> Clean Email -> User ID Code -> User ID
+    let matchKey = null;
+    if (isSuper) {
+      matchKey = "SUPER_ADMIN_MASTER";
+    } else if (cleanMob && cleanMob.length >= 10) {
+      matchKey = `MOB_${cleanMob}`;
+    } else if (cleanEmail && cleanEmail.includes("@") && !cleanEmail.endsWith("@example.com")) {
+      matchKey = `EMAIL_${cleanEmail}`;
+    } else if (cleanCode && cleanCode !== "EMP" && cleanCode !== "N/A") {
+      matchKey = `CODE_${cleanCode}`;
+    } else {
+      matchKey = `ID_${u.id}`;
+    }
+
+    if (!uniqueMap.has(matchKey)) {
+      uniqueMap.set(matchKey, u);
+    } else {
+      // Duplicate entry found: Keep the most recently updated entry
+      const existing = uniqueMap.get(matchKey);
+      const existingTime = Number(existing.updatedAt || existing.createdAt || existing.lastLoginAt || 0);
+      const newTime = Number(u.updatedAt || u.createdAt || u.lastLoginAt || 0);
+
+      if (newTime >= existingTime) {
+        uniqueMap.set(matchKey, Object.assign({}, existing, u));
+      } else {
+        uniqueMap.set(matchKey, Object.assign({}, u, existing));
+      }
+    }
+  });
+
+  const result = Array.from(uniqueMap.values());
+
+  // Ensure Super Admin (Avijit Basu) is always present
+  const superAdminFound = result.find(u => isSuperAdmin(u));
+  if (!superAdminFound) {
+    result.unshift(Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+      groupId: MAIN_GROUP_ID,
+      messGroupId: MAIN_GROUP_ID
+    }));
+  } else {
+    superAdminFound.name = "Avijit Basu";
+    superAdminFound.role = "SUPER_ADMIN";
+    superAdminFound.userIdCode = "SADM_001";
+    superAdminFound.email = superAdminFound.email || "basua2484@gmail.com";
+    superAdminFound.loginPin = superAdminFound.loginPin || "1234";
+    superAdminFound.referralCode = superAdminFound.referralCode || "101001";
+    superAdminFound.groupId = MAIN_GROUP_ID;
+    superAdminFound.messGroupId = MAIN_GROUP_ID;
+  }
+
+  return result;
+}
+
+// Load or initialize state from LocalStorage with cache invalidation for stale groupIds
 let state = (function() {
   try {
     const saved = localStorage.getItem("hostel_mess_state_v2");
+    const storedGroupId = localStorage.getItem("hostel_mess_group_id") || sessionStorage.getItem("hostel_mess_group_id");
+
     if (saved) {
       const parsed = JSON.parse(saved);
+
+      // 1. Clear Stale Local Storage Cache if groupId is different from 'hostel_central_mess'
+      const isStale = (parsed.groupId && parsed.groupId !== MAIN_GROUP_ID) || 
+                      (parsed.currentGroupId && parsed.currentGroupId !== MAIN_GROUP_ID) ||
+                      (storedGroupId && storedGroupId !== MAIN_GROUP_ID);
+
+      if (isStale) {
+        console.log("🧹 Stale group cache detected. Resetting cache and updating groupId to:", MAIN_GROUP_ID);
+        localStorage.removeItem("hostel_mess_state_v2");
+        localStorage.setItem("hostel_mess_group_id", MAIN_GROUP_ID);
+        sessionStorage.setItem("hostel_mess_group_id", MAIN_GROUP_ID);
+
+        let sanitizedUsers = parsed.users && Array.isArray(parsed.users) ? parsed.users : CLEAN_INITIAL_STATE.users;
+        sanitizedUsers.forEach(u => {
+          if (u) {
+            u.groupId = MAIN_GROUP_ID;
+            u.messGroupId = MAIN_GROUP_ID;
+          }
+        });
+
+        parsed.groupId = MAIN_GROUP_ID;
+        parsed.currentGroupId = MAIN_GROUP_ID;
+        parsed.users = deduplicateUsers(sanitizedUsers);
+        if (parsed.currentUser) {
+          parsed.currentUser.groupId = MAIN_GROUP_ID;
+          parsed.currentUser.messGroupId = MAIN_GROUP_ID;
+        }
+      }
+
       // Ensure arrays exist
       if (!parsed.attendanceLog) parsed.attendanceLog = [];
       if (!parsed.expensesLog) parsed.expensesLog = [];
+      if (!parsed.meals) parsed.meals = [];
+      if (!parsed.pendingLeaves) parsed.pendingLeaves = [];
       if (!parsed.users || parsed.users.length === 0) parsed.users = CLEAN_INITIAL_STATE.users;
       if (!parsed.selectedAttendanceDateFilter) parsed.selectedAttendanceDateFilter = "ALL";
       if (!parsed.selectedAttendanceUserFilter) parsed.selectedAttendanceUserFilter = "ALL";
       if (!parsed.selectedAttendanceTypeFilter) parsed.selectedAttendanceTypeFilter = "ALL";
-      if (!parsed.groupId) parsed.groupId = DEFAULT_GROUP_ID;
-      if (!parsed.currentGroupId) parsed.currentGroupId = DEFAULT_GROUP_ID;
+      parsed.groupId = MAIN_GROUP_ID;
+      parsed.currentGroupId = MAIN_GROUP_ID;
 
       // Ensure mealDefaults exist
       parsed.mealDefaults = Object.assign({}, DEFAULT_MEAL_CONFIG, parsed.mealDefaults || {});
@@ -144,8 +320,8 @@ let state = (function() {
         parsed.roomRentPerPerson = parsed.mealDefaults.roomRentPerPerson || 1500;
       }
 
-      // Ensure Master Super Admin is Avijit Basu with email & PIN & main_mess groupId
-      const superUser = parsed.users.find(u => u.id === "usr_super_admin" || u.userIdCode === "SADM_001" || u.name === "Master Super Admin" || u.name === "Avijit Basu");
+      // Ensure Master Super Admin is Avijit Basu
+      const superUser = parsed.users.find(u => isSuperAdmin(u));
       if (superUser) {
         superUser.name = "Avijit Basu";
         superUser.role = "SUPER_ADMIN";
@@ -153,34 +329,24 @@ let state = (function() {
         if (!superUser.email) superUser.email = "basua2484@gmail.com";
         if (!superUser.loginPin) superUser.loginPin = "1234";
         if (!superUser.referralCode) superUser.referralCode = "101001";
-        superUser.groupId = DEFAULT_GROUP_ID;
-        superUser.messGroupId = DEFAULT_GROUP_ID;
+        superUser.groupId = MAIN_GROUP_ID;
+        superUser.messGroupId = MAIN_GROUP_ID;
         superUser.isEmailVerified = true;
       }
-      if (parsed.currentUser && (parsed.currentUser.id === "usr_super_admin" || parsed.currentUser.userIdCode === "SADM_001" || parsed.currentUser.name === "Master Super Admin" || parsed.currentUser.name === "Avijit Basu")) {
+      if (parsed.currentUser && isSuperAdmin(parsed.currentUser)) {
         parsed.currentUser.name = "Avijit Basu";
         parsed.currentUser.role = "SUPER_ADMIN";
         parsed.currentUser.userIdCode = "SADM_001";
         if (!parsed.currentUser.email) parsed.currentUser.email = "basua2484@gmail.com";
         if (!parsed.currentUser.loginPin) parsed.currentUser.loginPin = "1234";
         if (!parsed.currentUser.referralCode) parsed.currentUser.referralCode = "101001";
-        parsed.currentUser.groupId = DEFAULT_GROUP_ID;
-        parsed.currentUser.messGroupId = DEFAULT_GROUP_ID;
+        parsed.currentUser.groupId = MAIN_GROUP_ID;
+        parsed.currentUser.messGroupId = MAIN_GROUP_ID;
         parsed.currentUser.isEmailVerified = true;
       }
 
-      // Ensure all users have default loginPin, referralCode and email if missing
-      parsed.users.forEach((u, idx) => {
-        if (!u.loginPin) u.loginPin = "1234";
-        if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-        if (!u.referralCode) {
-          const num = 100 + (idx % 890);
-          u.referralCode = isSuperAdmin(u) ? "101001" : `MESS${num}`;
-        }
-        u.groupId = u.groupId || DEFAULT_GROUP_ID;
-        u.messGroupId = u.messGroupId || DEFAULT_GROUP_ID;
-        if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
-      });
+      // Deduplicate and sanitize users
+      parsed.users = deduplicateUsers(parsed.users);
 
       return parsed;
     }
@@ -189,64 +355,6 @@ let state = (function() {
   }
   return JSON.parse(JSON.stringify(CLEAN_INITIAL_STATE));
 })();
-
-// ==========================================
-// RBAC ROLE HIERARCHY & PERMISSION HELPERS
-// ==========================================
-function isSuperAdmin(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  if (!user) return false;
-  return user.role === "SUPER_ADMIN" || user.userIdCode === "SADM_001" || user.id === "usr_super_admin" || user.name === "Avijit Basu" || (user.role === "ADMIN" && user.userIdCode === "ADM_001");
-}
-
-function isNormalAdmin(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  if (!user) return false;
-  return user.role === "ADMIN" && !isSuperAdmin(user);
-}
-
-function isManager(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  if (!user) return false;
-  return user.role === "MANAGER";
-}
-
-function isEmployee(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  if (!user) return false;
-  return user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "STAFF";
-}
-
-function isCook(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  if (!user) return false;
-  return user.role === "COOK";
-}
-
-// Check if currently authenticated user has authorization to onboard new employees/residents
-function isAuthorizedToOnboardUsers(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  const hasRefCode = Boolean(sessionStorage.getItem("hostel_mess_ref_code") || (document.getElementById("form-user-referral-code") && document.getElementById("form-user-referral-code").value.trim()));
-  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user) || hasRefCode;
-}
-
-// Check if user has permission to approve employee kitchen purchase requests
-function canApprovePurchaseRequests(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
-}
-
-// Check if user has permission to approve user registrations (Super Admin exclusive)
-function canApproveUserRegistrations(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  return isSuperAdmin(user);
-}
-
-// Check if user has master deletion permission (Super Admin exclusive)
-function canDeleteData(u) {
-  const user = u || state.currentUser || (state.users && state.users[0]);
-  return isSuperAdmin(user);
-}
 
 // Helper to find active user by mobile number
 function findUserByMobile(mobile, excludeUserId = null) {
@@ -471,6 +579,14 @@ const FirebaseSyncService = {
       this.isInitialized = true;
       updateCloudSyncStatus(true, `☁️ Realtime DB: Connected • ${getGroupDbPath(activeGroupId)}`);
       console.log("✓ Central Realtime Database Connected at group path:", getGroupDbPath(activeGroupId));
+
+      // 4. Auto Session Re-Sync on Load: Update current user's database record's groupId to hostel_central_mess
+      if (state.currentUser && state.currentUser.id) {
+        state.currentUser.groupId = MAIN_GROUP_ID;
+        state.currentUser.messGroupId = MAIN_GROUP_ID;
+        state.currentUser.updatedAt = Date.now();
+        registerUserWithGroup(state.currentUser);
+      }
 
       // Trigger legacy migration and setup real-time listeners
       this.checkAndMigrateLegacyUsers();
@@ -1083,59 +1199,45 @@ function loadGlobalGroupMembers() {
 
   const usersPath = 'hostel_mess_data/groups/' + MAIN_GROUP_ID + '/users';
   rtdb.ref(usersPath).on("value", (snapshot) => {
-    const val = snapshot.val();
-    let userList = [];
-    if (val) {
-      if (Array.isArray(val)) {
-        userList = val.filter(Boolean);
-      } else if (typeof val === "object") {
-        userList = Object.values(val).filter(Boolean);
+    try {
+      // 2. Safe Firebase Query & Null Guards: if snapshot.val() is null or undefined, render empty array []
+      const val = snapshot ? snapshot.val() : null;
+      let rawList = [];
+      if (val !== null && typeof val !== "undefined") {
+        if (Array.isArray(val)) {
+          rawList = val.filter(Boolean);
+        } else if (typeof val === "object") {
+          rawList = Object.values(val).filter(Boolean);
+        }
       }
-    }
 
-    // Ensure Master Super Admin (Avijit Basu) is always included
-    const superAdminFound = userList.find(u => isSuperAdmin(u));
-    if (!superAdminFound) {
-      const defaultSuperAdmin = Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
-        groupId: MAIN_GROUP_ID,
-        messGroupId: MAIN_GROUP_ID
-      });
-      userList.unshift(defaultSuperAdmin);
-    } else {
-      superAdminFound.name = "Avijit Basu";
-      superAdminFound.role = "SUPER_ADMIN";
-      superAdminFound.userIdCode = "SADM_001";
-      superAdminFound.email = superAdminFound.email || "basua2484@gmail.com";
-      superAdminFound.loginPin = superAdminFound.loginPin || "1234";
-      superAdminFound.referralCode = superAdminFound.referralCode || "101001";
-      superAdminFound.groupId = MAIN_GROUP_ID;
-      superAdminFound.messGroupId = MAIN_GROUP_ID;
-    }
+      // 3. Single Account Deduplication Logic: Deduplicate by ID, Mobile, Email, or Code
+      const userList = deduplicateUsers(rawList);
 
-    userList.forEach((u, idx) => {
-      u.groupId = MAIN_GROUP_ID;
-      u.messGroupId = MAIN_GROUP_ID;
-      if (!u.loginPin) u.loginPin = "1234";
-      if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-      if (!u.referralCode) {
-        u.referralCode = isSuperAdmin(u) ? "101001" : `MESS${100 + (idx % 890)}`;
+      state.users = userList;
+
+      if (state.currentUser && state.currentUser.id) {
+        const matched = userList.find(u => u && (u.id === state.currentUser.id || (u.mobile && state.currentUser.mobile && u.mobile === state.currentUser.mobile)));
+        if (matched) {
+          state.currentUser = matched;
+          state.currentUser.groupId = MAIN_GROUP_ID;
+          state.currentUser.messGroupId = MAIN_GROUP_ID;
+        }
       }
-      if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
-    });
 
-    state.users = userList;
-
-    if (state.currentUser && state.currentUser.id) {
-      const matched = userList.find(u => u.id === state.currentUser.id);
-      if (matched) state.currentUser = matched;
+      saveLocalState();
+      renderMemberList(userList);
+      updateDashboardCards(userList);
+      updateRoleQuotaUI();
+    } catch (err) {
+      console.warn("loadGlobalGroupMembers snapshot processing error:", err);
+      renderMemberList([]);
+      updateDashboardCards([]);
     }
-
-    saveLocalState();
-    renderMemberList(userList);
-    updateDashboardCards(userList);
-    updateRoleQuotaUI();
   }, (err) => {
     console.warn("loadGlobalGroupMembers error:", err);
+    renderMemberList(state.users || []);
+    updateDashboardCards(state.users || []);
   });
 }
 
@@ -1144,18 +1246,20 @@ async function registerUserWithGroup(userData) {
   if (!userData) return null;
   userData.groupId = MAIN_GROUP_ID;
   userData.messGroupId = MAIN_GROUP_ID;
+  userData.updatedAt = Date.now();
 
   if (!userData.id) {
     userData.id = "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
   }
 
-  // Update or insert into local state
-  const idx = (state.users || []).findIndex(u => u.id === userData.id);
+  // Update or insert into local state with deduplication
+  const idx = (state.users || []).findIndex(u => u && (u.id === userData.id || (u.mobile && userData.mobile && u.mobile === userData.mobile)));
   if (idx >= 0) {
-    state.users[idx] = userData;
+    state.users[idx] = Object.assign({}, state.users[idx], userData);
   } else {
     (state.users = state.users || []).push(userData);
   }
+  state.users = deduplicateUsers(state.users);
 
   saveLocalState();
 
@@ -1178,155 +1282,174 @@ async function registerUserWithGroup(userData) {
 }
 
 // Update Top Dashboard Summary Cards in Real-Time
-function updateDashboardCards(userList = (state.users || [])) {
-  const user = state.currentUser || state.users[0];
-  const isEmp = isEmployee(user) || isCook(user);
+function updateDashboardCards(userList = (state && state.users ? state.users : [])) {
+  try {
+    const list = Array.isArray(userList) ? userList : ((state && Array.isArray(state.users)) ? state.users : []);
+    const deduplicated = deduplicateUsers(list);
+    const user = (state && state.currentUser) || (deduplicated.length > 0 ? deduplicated[0] : CLEAN_INITIAL_STATE.currentUser);
+    const isEmp = isEmployee(user) || isCook(user);
 
-  const activeUsers = (userList || []).filter(u => u.status === 'ACTIVE').length;
-  const today = getTodayString();
-  const activeAttendance = (state.attendanceLog || []).filter(a => a.date === today && a.status === 'ACTIVE');
-  const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
-  const onDutyCount = onDutyUserIds.size;
+    const activeUsers = deduplicated.filter(u => u && (u.status === 'ACTIVE' || typeof u.status === 'undefined')).length;
+    const today = getTodayString();
+    const attendanceLogs = (state && Array.isArray(state.attendanceLog)) ? state.attendanceLog : [];
+    const activeAttendance = attendanceLogs.filter(a => a && a.date === today && a.status === 'ACTIVE');
+    const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
+    const onDutyCount = onDutyUserIds.size;
 
-  const lunchCount = (state.meals || []).filter(m => m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
-  const dinnerCount = (state.meals || []).filter(m => m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+    const mealsList = (state && Array.isArray(state.meals)) ? state.meals : [];
+    const lunchCount = mealsList.filter(m => m && m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+    const dinnerCount = mealsList.filter(m => m && m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
 
-  const totalPlates = getTotalConsumedPlates();
-  const plateRate = getDynamicPlateRate();
+    const totalPlates = typeof getTotalConsumedPlates === "function" ? getTotalConsumedPlates() : 0;
+    const plateRate = typeof getDynamicPlateRate === "function" ? getDynamicPlateRate() : 0;
 
-  const memCountEl = document.getElementById("admin-members-count");
-  const onDutyEl = document.getElementById("admin-onduty-count");
-  const lunchCountEl = document.getElementById("admin-lunch-count");
-  const dinnerCountEl = document.getElementById("admin-dinner-count");
-  const platesCountEl = document.getElementById("admin-plates-count");
-  const rateDisplayEl = document.getElementById("admin-rate-display");
+    const memCountEl = document.getElementById("admin-members-count");
+    const onDutyEl = document.getElementById("admin-onduty-count");
+    const lunchCountEl = document.getElementById("admin-lunch-count");
+    const dinnerCountEl = document.getElementById("admin-dinner-count");
+    const platesCountEl = document.getElementById("admin-plates-count");
+    const rateDisplayEl = document.getElementById("admin-rate-display");
 
-  if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
-  if (onDutyEl) onDutyEl.textContent = isEmp ? "🔒" : onDutyCount;
-  if (lunchCountEl) lunchCountEl.textContent = isEmp ? "🔒" : lunchCount;
-  if (dinnerCountEl) dinnerCountEl.textContent = isEmp ? "🔒" : dinnerCount;
-  if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
-  if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${plateRate.toFixed(2)}`;
+    if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
+    if (onDutyEl) onDutyEl.textContent = isEmp ? "🔒" : onDutyCount;
+    if (lunchCountEl) lunchCountEl.textContent = isEmp ? "🔒" : lunchCount;
+    if (dinnerCountEl) dinnerCountEl.textContent = isEmp ? "🔒" : dinnerCount;
+    if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
+    if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${(plateRate || 0).toFixed(2)}`;
+  } catch (err) {
+    console.warn("updateDashboardCards error:", err);
+  }
 }
 
 // Render Member Directory List
-function renderMemberList(userList = (state.users || [])) {
-  const user = state.currentUser || state.users[0];
-  const isSuperAdm = isSuperAdmin(user);
-  const isNormAdm = isNormalAdmin(user);
-  const isMgr = isManager(user);
-  const isEmp = isEmployee(user) || isCook(user);
+function renderMemberList(userList = (state && state.users ? state.users : [])) {
+  try {
+    const list = Array.isArray(userList) ? userList : ((state && Array.isArray(state.users)) ? state.users : []);
+    const deduplicated = deduplicateUsers(list);
+    const user = (state && state.currentUser) || (deduplicated.length > 0 ? deduplicated[0] : CLEAN_INITIAL_STATE.currentUser);
+    const isSuperAdm = isSuperAdmin(user);
+    const isNormAdm = isNormalAdmin(user);
+    const isMgr = isManager(user);
+    const isEmp = isEmployee(user) || isCook(user);
 
-  const uList = document.getElementById("admin-users-list");
-  if (!uList) return;
-  uList.innerHTML = "";
+    const uList = document.getElementById("admin-users-list");
+    if (!uList) return;
+    uList.innerHTML = "";
 
-  if (isEmp) {
-    uList.innerHTML = `
-      <div class="locked-tab-card">
-        <div class="locked-icon-bubble">🔒</div>
-        <h4 style="margin:0;">Administration Panel Locked</h4>
-        <p class="text-sub">
-          Access Restricted: User Role Administration and Permissions are strictly managed by Super Admin and Management.<br>
-          Employees can manage their own personal profile from the <strong>Resident Home</strong> portal.
-        </p>
-      </div>
-    `;
-    return;
-  }
-
-  const roleFilter = state.selectedRoleFilter || "ALL";
-  let filteredUsers = (userList || []);
-  if (roleFilter === "SUPER_ADMIN") {
-    filteredUsers = filteredUsers.filter(u => isSuperAdmin(u));
-  } else if (roleFilter === "ADMIN") {
-    filteredUsers = filteredUsers.filter(u => isNormalAdmin(u));
-  } else if (roleFilter === "MANAGER") {
-    filteredUsers = filteredUsers.filter(u => isManager(u));
-  } else if (roleFilter === "RESIDENT") {
-    filteredUsers = filteredUsers.filter(u => isEmployee(u));
-  } else if (roleFilter === "COOK") {
-    filteredUsers = filteredUsers.filter(u => isCook(u));
-  }
-
-  if (filteredUsers.length === 0) {
-    uList.innerHTML = `
-      <div class="empty-state">
-        <p>No users found for selected filter.</p>
-        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to onboard employees.</p>
-      </div>
-    `;
-    return;
-  }
-
-  filteredUsers.forEach(u => {
-    const div = document.createElement("div");
-    div.className = "user-card-item";
-    const uIsSuperAdmin = isSuperAdmin(u);
-    const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
-    const isBlocked = u.status === "BLOCKED";
-    const isMe = user.id === u.id;
-
-    let canEdit = false;
-    let canDelete = false;
-    let canLock = false;
-
-    if (isSuperAdm) {
-      // Super Admin: Full system control over all accounts
-      canEdit = true;
-      canLock = !isMe;
-      canDelete = !isMe; // Super Admin can delete anyone except self
-    } else if (isNormAdm) {
-      // Normal Admin: Can edit/update all except Super Admin. STRICTLY NO DELETE.
-      canEdit = !uIsSuperAdmin || isMe;
-      canLock = !isMe && !uIsSuperAdmin;
-      canDelete = false; // Normal Admin has NO DELETE PERMISSIONS
-    } else if (isMgr) {
-      // Hostel Manager: Can edit own profile only. All other staff are Read-Only (Watch Only).
-      canEdit = isMe;
-      canLock = false;
-      canDelete = false;
-    }
-
-    let actionsHtml = "";
-    if (canEdit) {
-      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ ${isMe ? 'My Profile' : 'Edit'}</button>`;
-    }
-    if (canLock) {
-      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
-    }
-    if (canDelete) {
-      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
-    }
-    if (!canEdit && !canLock && !canDelete) {
-      actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
-    }
-
-    const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
-    const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
-    const myCodeDisplay = u.referralCode || getUserReferralCode(u);
-    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-    const emailVerifiedBadge = u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : '<span class="badge badge-amber" style="font-size:9px;">EMAIL UNVERIFIED</span>';
-
-    div.innerHTML = `
-      <div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <strong>${u.name}</strong>
-          <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
-          ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
-          ${emailVerifiedBadge}
-          ${refBadge}
+    if (isEmp) {
+      uList.innerHTML = `
+        <div class="locked-tab-card">
+          <div class="locked-icon-bubble">🔒</div>
+          <h4 style="margin:0;">Administration Panel Locked</h4>
+          <p class="text-sub">
+            Access Restricted: User Role Administration and Permissions are strictly managed by Super Admin and Management.<br>
+            Employees can manage their own personal profile from the <strong>Resident Home</strong> portal.
+          </p>
         </div>
-        <p class="text-sub" style="margin-top:2px;">
-          📧 <strong>${emailDisplay}</strong> • Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
-        </p>
-      </div>
-      <div class="user-card-actions">
-        ${actionsHtml}
-      </div>
-    `;
-    uList.appendChild(div);
-  });
+      `;
+      return;
+    }
+
+    const roleFilter = (state && state.selectedRoleFilter) || "ALL";
+    let filteredUsers = deduplicated;
+    if (roleFilter === "SUPER_ADMIN") {
+      filteredUsers = filteredUsers.filter(u => isSuperAdmin(u));
+    } else if (roleFilter === "ADMIN") {
+      filteredUsers = filteredUsers.filter(u => isNormalAdmin(u));
+    } else if (roleFilter === "MANAGER") {
+      filteredUsers = filteredUsers.filter(u => isManager(u));
+    } else if (roleFilter === "RESIDENT") {
+      filteredUsers = filteredUsers.filter(u => isEmployee(u));
+    } else if (roleFilter === "COOK") {
+      filteredUsers = filteredUsers.filter(u => isCook(u));
+    }
+
+    if (filteredUsers.length === 0) {
+      uList.innerHTML = `
+        <div class="empty-state">
+          <p>No users found for selected filter.</p>
+          <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to onboard employees.</p>
+        </div>
+      `;
+      return;
+    }
+
+    filteredUsers.forEach(rawU => {
+      if (!rawU) return;
+      const u = rawU;
+      const div = document.createElement("div");
+      div.className = "user-card-item";
+      const uIsSuperAdmin = isSuperAdmin(u);
+      const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
+      const isBlocked = u.status === "BLOCKED";
+      const isMe = user && user.id === u.id;
+
+      let canEdit = false;
+      let canDelete = false;
+      let canLock = false;
+
+      if (isSuperAdm) {
+        // Super Admin: Full system control over all accounts
+        canEdit = true;
+        canLock = !isMe;
+        canDelete = !isMe; // Super Admin can delete anyone except self
+      } else if (isNormAdm) {
+        // Normal Admin: Can edit/update all except Super Admin. STRICTLY NO DELETE.
+        canEdit = !uIsSuperAdmin || isMe;
+        canLock = !isMe && !uIsSuperAdmin;
+        canDelete = false; // Normal Admin has NO DELETE PERMISSIONS
+      } else if (isMgr) {
+        // Hostel Manager: Can edit own profile only. All other staff are Read-Only (Watch Only).
+        canEdit = isMe;
+        canLock = false;
+        canDelete = false;
+      }
+
+      let actionsHtml = "";
+      if (canEdit) {
+        actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ ${isMe ? 'My Profile' : 'Edit'}</button>`;
+      }
+      if (canLock) {
+        actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
+      }
+      if (canDelete) {
+        actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
+      }
+      if (!canEdit && !canLock && !canDelete) {
+        actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
+      }
+
+      const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : (u.role || "RESIDENT");
+      const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
+      const myCodeDisplay = u.referralCode || (typeof getUserReferralCode === "function" ? getUserReferralCode(u) : "100001");
+      const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+      const emailVerifiedBadge = u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : '<span class="badge badge-amber" style="font-size:9px;">EMAIL UNVERIFIED</span>';
+      const shiftDisplay = u.currentShift || u.shift || 'OFF_DUTY';
+      const roomDisplay = u.assignedRoom || '101';
+      const mobDisplay = u.mobile || 'N/A';
+
+      div.innerHTML = `
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <strong>${u.name || 'Unnamed Member'}</strong>
+            <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
+            ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
+            ${emailVerifiedBadge}
+            ${refBadge}
+          </div>
+          <p class="text-sub" style="margin-top:2px;">
+            📧 <strong>${emailDisplay}</strong> • Room: <strong>${roomDisplay}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${mobDisplay} • Shift: ${shiftDisplay} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
+          </p>
+        </div>
+        <div class="user-card-actions">
+          ${actionsHtml}
+        </div>
+      `;
+      uList.appendChild(div);
+    });
+  } catch (err) {
+    console.warn("renderMemberList error:", err);
+  }
 }
 
 // ==========================================
@@ -1394,6 +1517,16 @@ async function fetchCurrentGpsLocation() {
 
 // Local State & Persistence
 function saveLocalState() {
+  if (state) {
+    state.groupId = MAIN_GROUP_ID;
+    state.currentGroupId = MAIN_GROUP_ID;
+    if (state.currentUser) {
+      state.currentUser.groupId = MAIN_GROUP_ID;
+      state.currentUser.messGroupId = MAIN_GROUP_ID;
+    }
+  }
+  localStorage.setItem("hostel_mess_group_id", MAIN_GROUP_ID);
+  sessionStorage.setItem("hostel_mess_group_id", MAIN_GROUP_ID);
   localStorage.setItem("hostel_mess_state_v2", JSON.stringify(state));
 }
 
@@ -3987,8 +4120,11 @@ document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () =
     return;
   }
 
+  matchedUser.groupId = MAIN_GROUP_ID;
+  matchedUser.messGroupId = MAIN_GROUP_ID;
+  matchedUser.updatedAt = Date.now();
   state.currentUser = matchedUser;
-  FirebaseSyncService.saveUser(matchedUser);
+  registerUserWithGroup(matchedUser);
 
   saveState();
   renderUI();
