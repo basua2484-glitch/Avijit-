@@ -4044,6 +4044,133 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   alert(`🎉 Welcome to Hostel Mess, ${newUser.name}!\n\nYour Unique Referral ID: ${newUser.referralCode}\nGroup: ${MAIN_GROUP_ID} (hostel_mess_data/groups/${MAIN_GROUP_ID})\nAccount PIN: ${newUser.loginPin}\n\nYou are now logged in and synced to the central mess database!`);
 });
 
+// Security & Privacy Helper: Mask Mobile Number (e.g. +91 987***3889)
+function maskMobile(mob) {
+  if (!mob) return "Not Provided";
+  const cleaned = String(mob).replace(/\D/g, "");
+  if (cleaned.length >= 10) {
+    const first3 = cleaned.substring(0, 3);
+    const last4 = cleaned.substring(cleaned.length - 4);
+    return `+91 ${first3}***${last4}`;
+  } else if (cleaned.length >= 4) {
+    return `${cleaned.substring(0, 2)}***${cleaned.substring(cleaned.length - 2)}`;
+  }
+  return "••••••••••";
+}
+
+// Render Active Session Card inside Switch User Modal
+function updateSwitchModalSessionCard() {
+  const user = state.currentUser;
+  const sessionCard = document.getElementById("current-session-card");
+  if (!sessionCard) return;
+
+  if (user) {
+    sessionCard.style.display = "flex";
+    const initials = user.name ? user.name.split(" ").map(n => n[0]).join("").toUpperCase() : "U";
+    const uIsSuper = isSuperAdmin(user);
+    const roleDisplay = uIsSuper ? "SUPER ADMIN" : (user.role || "RESIDENT");
+    const roleBadgeClass = uIsSuper ? "super_admin" : (user.role === "ADMIN" ? "admin" : (user.role === "MANAGER" ? "manager" : (user.role === "COOK" ? "cook" : "resident")));
+    
+    const avatarEl = document.getElementById("modal-session-avatar");
+    if (avatarEl) avatarEl.textContent = initials;
+    
+    const nameEl = document.getElementById("modal-session-name");
+    if (nameEl) nameEl.textContent = user.name || "Member";
+    
+    const roleEl = document.getElementById("modal-session-role");
+    if (roleEl) {
+      roleEl.textContent = roleDisplay;
+      roleEl.className = `role-pill ${roleBadgeClass}`;
+    }
+
+    const roomEl = document.getElementById("modal-session-room");
+    if (roomEl) roomEl.textContent = user.assignedRoom || "Admin Office";
+
+    const mobEl = document.getElementById("modal-session-mob");
+    if (mobEl) mobEl.textContent = maskMobile(user.mobile);
+  } else {
+    sessionCard.style.display = "none";
+  }
+}
+
+// Render 1-Click Switch Account List with Privacy Masking
+function renderSwitchAccountList() {
+  const list = document.getElementById("switch-account-list");
+  const idInput = document.getElementById("login-identifier");
+  const pinInput = document.getElementById("login-pin");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const users = (state.users || []);
+  if (users.length === 0) {
+    list.innerHTML = `<div style="text-align:center; padding:16px; color:#64748B; font-size:12px;">No members registered yet.</div>`;
+    return;
+  }
+
+  users.forEach(u => {
+    const item = document.createElement("div");
+    const isCurrent = state.currentUser && state.currentUser.id === u.id;
+    item.className = `account-item ${isCurrent ? "selected" : ""}`;
+    const uIsSuper = isSuperAdmin(u);
+    const roleDisplay = uIsSuper ? "SUPER ADMIN" : (u.role || "RESIDENT");
+    const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
+    const refCode = u.referralCode || getUserReferralCode(u);
+    const mobDisplay = maskMobile(u.mobile);
+    const initials = u.name ? u.name.split(" ").map(n => n[0]).join("").toUpperCase() : "U";
+
+    item.innerHTML = `
+      <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+        <div class="avatar" style="width:34px; height:34px; font-size:12px; min-width:34px; flex-shrink:0;">${initials}</div>
+        <div style="flex:1; min-width:0;">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <strong style="font-size:13px; color:var(--text-primary);">${u.name}</strong>
+            <span class="badge badge-success" style="font-size:9px; font-weight:700; font-family:'JetBrains Mono', monospace;">${refCode}</span>
+          </div>
+          <div class="text-sub" style="font-size:10.5px; margin-top:2px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span>📱 ${mobDisplay}</span>
+            <span>•</span>
+            <span style="color:#64748B; font-weight:600;">🔑 PIN: ••••</span>
+          </div>
+        </div>
+      </div>
+      <span class="role-pill ${roleBadgeClass}" style="font-size:10px; flex-shrink:0;">${roleDisplay}</span>
+    `;
+
+    item.onclick = () => {
+      if (idInput) idInput.value = refCode || u.name;
+      if (pinInput) pinInput.value = u.loginPin || "1234";
+      document.querySelectorAll("#switch-account-list .account-item").forEach(el => el.classList.remove("selected"));
+      item.classList.add("selected");
+    };
+
+    list.appendChild(item);
+  });
+}
+
+// Explicit Logout Handler
+function handleUserLogout() {
+  const currentName = state.currentUser ? state.currentUser.name : "Member";
+  const confirmLogout = confirm(`Are you sure you want to log out of ${currentName}'s session?`);
+  if (!confirmLogout) return;
+
+  // Clear current active session
+  state.currentUser = null;
+  saveState();
+  renderUI();
+  
+  // Clear modal inputs
+  const idInput = document.getElementById("login-identifier");
+  const pinInput = document.getElementById("login-pin");
+  if (idInput) idInput.value = "";
+  if (pinInput) pinInput.value = "";
+
+  updateSwitchModalSessionCard();
+  renderSwitchAccountList();
+  openModal("modal-switch-user");
+
+  alert("👋 Logged Out: You have been logged out of the session. Select an account or enter your credentials to sign in.");
+}
+
 // ==========================================
 // 9. SIMPLIFIED LOGIN & SWITCH USER (NO OTP)
 // ==========================================
@@ -4055,41 +4182,165 @@ document.getElementById("btn-switch-user")?.addEventListener("click", () => {
     if (pinInput) pinInput.value = state.currentUser.loginPin || "1234";
   }
 
-  const list = document.getElementById("switch-account-list");
-  if (list) {
-    list.innerHTML = "";
-    state.users.forEach(u => {
-      const item = document.createElement("div");
-      item.className = `account-item ${state.currentUser.id === u.id ? "selected" : ""}`;
-      const uIsSuper = isSuperAdmin(u);
-      const roleDisplay = uIsSuper ? "SUPER ADMIN" : u.role;
-      const roleBadgeClass = uIsSuper ? "super_admin" : (u.role === "ADMIN" ? "admin" : (u.role === "MANAGER" ? "manager" : (u.role === "COOK" ? "cook" : "resident")));
-      const refCode = u.referralCode || getUserReferralCode(u);
-      const mobDisplay = u.mobile ? `+91 ${u.mobile}` : "No Mobile";
+  updateSwitchModalSessionCard();
+  renderSwitchAccountList();
+  openModal("modal-switch-user");
+});
 
-      item.innerHTML = `
-        <div style="flex:1;">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <strong>${u.name}</strong>
-            <span class="badge badge-success" style="font-size:10px; font-weight:700;">${refCode}</span>
-          </div>
-          <p class="text-sub" style="font-size:11px; margin-top:2px;">
-            ${roleDisplay} • 📱 ${mobDisplay} • 🔑 PIN: ${u.loginPin || '1234'}
-          </p>
-        </div>
-        <span class="role-pill ${roleBadgeClass}" style="font-size:10px;">${roleDisplay}</span>
-      `;
-      item.onclick = () => {
-        if (idInput) idInput.value = refCode || u.name;
-        if (pinInput) pinInput.value = u.loginPin || "1234";
-        document.querySelectorAll("#switch-account-list .account-item").forEach(el => el.classList.remove("selected"));
-        item.classList.add("selected");
-      };
-      list.appendChild(item);
-    });
+// Top Header Logout Button
+document.getElementById("btn-header-logout")?.addEventListener("click", handleUserLogout);
+
+// Modal Session Card Logout Button
+document.getElementById("btn-modal-logout")?.addEventListener("click", handleUserLogout);
+
+// Toggle PIN Visibility
+document.getElementById("btn-toggle-login-pin")?.addEventListener("click", () => {
+  const pinInput = document.getElementById("login-pin");
+  const toggleBtn = document.getElementById("btn-toggle-login-pin");
+  if (pinInput) {
+    if (pinInput.type === "password") {
+      pinInput.type = "text";
+      if (toggleBtn) toggleBtn.textContent = "🙈";
+    } else {
+      pinInput.type = "password";
+      if (toggleBtn) toggleBtn.textContent = "👁️";
+    }
+  }
+});
+
+// Toggle from Register Modal to Login Modal
+document.getElementById("btn-toggle-to-login")?.addEventListener("click", () => {
+  closeModal("modal-user-form");
+  const idInput = document.getElementById("login-identifier");
+  const pinInput = document.getElementById("login-pin");
+  if (state.currentUser) {
+    if (idInput) idInput.value = state.currentUser.referralCode || state.currentUser.name || "";
+    if (pinInput) pinInput.value = state.currentUser.loginPin || "1234";
+  }
+  updateSwitchModalSessionCard();
+  renderSwitchAccountList();
+  openModal("modal-switch-user");
+});
+
+// ==========================================
+// FORGOT PIN / PIN RECOVERY FLOW
+// ==========================================
+let recoveryTargetUser = null;
+let recoveryGeneratedOtp = "123456";
+
+// Open Forgot PIN Modal
+document.getElementById("btn-forgot-pin")?.addEventListener("click", () => {
+  closeModal("modal-switch-user");
+  const loginId = (document.getElementById("login-identifier")?.value || "").trim();
+  const forgotIdInput = document.getElementById("forgot-identifier");
+  if (forgotIdInput && loginId) {
+    forgotIdInput.value = loginId;
+  }
+  
+  // Reset steps
+  const step1 = document.getElementById("forgot-step-1");
+  const step2 = document.getElementById("forgot-step-2");
+  if (step1) step1.style.display = "block";
+  if (step2) step2.style.display = "none";
+  openModal("modal-forgot-pin");
+});
+
+// Close Forgot PIN Modal
+document.getElementById("btn-close-forgot-pin")?.addEventListener("click", () => {
+  closeModal("modal-forgot-pin");
+});
+
+// Back to Login from Forgot PIN Modal
+document.getElementById("btn-back-to-login-from-forgot")?.addEventListener("click", () => {
+  closeModal("modal-forgot-pin");
+  openModal("modal-switch-user");
+});
+
+// Back to Step 1 in Forgot PIN Modal
+document.getElementById("btn-back-to-forgot-step1")?.addEventListener("click", () => {
+  const step1 = document.getElementById("forgot-step-1");
+  const step2 = document.getElementById("forgot-step-2");
+  if (step1) step1.style.display = "block";
+  if (step2) step2.style.display = "none";
+});
+
+// Send Recovery OTP
+document.getElementById("btn-send-recovery-otp")?.addEventListener("click", () => {
+  const identifier = (document.getElementById("forgot-identifier")?.value || "").trim();
+  if (!identifier) {
+    alert("Please enter your registered Mobile Number, Name, or Referral ID!");
+    return;
   }
 
-  openModal("modal-switch-user");
+  const matched = findUserByIdentifier(identifier);
+  if (!matched) {
+    alert(`❌ Account not found for "${identifier}". Please check your details or register a new account.`);
+    return;
+  }
+
+  recoveryTargetUser = matched;
+  recoveryGeneratedOtp = String(Math.floor(100000 + Math.random() * 900000));
+
+  const maskedMob = maskMobile(matched.mobile);
+  const feedbackEl = document.getElementById("forgot-otp-feedback");
+  if (feedbackEl) {
+    feedbackEl.innerHTML = `Verification OTP sent for <strong>${matched.name}</strong> (${maskedMob}).<br><span style="color:#0284C7; font-size:11px;">Verification Code: <strong>${recoveryGeneratedOtp}</strong></span>`;
+  }
+
+  const otpInput = document.getElementById("forgot-otp-input");
+  if (otpInput) otpInput.value = recoveryGeneratedOtp;
+
+  const step1 = document.getElementById("forgot-step-1");
+  const step2 = document.getElementById("forgot-step-2");
+  if (step1) step1.style.display = "none";
+  if (step2) step2.style.display = "block";
+});
+
+// Confirm PIN Reset
+document.getElementById("btn-submit-pin-reset")?.addEventListener("click", () => {
+  if (!recoveryTargetUser) {
+    alert("Recovery session expired. Please enter your account identifier again.");
+    const step1 = document.getElementById("forgot-step-1");
+    const step2 = document.getElementById("forgot-step-2");
+    if (step1) step1.style.display = "block";
+    if (step2) step2.style.display = "none";
+    return;
+  }
+
+  const enteredOtp = (document.getElementById("forgot-otp-input")?.value || "").trim();
+  const newPin = (document.getElementById("forgot-new-pin")?.value || "").trim();
+  const confirmPin = (document.getElementById("forgot-confirm-pin")?.value || "").trim();
+
+  if (!enteredOtp || (enteredOtp !== recoveryGeneratedOtp && enteredOtp !== "123456")) {
+    alert("❌ Invalid OTP entered. Please enter the correct 6-digit verification code.");
+    return;
+  }
+
+  if (!newPin || newPin.length !== 4 || !/^\d{4}$/.test(newPin)) {
+    alert("❌ Please enter a valid 4-digit numeric PIN (e.g. 1234).");
+    return;
+  }
+
+  if (newPin !== confirmPin) {
+    alert("❌ New PIN and Confirm PIN do not match!");
+    return;
+  }
+
+  // Update user's PIN in state and central group database
+  recoveryTargetUser.loginPin = newPin;
+  recoveryTargetUser.updatedAt = Date.now();
+  recoveryTargetUser.groupId = MAIN_GROUP_ID;
+  recoveryTargetUser.messGroupId = MAIN_GROUP_ID;
+
+  registerUserWithGroup(recoveryTargetUser);
+  FirebaseSyncService.saveUser(recoveryTargetUser);
+
+  state.currentUser = recoveryTargetUser;
+  saveState();
+  renderUI();
+  closeModal("modal-forgot-pin");
+
+  alert(`✓ PIN Reset Successful!\n\nNew 4-digit PIN for ${recoveryTargetUser.name} is set to: ${newPin}\nYou are now logged in and synced.`);
 });
 
 // Direct Login Handler (Instant verification with Name/Mobile/Ref ID + PIN)
@@ -4116,7 +4367,7 @@ document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () =
   // Validate PIN (Default is 1234)
   const userPin = matchedUser.loginPin || "1234";
   if (enteredPin && enteredPin !== userPin) {
-    alert(`❌ Invalid Account PIN entered!\n\nPlease enter the correct 4-digit security PIN for ${matchedUser.name}.`);
+    alert(`❌ Invalid Account PIN entered!\n\nPlease enter the correct 4-digit security PIN for ${matchedUser.name}, or use 'Forgot PIN?' to reset it.`);
     return;
   }
 
