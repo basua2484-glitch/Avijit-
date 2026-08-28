@@ -50,27 +50,11 @@ function convertSelectValueToRule(val) {
 }
 
 const DB_ROOT_PATH = "hostel_mess_data";
-const DEFAULT_GROUP_ID = "main_mess";
+const MAIN_GROUP_ID = "hostel_central_mess";
+const DEFAULT_GROUP_ID = MAIN_GROUP_ID;
 
 function getActiveGroupId() {
-  try {
-    const urlParams = new URLSearchParams(window.location.search);
-    const gFromUrl = urlParams.get('groupId') || urlParams.get('messId');
-    if (gFromUrl && gFromUrl.trim()) return gFromUrl.trim();
-  } catch (e) {}
-
-  const fromStorage = sessionStorage.getItem("hostel_mess_group_id");
-  if (fromStorage && fromStorage.trim()) return fromStorage.trim();
-
-  if (typeof state !== "undefined" && state) {
-    if (state.currentUser && (state.currentUser.groupId || state.currentUser.messGroupId)) {
-      return state.currentUser.groupId || state.currentUser.messGroupId;
-    }
-    if (state.currentGroupId) return state.currentGroupId;
-    if (state.groupId) return state.groupId;
-  }
-
-  return DEFAULT_GROUP_ID;
+  return MAIN_GROUP_ID;
 }
 
 function getGroupDbPath(groupId = getActiveGroupId()) {
@@ -82,8 +66,8 @@ function getUsersDbPath(groupId = getActiveGroupId()) {
 }
 
 const CLEAN_INITIAL_STATE = {
-  groupId: DEFAULT_GROUP_ID,
-  currentGroupId: DEFAULT_GROUP_ID,
+  groupId: MAIN_GROUP_ID,
+  currentGroupId: MAIN_GROUP_ID,
   currentUser: {
     id: "usr_super_admin",
     name: "Avijit Basu",
@@ -96,8 +80,8 @@ const CLEAN_INITIAL_STATE = {
     status: "ACTIVE",
     currentShift: "OFF_DUTY",
     referralCode: "101001",
-    groupId: DEFAULT_GROUP_ID,
-    messGroupId: DEFAULT_GROUP_ID,
+    groupId: MAIN_GROUP_ID,
+    messGroupId: MAIN_GROUP_ID,
     isEmailVerified: true,
     emailVerifiedAt: Date.now(),
     isOtpVerified: true
@@ -115,8 +99,8 @@ const CLEAN_INITIAL_STATE = {
       status: "ACTIVE",
       currentShift: "OFF_DUTY",
       referralCode: "101001",
-      groupId: DEFAULT_GROUP_ID,
-      messGroupId: DEFAULT_GROUP_ID,
+      groupId: MAIN_GROUP_ID,
+      messGroupId: MAIN_GROUP_ID,
       isEmailVerified: true,
       emailVerifiedAt: Date.now(),
       isOtpVerified: true
@@ -491,20 +475,35 @@ const FirebaseSyncService = {
       // Trigger legacy migration and setup real-time listeners
       this.checkAndMigrateLegacyUsers();
       this.setupCentralListener();
+      loadGlobalGroupMembers();
     } catch (e) {
       console.error("Firebase Realtime DB init error:", e);
       updateCloudSyncStatus(false, "⚠️ Local Cache Active");
     }
   },
 
-  // 1. Dynamic Legacy Migration: Auto-migrate any users stored outside hostel_mess_data/groups/main_mess/users
+  // 1. Dynamic Legacy Migration: Auto-migrate any users stored outside hostel_mess_data/groups/hostel_central_mess/users
   async checkAndMigrateLegacyUsers() {
     if (!rtdb) return;
 
     try {
-      console.log("🔍 Checking for legacy users to auto-migrate into hostel_mess_data/groups/main_mess/users...");
-      const targetGroup = "main_mess";
+      console.log("🔍 Checking for legacy users to auto-migrate into hostel_mess_data/groups/" + MAIN_GROUP_ID + "/users...");
+      const targetGroup = MAIN_GROUP_ID;
       const targetGroupUsersPath = `${DB_ROOT_PATH}/groups/${targetGroup}/users`;
+
+      // Check legacy group 'main_mess'
+      rtdb.ref(`${DB_ROOT_PATH}/groups/main_mess/users`).once("value").then((snapshot) => {
+        const val = snapshot.val();
+        if (val) {
+          let list = Array.isArray(val) ? val.filter(Boolean) : (typeof val === "object" ? Object.values(val).filter(Boolean) : []);
+          list.forEach((u) => {
+            if (u && u.id) {
+              const migrated = Object.assign({}, u, { groupId: targetGroup, messGroupId: targetGroup });
+              rtdb.ref(`${targetGroupUsersPath}/${u.id}`).set(migrated);
+            }
+          });
+        }
+      }).catch(() => {});
 
       // Check legacy root node 'hostel_mess_data/users'
       rtdb.ref(`${DB_ROOT_PATH}/users`).once("value").then((snapshot) => {
@@ -602,33 +601,10 @@ const FirebaseSyncService = {
 
     const activeGroupId = getActiveGroupId();
     const groupPath = getGroupDbPath(activeGroupId);
-    const usersPath = `${DB_ROOT_PATH}/groups/${activeGroupId}/users`;
     this.dbRef = rtdb.ref(groupPath);
 
-    // Global Live Realtime Database Listener on the group users node for instant member count reflection
-    rtdb.ref(usersPath).on("value", (usersSnap) => {
-      const usersData = usersSnap.val();
-      if (usersData) {
-        let loadedUsers = [];
-        if (Array.isArray(usersData)) loadedUsers = usersData.filter(Boolean);
-        else if (typeof usersData === "object") loadedUsers = Object.values(usersData).filter(Boolean);
-
-        // Ensure Super Admin exists
-        const superFound = loadedUsers.find(u => isSuperAdmin(u));
-        if (!superFound) {
-          loadedUsers.unshift(Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
-            groupId: activeGroupId,
-            messGroupId: activeGroupId
-          }));
-        }
-
-        // Merge loaded users into state
-        state.users = loadedUsers;
-        saveLocalState();
-        renderUI();
-        updateRoleQuotaUI();
-      }
-    });
+    // Global Live Realtime Database Listener for Group Members
+    loadGlobalGroupMembers();
 
     // Global Live Realtime Database Listener for Super Admin and all group members
     this.dbRef.on("value", (snapshot) => {
@@ -1091,6 +1067,267 @@ const FirebaseSyncService = {
     console.log("✓ Central Realtime Database Reset Cleanly for group:", groupId);
   }
 };
+
+// ==========================================
+// CENTRAL REALTIME DATABASE & GLOBAL SYNC HELPERS
+// ==========================================
+
+// 3. Global real-time listener loadGlobalGroupMembers()
+function loadGlobalGroupMembers() {
+  if (!rtdb) {
+    if (typeof firebase !== "undefined" && typeof firebase.database === "function") {
+      try { rtdb = firebase.database(); } catch (e) {}
+    }
+  }
+  if (!rtdb) return;
+
+  const usersPath = 'hostel_mess_data/groups/' + MAIN_GROUP_ID + '/users';
+  rtdb.ref(usersPath).on("value", (snapshot) => {
+    const val = snapshot.val();
+    let userList = [];
+    if (val) {
+      if (Array.isArray(val)) {
+        userList = val.filter(Boolean);
+      } else if (typeof val === "object") {
+        userList = Object.values(val).filter(Boolean);
+      }
+    }
+
+    // Ensure Master Super Admin (Avijit Basu) is always included
+    const superAdminFound = userList.find(u => isSuperAdmin(u));
+    if (!superAdminFound) {
+      const defaultSuperAdmin = Object.assign({}, CLEAN_INITIAL_STATE.currentUser, {
+        groupId: MAIN_GROUP_ID,
+        messGroupId: MAIN_GROUP_ID
+      });
+      userList.unshift(defaultSuperAdmin);
+    } else {
+      superAdminFound.name = "Avijit Basu";
+      superAdminFound.role = "SUPER_ADMIN";
+      superAdminFound.userIdCode = "SADM_001";
+      superAdminFound.email = superAdminFound.email || "basua2484@gmail.com";
+      superAdminFound.loginPin = superAdminFound.loginPin || "1234";
+      superAdminFound.referralCode = superAdminFound.referralCode || "101001";
+      superAdminFound.groupId = MAIN_GROUP_ID;
+      superAdminFound.messGroupId = MAIN_GROUP_ID;
+    }
+
+    userList.forEach((u, idx) => {
+      u.groupId = MAIN_GROUP_ID;
+      u.messGroupId = MAIN_GROUP_ID;
+      if (!u.loginPin) u.loginPin = "1234";
+      if (!u.email) u.email = `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+      if (!u.referralCode) {
+        u.referralCode = isSuperAdmin(u) ? "101001" : `MESS${100 + (idx % 890)}`;
+      }
+      if (typeof u.isEmailVerified === "undefined") u.isEmailVerified = true;
+    });
+
+    state.users = userList;
+
+    if (state.currentUser && state.currentUser.id) {
+      const matched = userList.find(u => u.id === state.currentUser.id);
+      if (matched) state.currentUser = matched;
+    }
+
+    saveLocalState();
+    renderMemberList(userList);
+    updateDashboardCards(userList);
+    updateRoleQuotaUI();
+  }, (err) => {
+    console.warn("loadGlobalGroupMembers error:", err);
+  });
+}
+
+// 4. User registration/signup function registerUserWithGroup(userData)
+async function registerUserWithGroup(userData) {
+  if (!userData) return null;
+  userData.groupId = MAIN_GROUP_ID;
+  userData.messGroupId = MAIN_GROUP_ID;
+
+  if (!userData.id) {
+    userData.id = "usr_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+  }
+
+  // Update or insert into local state
+  const idx = (state.users || []).findIndex(u => u.id === userData.id);
+  if (idx >= 0) {
+    state.users[idx] = userData;
+  } else {
+    (state.users = state.users || []).push(userData);
+  }
+
+  saveLocalState();
+
+  const userPath = 'hostel_mess_data/groups/' + MAIN_GROUP_ID + '/users/' + userData.id;
+  if (rtdb) {
+    try {
+      await rtdb.ref(userPath).set(userData);
+      await rtdb.ref('hostel_mess_data/groups/' + MAIN_GROUP_ID + '/lastUpdated').set(Date.now());
+      updateCloudSyncStatus(true, `☁️ Realtime DB: Connected • ${userPath}`);
+    } catch (e) {
+      console.warn("RTDB registerUserWithGroup error:", e);
+    }
+  }
+
+  if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.saveUser) {
+    await FirebaseSyncService.saveUser(userData);
+  }
+
+  return userData;
+}
+
+// Update Top Dashboard Summary Cards in Real-Time
+function updateDashboardCards(userList = (state.users || [])) {
+  const user = state.currentUser || state.users[0];
+  const isEmp = isEmployee(user) || isCook(user);
+
+  const activeUsers = (userList || []).filter(u => u.status === 'ACTIVE').length;
+  const today = getTodayString();
+  const activeAttendance = (state.attendanceLog || []).filter(a => a.date === today && a.status === 'ACTIVE');
+  const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
+  const onDutyCount = onDutyUserIds.size;
+
+  const lunchCount = (state.meals || []).filter(m => m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+  const dinnerCount = (state.meals || []).filter(m => m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
+
+  const totalPlates = getTotalConsumedPlates();
+  const plateRate = getDynamicPlateRate();
+
+  const memCountEl = document.getElementById("admin-members-count");
+  const onDutyEl = document.getElementById("admin-onduty-count");
+  const lunchCountEl = document.getElementById("admin-lunch-count");
+  const dinnerCountEl = document.getElementById("admin-dinner-count");
+  const platesCountEl = document.getElementById("admin-plates-count");
+  const rateDisplayEl = document.getElementById("admin-rate-display");
+
+  if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
+  if (onDutyEl) onDutyEl.textContent = isEmp ? "🔒" : onDutyCount;
+  if (lunchCountEl) lunchCountEl.textContent = isEmp ? "🔒" : lunchCount;
+  if (dinnerCountEl) dinnerCountEl.textContent = isEmp ? "🔒" : dinnerCount;
+  if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
+  if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${plateRate.toFixed(2)}`;
+}
+
+// Render Member Directory List
+function renderMemberList(userList = (state.users || [])) {
+  const user = state.currentUser || state.users[0];
+  const isSuperAdm = isSuperAdmin(user);
+  const isNormAdm = isNormalAdmin(user);
+  const isMgr = isManager(user);
+  const isEmp = isEmployee(user) || isCook(user);
+
+  const uList = document.getElementById("admin-users-list");
+  if (!uList) return;
+  uList.innerHTML = "";
+
+  if (isEmp) {
+    uList.innerHTML = `
+      <div class="locked-tab-card">
+        <div class="locked-icon-bubble">🔒</div>
+        <h4 style="margin:0;">Administration Panel Locked</h4>
+        <p class="text-sub">
+          Access Restricted: User Role Administration and Permissions are strictly managed by Super Admin and Management.<br>
+          Employees can manage their own personal profile from the <strong>Resident Home</strong> portal.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  const roleFilter = state.selectedRoleFilter || "ALL";
+  let filteredUsers = (userList || []);
+  if (roleFilter === "SUPER_ADMIN") {
+    filteredUsers = filteredUsers.filter(u => isSuperAdmin(u));
+  } else if (roleFilter === "ADMIN") {
+    filteredUsers = filteredUsers.filter(u => isNormalAdmin(u));
+  } else if (roleFilter === "MANAGER") {
+    filteredUsers = filteredUsers.filter(u => isManager(u));
+  } else if (roleFilter === "RESIDENT") {
+    filteredUsers = filteredUsers.filter(u => isEmployee(u));
+  } else if (roleFilter === "COOK") {
+    filteredUsers = filteredUsers.filter(u => isCook(u));
+  }
+
+  if (filteredUsers.length === 0) {
+    uList.innerHTML = `
+      <div class="empty-state">
+        <p>No users found for selected filter.</p>
+        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to onboard employees.</p>
+      </div>
+    `;
+    return;
+  }
+
+  filteredUsers.forEach(u => {
+    const div = document.createElement("div");
+    div.className = "user-card-item";
+    const uIsSuperAdmin = isSuperAdmin(u);
+    const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
+    const isBlocked = u.status === "BLOCKED";
+    const isMe = user.id === u.id;
+
+    let canEdit = false;
+    let canDelete = false;
+    let canLock = false;
+
+    if (isSuperAdm) {
+      // Super Admin: Full system control over all accounts
+      canEdit = true;
+      canLock = !isMe;
+      canDelete = !isMe; // Super Admin can delete anyone except self
+    } else if (isNormAdm) {
+      // Normal Admin: Can edit/update all except Super Admin. STRICTLY NO DELETE.
+      canEdit = !uIsSuperAdmin || isMe;
+      canLock = !isMe && !uIsSuperAdmin;
+      canDelete = false; // Normal Admin has NO DELETE PERMISSIONS
+    } else if (isMgr) {
+      // Hostel Manager: Can edit own profile only. All other staff are Read-Only (Watch Only).
+      canEdit = isMe;
+      canLock = false;
+      canDelete = false;
+    }
+
+    let actionsHtml = "";
+    if (canEdit) {
+      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ ${isMe ? 'My Profile' : 'Edit'}</button>`;
+    }
+    if (canLock) {
+      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
+    }
+    if (canDelete) {
+      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
+    }
+    if (!canEdit && !canLock && !canDelete) {
+      actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
+    }
+
+    const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
+    const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
+    const myCodeDisplay = u.referralCode || getUserReferralCode(u);
+    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
+    const emailVerifiedBadge = u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : '<span class="badge badge-amber" style="font-size:9px;">EMAIL UNVERIFIED</span>';
+
+    div.innerHTML = `
+      <div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <strong>${u.name}</strong>
+          <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
+          ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
+          ${emailVerifiedBadge}
+          ${refBadge}
+        </div>
+        <p class="text-sub" style="margin-top:2px;">
+          📧 <strong>${emailDisplay}</strong> • Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
+        </p>
+      </div>
+      <div class="user-card-actions">
+        ${actionsHtml}
+      </div>
+    `;
+    uList.appendChild(div);
+  });
+}
 
 // ==========================================
 // 2. LIVE GPS GEOLOCATION ENGINE
@@ -2895,36 +3132,9 @@ function renderAdminScreen() {
   const isSuperAdm = isSuperAdmin(user);
   const isNormAdm = isNormalAdmin(user);
   const isMgr = isManager(user);
-  const isEmp = isEmployee(user) || isCook(user);
 
-  const allUsers = state.users || [];
-  const activeUsers = allUsers.filter(u => u.status === 'ACTIVE').length;
-  
-  // Real-time live duty punch & meal metrics
-  const today = getTodayString();
-  const activeAttendance = (state.attendanceLog || []).filter(a => a.date === today && a.status === 'ACTIVE');
-  const onDutyUserIds = new Set(activeAttendance.map(a => a.userId));
-  const onDutyCount = onDutyUserIds.size;
-
-  const lunchCount = (state.meals || []).filter(m => m.mealType === 'LUNCH' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
-  const dinnerCount = (state.meals || []).filter(m => m.mealType === 'DINNER' && (m.status === 'ON' || m.status === 'PACK_TIFFIN' || m.status === 'LATE_COVERED')).length;
-
-  const totalPlates = getTotalConsumedPlates();
-  const plateRate = getDynamicPlateRate();
-
-  const memCountEl = document.getElementById("admin-members-count");
-  const onDutyEl = document.getElementById("admin-onduty-count");
-  const lunchCountEl = document.getElementById("admin-lunch-count");
-  const dinnerCountEl = document.getElementById("admin-dinner-count");
-  const platesCountEl = document.getElementById("admin-plates-count");
-  const rateDisplayEl = document.getElementById("admin-rate-display");
-
-  if (memCountEl) memCountEl.textContent = isEmp ? "🔒" : activeUsers;
-  if (onDutyEl) onDutyEl.textContent = isEmp ? "🔒" : onDutyCount;
-  if (lunchCountEl) lunchCountEl.textContent = isEmp ? "🔒" : lunchCount;
-  if (dinnerCountEl) dinnerCountEl.textContent = isEmp ? "🔒" : dinnerCount;
-  if (platesCountEl) platesCountEl.textContent = isEmp ? "🔒" : totalPlates;
-  if (rateDisplayEl) rateDisplayEl.textContent = isEmp ? "🔒" : `₹${plateRate.toFixed(2)}`;
+  // Update real-time summary cards
+  updateDashboardCards(state.users);
 
   const addUsrBtn = document.getElementById("btn-open-add-user");
   const recPunchBtn = document.getElementById("btn-open-manual-att");
@@ -3008,116 +3218,7 @@ function renderAdminScreen() {
   renderPendingUserApprovals();
 
   // 2. Render User & Role Directory
-  const uList = document.getElementById("admin-users-list");
-  if (!uList) return;
-  uList.innerHTML = "";
-
-  if (isEmp) {
-    uList.innerHTML = `
-      <div class="locked-tab-card">
-        <div class="locked-icon-bubble">🔒</div>
-        <h4 style="margin:0;">Administration Panel Locked</h4>
-        <p class="text-sub">
-          Access Restricted: User Role Administration and Permissions are strictly managed by Super Admin and Management.<br>
-          Employees can manage their own personal profile from the <strong>Resident Home</strong> portal.
-        </p>
-      </div>
-    `;
-    return;
-  }
-
-  const roleFilter = state.selectedRoleFilter || "ALL";
-  let filteredUsers = state.users || [];
-  if (roleFilter === "SUPER_ADMIN") {
-    filteredUsers = filteredUsers.filter(u => isSuperAdmin(u));
-  } else if (roleFilter === "ADMIN") {
-    filteredUsers = filteredUsers.filter(u => isNormalAdmin(u));
-  } else if (roleFilter === "MANAGER") {
-    filteredUsers = filteredUsers.filter(u => isManager(u));
-  } else if (roleFilter === "RESIDENT") {
-    filteredUsers = filteredUsers.filter(u => isEmployee(u));
-  } else if (roleFilter === "COOK") {
-    filteredUsers = filteredUsers.filter(u => isCook(u));
-  }
-
-  if (filteredUsers.length === 0) {
-    uList.innerHTML = `
-      <div class="empty-state">
-        <p>No users found for selected filter.</p>
-        <p class="text-sub mt-1">Click <strong>"+ Add New User"</strong> to onboard employees.</p>
-      </div>
-    `;
-    return;
-  }
-
-  filteredUsers.forEach(u => {
-    const div = document.createElement("div");
-    div.className = "user-card-item";
-    const uIsSuperAdmin = isSuperAdmin(u);
-    const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
-    const isBlocked = u.status === "BLOCKED";
-    const isMe = user.id === u.id;
-
-    let canEdit = false;
-    let canDelete = false;
-    let canLock = false;
-
-    if (isSuperAdm) {
-      // Super Admin: Full system control over all accounts
-      canEdit = true;
-      canLock = !isMe;
-      canDelete = !isMe; // Super Admin can delete anyone except self
-    } else if (isNormAdm) {
-      // Normal Admin: Can edit/update all except Super Admin. STRICTLY NO DELETE.
-      canEdit = !uIsSuperAdmin || isMe;
-      canLock = !isMe && !uIsSuperAdmin;
-      canDelete = false; // Normal Admin has NO DELETE PERMISSIONS
-    } else if (isMgr) {
-      // Hostel Manager: Can edit own profile only. All other staff are Read-Only (Watch Only).
-      canEdit = isMe;
-      canLock = false;
-      canDelete = false;
-    }
-
-    let actionsHtml = "";
-    if (canEdit) {
-      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="openEditUserModal('${u.id}')">✏️ ${isMe ? 'My Profile' : 'Edit'}</button>`;
-    }
-    if (canLock) {
-      actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
-    }
-    if (canDelete) {
-      actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
-    }
-    if (!canEdit && !canLock && !canDelete) {
-      actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
-    }
-
-    const roleDisplayName = uIsSuperAdmin ? "SUPER ADMIN" : u.role;
-    const refBadge = u.referrerName ? `<span class="badge badge-lilac" style="font-size:9px;">🎁 Ref by: ${u.referrerName}</span>` : '';
-    const myCodeDisplay = u.referralCode || getUserReferralCode(u);
-    const emailDisplay = u.email || `${(u.name || 'user').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`;
-    const emailVerifiedBadge = u.isEmailVerified ? '<span class="badge badge-success" style="font-size:9px;">✓ EMAIL OTP VERIFIED</span>' : '<span class="badge badge-amber" style="font-size:9px;">EMAIL UNVERIFIED</span>';
-
-    div.innerHTML = `
-      <div>
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <strong>${u.name}</strong>
-          <span class="role-pill ${roleBadgeClass}">${roleDisplayName}</span>
-          ${isBlocked ? '<span class="badge badge-alert">BLOCKED</span>' : '<span class="badge badge-success">ACTIVE</span>'}
-          ${emailVerifiedBadge}
-          ${refBadge}
-        </div>
-        <p class="text-sub" style="margin-top:2px;">
-          📧 <strong>${emailDisplay}</strong> • Room: <strong>${u.assignedRoom || 'N/A'}</strong> • ID: ${u.userIdCode || 'N/A'} • 📱 +91 ${u.mobile} • Shift: ${u.currentShift || 'OFF_DUTY'} • Code: <span class="font-mono" style="color:#2563EB;">${myCodeDisplay}</span>
-        </p>
-      </div>
-      <div class="user-card-actions">
-        ${actionsHtml}
-      </div>
-    `;
-    uList.appendChild(div);
-  });
+  renderMemberList(state.users);
 }
 
 function renderAttendanceReport() {
@@ -3718,8 +3819,8 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     });
   }
 
-  // Force groupId to match referrer's (Super Admin's) groupId
-  const targetGroupId = (referrerUser && (referrerUser.groupId || referrerUser.messGroupId)) || getActiveGroupId() || DEFAULT_GROUP_ID;
+  // Force groupId to match MAIN_GROUP_ID
+  const targetGroupId = MAIN_GROUP_ID;
 
   // Check if a user with same mobile or email already exists to prevent duplicate isolated local profiles
   const existingDuplicate = (state.users || []).find(u => 
@@ -3736,8 +3837,8 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     existingDuplicate.role = role;
     existingDuplicate.assignedRoom = room || existingDuplicate.assignedRoom || "101";
     existingDuplicate.currentShift = shift || existingDuplicate.currentShift || "OFF_DUTY";
-    existingDuplicate.groupId = targetGroupId;
-    existingDuplicate.messGroupId = targetGroupId;
+    existingDuplicate.groupId = MAIN_GROUP_ID;
+    existingDuplicate.messGroupId = MAIN_GROUP_ID;
     if (referrerUser) {
       existingDuplicate.referredBy = referrerUser.id;
       existingDuplicate.referrerName = referrerUser.name;
@@ -3745,11 +3846,11 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     }
 
     state.currentUser = existingDuplicate;
-    FirebaseSyncService.saveUser(existingDuplicate);
+    registerUserWithGroup(existingDuplicate);
     saveState();
     renderUI();
     closeModal("modal-user-form");
-    alert(`🎉 Welcome back, ${existingDuplicate.name}!\n\nYour profile has been connected to Group: "${targetGroupId}"\nShared Path: ${getGroupDbPath(targetGroupId)}/users\nReferral ID: ${existingDuplicate.referralCode}`);
+    alert(`🎉 Welcome back, ${existingDuplicate.name}!\n\nYour profile has been connected to Group: "${MAIN_GROUP_ID}"\nShared Path: hostel_mess_data/groups/${MAIN_GROUP_ID}/users\nReferral ID: ${existingDuplicate.referralCode}`);
     return;
   }
 
@@ -3770,8 +3871,8 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
     status: "ACTIVE",
     currentShift: shift || "OFF_DUTY",
     referralCode: myUniqueRefId,
-    groupId: targetGroupId,
-    messGroupId: targetGroupId,
+    groupId: MAIN_GROUP_ID,
+    messGroupId: MAIN_GROUP_ID,
     referredBy: referrerUser ? referrerUser.id : (refCodeEntered || "usr_super_admin"),
     referrerName: referrerUser ? referrerUser.name : (refCodeEntered ? "Mess Member" : "Avijit Basu"),
     referredCode: refCodeEntered || "101001",
@@ -3782,7 +3883,7 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
 
   state.users.push(newUser);
   state.currentUser = newUser;
-  FirebaseSyncService.saveUser(newUser);
+  registerUserWithGroup(newUser);
 
   // Initialize today's meals for resident
   if (role === "RESIDENT" || role === "EMPLOYEE") {
@@ -3807,7 +3908,7 @@ document.getElementById("btn-proceed-otp")?.addEventListener("click", () => {
   renderUI();
   closeModal("modal-user-form");
 
-  alert(`🎉 Welcome to Hostel Mess, ${newUser.name}!\n\nYour Unique Referral ID: ${newUser.referralCode}\nGroup: ${targetGroupId} (${getGroupDbPath(targetGroupId)})\nAccount PIN: ${newUser.loginPin}\n\nYou are now logged in and synced to the central mess database!`);
+  alert(`🎉 Welcome to Hostel Mess, ${newUser.name}!\n\nYour Unique Referral ID: ${newUser.referralCode}\nGroup: ${MAIN_GROUP_ID} (hostel_mess_data/groups/${MAIN_GROUP_ID})\nAccount PIN: ${newUser.loginPin}\n\nYou are now logged in and synced to the central mess database!`);
 });
 
 // ==========================================
