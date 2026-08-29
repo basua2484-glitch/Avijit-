@@ -5441,7 +5441,7 @@ function listenToDatabaseUpdates() {
   const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (databaseRef) {
-    // Dynamic Realtime Roster Sync (Only Valid Registered Users)
+    // Dynamic Realtime Roster Sync (Direct Member Filter)
     databaseRef.ref('hostel_mess_data').on('value', (snapshot) => {
       const rootData = snapshot.val() || {};
       const users = rootData.users || {};
@@ -5454,41 +5454,34 @@ function listenToDatabaseUpdates() {
         const entry = rosterData[key];
         if (!entry) return;
         
-        // Check 1: User database me exist karta ho (by userId or matching phone/id)
-        // Check 2: Member Status Active ho
-        const userList = Object.values(users);
-        const isValidUser = userList.some(u => 
-          u && (
-            u.id === entry.userId || 
-            u.id === key ||
-            u.name === entry.name || 
-            u.phone === entry.userId || 
-            u.phone === entry.phone ||
-            (entry.userId && String(u.id) === String(entry.userId))
-          ) && (u.status === 'ACTIVE' || !u.status || u.status === 'APPROVED')
+        // User ID match check (Direct matching with Database Users)
+        const matchedUser = Object.values(users).find(u => 
+          u && (u.id === entry.userId || u.id === key || u.name === entry.name || (entry.userId && String(u.id) === String(entry.userId)))
         );
 
-        if (isValidUser) {
+        // Sirf wahi dikhega jo database me ACTIVE user hai
+        if (matchedUser && (matchedUser.status === 'ACTIVE' || matchedUser.status === 'APPROVED' || !matchedUser.status)) {
           activeCount++;
-          const badgeClass = (entry.status === 'OFF' || entry.status === 'INACTIVE') ? 'status-off badge-off' : 'status-on badge-success';
           rosterHTML += `
             <tr>
-              <td><b>${entry.name || 'Member'}</b></td>
-              <td>${entry.room || 'N/A'}</td>
-              <td>${entry.shift || 'OFF_DUTY'}</td>
-              <td><span class="badge ${badgeClass}">${entry.status || 'ON'}</span></td>
+              <td><b>${entry.name || matchedUser.name}</b></td>
+              <td>${entry.room || matchedUser.room || matchedUser.assignedRoom || 'N/A'}</td>
+              <td>${entry.shift || matchedUser.shift || 'OFF_DUTY'}</td>
+              <td><span class="badge status-on">${entry.status || 'ON'}</span></td>
             </tr>`;
         }
       });
 
+      // Table HTML update
       const rosterTable = document.getElementById('rosterTableBody') || document.getElementById('kitchen-roster-tbody');
       if (rosterTable) {
-        rosterTable.innerHTML = rosterHTML || '<tr><td colspan="4" style="text-align:center; padding:16px; color:#888;">No active members in roster</td></tr>';
+        rosterTable.innerHTML = rosterHTML || '<tr><td colspan="4" style="text-align:center;">No active members in roster</td></tr>';
       }
 
-      const counterEl = document.getElementById('kitchen-roster-count');
-      if (counterEl) {
-        counterEl.textContent = `${activeCount} active entries`;
+      // Active entries count update
+      const countBadge = document.querySelector('.live-roster-count') || document.getElementById('kitchen-roster-count');
+      if (countBadge) {
+        countBadge.innerText = `${activeCount} active entries`;
       }
     });
   }
