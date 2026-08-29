@@ -5616,11 +5616,39 @@ function updateCounterElement(elementId, value) {
   }
 }
 
-// Initialize on page load
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', syncDashboardCounters);
-} else {
-  syncDashboardCounters();
+// Clean & Fresh App Logic (No Default/Dummy Accounts)
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof firebase !== 'undefined') {
+    initFreshDashboard();
+  }
+});
+
+function initFreshDashboard() {
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+
+  db.ref('hostel_mess_data').on('value', (snapshot) => {
+    const data = snapshot.val() || {};
+    const users = data.users || {};
+    const roster = data.roster || {};
+
+    const activeUsers = Object.values(users).filter(Boolean);
+
+    // Update Live UI Counters with Actual Data Only
+    setElementText('totalMembersEl', activeUsers.length);
+    setElementText('liveOnDutyEl', 0);
+    setElementText('lunchPlatesEl', 0);
+    setElementText('dinnerPlatesEl', 0);
+    setElementText('totalPlatesEl', 0);
+
+  }, (error) => {
+    console.error("Database sync error:", error);
+  });
+}
+
+function setElementText(id, value) {
+  const el = document.getElementById(id);
+  if (el) el.innerText = value;
 }
 
 // Duplicate Auto-Generated Users Sweep Function
@@ -5710,6 +5738,8 @@ window.cleanDuplicateResidents = cleanDuplicateResidents;
 window.cleanupDuplicateResidents = cleanupDuplicateResidents;
 window.loadAppUsers = loadAppUsers;
 window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
+window.initFreshDashboard = initFreshDashboard;
+window.setElementText = setElementText;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
