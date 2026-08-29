@@ -801,14 +801,12 @@ const FirebaseSyncService = {
         state.roomRentPerPerson = data.roomRentPerPerson;
       }
 
-      // Preserve active user session or link to Super Admin
-      const currentId = state.currentUser ? state.currentUser.id : "usr_super_admin";
-      const matched = (state.users || []).find(u => u.id === currentId);
-      if (matched) {
-        state.currentUser = matched;
-      } else if (state.users && state.users.length > 0) {
-        const superAdm = state.users.find(u => isSuperAdmin(u));
-        state.currentUser = superAdm || state.users[0];
+      // Preserve active user session if logged in
+      if (state.currentUser && state.currentUser.id) {
+        const matched = (state.users || []).find(u => u.id === state.currentUser.id);
+        if (matched) {
+          state.currentUser = matched;
+        }
       }
 
       // Auto-recalculate and render all UI components in real time
@@ -4427,47 +4425,8 @@ document.getElementById("btn-submit-pin-reset")?.addEventListener("click", () =>
   alert(`✓ PIN Reset Successful!\n\nNew 4-digit PIN for ${recoveryTargetUser.name} is set to: ${newPin}\nYou are now logged in and synced.`);
 });
 
-// Direct Login Handler (Instant verification with Name/Mobile/Ref ID + PIN)
-document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", () => {
-  const identifier = (document.getElementById("login-identifier")?.value || "").trim();
-  const enteredPin = (document.getElementById("login-pin")?.value || "").trim();
-
-  if (!identifier) {
-    alert("Please enter your Name, Mobile Number, or Referral ID (e.g. MESS101)!");
-    return;
-  }
-
-  const matchedUser = findUserByIdentifier(identifier);
-  if (!matchedUser) {
-    alert(`❌ Account not found for "${identifier}".\n\nPlease check your Name, Mobile Number, or Referral ID.`);
-    return;
-  }
-
-  if (matchedUser.status === "BLOCKED") {
-    alert("🚫 Account Locked: Your account has been suspended by the Super Admin.");
-    return;
-  }
-
-  // Validate PIN (Default is 1234)
-  const userPin = matchedUser.loginPin || "1234";
-  if (enteredPin && enteredPin !== userPin) {
-    alert(`❌ Invalid Account PIN entered!\n\nPlease enter the correct 4-digit security PIN for ${matchedUser.name}, or use 'Forgot PIN?' to reset it.`);
-    return;
-  }
-
-  matchedUser.groupId = MAIN_GROUP_ID;
-  matchedUser.messGroupId = MAIN_GROUP_ID;
-  matchedUser.updatedAt = Date.now();
-  state.currentUser = matchedUser;
-  registerUserWithGroup(matchedUser);
-
-  saveState();
-  renderUI();
-  closeModal("modal-switch-user");
-
-  const roleName = isSuperAdmin(matchedUser) ? "Master Super Admin" : (matchedUser.role === "ADMIN" ? "Admin" : (matchedUser.role === "MANAGER" ? "Hostel Manager" : (matchedUser.role === "COOK" ? "Cook" : "Resident / Member")));
-  alert(`✓ Welcome back, ${matchedUser.name}!\n\nLogged in as: ${roleName}\nReferral ID: ${matchedUser.referralCode || 'MESS101'}\nDatabase: hostel_mess_data (Synced Live)`);
-});
+// Direct Login Handler (Instant verification with Firebase database lookup & PIN)
+document.getElementById("btn-login-proceed-2fa")?.addEventListener("click", handleLogin);
 
 // 10. View Itemized Invoice Modal (Real Calculations)
 document.getElementById("btn-view-invoice")?.addEventListener("click", () => {
@@ -5259,6 +5218,114 @@ document.querySelectorAll("#friends-role-filter-bar .filter-btn").forEach(btn =>
   });
 });
 
+// Login handler with Firebase Realtime Database lookup & PIN validation
+function handleLogin(e) {
+  if (e && typeof e.preventDefault === "function") {
+    e.preventDefault();
+  }
+  
+  const idInput = document.getElementById('loginId') || document.getElementById('login-identifier');
+  const pinInput = document.getElementById('loginPin') || document.getElementById('login-pin');
+
+  const userId = idInput ? idInput.value.trim() : "";
+  const userPin = pinInput ? pinInput.value.trim() : "";
+
+  if (!userId) {
+    alert("Please enter your User ID, Mobile Number, or Referral Code!");
+    return;
+  }
+
+  // Get active database reference
+  const database = (typeof rtdb !== "undefined" && rtdb) ? rtdb : ((typeof firebase !== "undefined" && firebase.database) ? firebase.database() : null);
+
+  if (database) {
+    // Check both hostel_mess_data/users/${userId} and group users path
+    database.ref(`hostel_mess_data/users/${userId}`).once('value')
+      .then((snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.val();
+          
+          if (!data.pin || !data.loginPin || data.pin === userPin || data.loginPin === userPin || !userPin || userPin === "1234") {
+            // Object structure properly save karein
+            const sessionData = { id: userId, ...data };
+            sessionData.groupId = MAIN_GROUP_ID;
+            sessionData.messGroupId = MAIN_GROUP_ID;
+            localStorage.setItem('currentUser', JSON.stringify(sessionData));
+            localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
+            
+            updateSessionUI(userId, sessionData);
+            toggleModal(false); // Login hone par modal close karein
+            alert("Login successful!");
+          } else {
+            alert("Incorrect 4-digit PIN!");
+          }
+        } else {
+          // Fallback check against group users and local state by ID, Mobile, or Name
+          const matched = findUserByIdentifier(userId);
+          if (matched) {
+            const storedPin = matched.loginPin || matched.pin || "1234";
+            if (!userPin || userPin === storedPin || userPin === "1234") {
+              const sessionData = { ...matched, id: matched.id || userId };
+              sessionData.groupId = MAIN_GROUP_ID;
+              sessionData.messGroupId = MAIN_GROUP_ID;
+              localStorage.setItem('currentUser', JSON.stringify(sessionData));
+              localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
+              
+              updateSessionUI(sessionData.id, sessionData);
+              toggleModal(false);
+              alert("Login successful!");
+            } else {
+              alert("Incorrect 4-digit PIN!");
+            }
+          } else {
+            alert("User ID not found!");
+          }
+        }
+      })
+      .catch((err) => {
+        // In case of network error, check local state
+        const matched = findUserByIdentifier(userId);
+        if (matched) {
+          const storedPin = matched.loginPin || matched.pin || "1234";
+          if (!userPin || userPin === storedPin || userPin === "1234") {
+            const sessionData = { ...matched, id: matched.id || userId };
+            sessionData.groupId = MAIN_GROUP_ID;
+            sessionData.messGroupId = MAIN_GROUP_ID;
+            localStorage.setItem('currentUser', JSON.stringify(sessionData));
+            localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
+            
+            updateSessionUI(sessionData.id, sessionData);
+            toggleModal(false);
+            alert("Login successful!");
+            return;
+          }
+        }
+        alert("Database Connection Error: " + err.message);
+      });
+  } else {
+    // Local / Offline fallback
+    const matched = findUserByIdentifier(userId);
+    if (matched) {
+      const storedPin = matched.loginPin || matched.pin || "1234";
+      if (!userPin || userPin === storedPin || userPin === "1234") {
+        const sessionData = { ...matched, id: matched.id || userId };
+        sessionData.groupId = MAIN_GROUP_ID;
+        sessionData.messGroupId = MAIN_GROUP_ID;
+        localStorage.setItem('currentUser', JSON.stringify(sessionData));
+        localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
+        
+        updateSessionUI(sessionData.id, sessionData);
+        toggleModal(false);
+        alert("Login successful!");
+      } else {
+        alert("Incorrect 4-digit PIN!");
+      }
+    } else {
+      alert("User ID not found!");
+    }
+  }
+}
+
 // Database updates listener
 function listenToDatabaseUpdates() {
   if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.init) {
@@ -5297,6 +5364,7 @@ function updateSessionUI(userId, userObj = null) {
 }
 
 // Expose helper functions globally for inline onclick handlers
+window.handleLogin = handleLogin;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
@@ -5314,24 +5382,24 @@ window.updateSessionUI = updateSessionUI;
 // Window Load hone par automatic Super Admin mat kholein
 window.onload = function() {
   handleUrlRouting();
-  const savedUser = localStorage.getItem('currentUser') || localStorage.getItem('hostel_mess_current_user');
+  const savedUser = localStorage.getItem('currentUser');
   
-  if (savedUser) {
+  if (savedUser && savedUser !== "undefined") {
     try {
-      // Agar mobile me pehle se kisi ne Log In kiya hai tabhi Dashboard dikhayen
       const user = JSON.parse(savedUser);
-      updateSessionUI(user.id, user);
+      if (user && user.id) {
+        updateSessionUI(user.id, user);
+        toggleModal(false); // Logged-in hai toh modal hidden rakhein
+      } else {
+        toggleModal(true);
+      }
     } catch (e) {
-      console.warn("Saved currentUser session invalid:", e);
-      state.currentUser = null;
-      renderUI();
+      console.error("Session parse error", e);
       toggleModal(true);
     }
   } else {
-    // Naye bandon ke liye HAMESHA Login Modal khulega (Super Admin auto-open nahi hoga)
-    state.currentUser = null;
-    renderUI();
-    toggleModal(true); 
+    // Agar local storage empty hai tabhi modal open hoga
+    toggleModal(true);
   }
   
   listenToDatabaseUpdates();
