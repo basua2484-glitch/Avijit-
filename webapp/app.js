@@ -5468,9 +5468,50 @@ function updateSessionUI(userId, userObj = null) {
   }
 }
 
+// Recaptcha Init
+function initRecaptchaVerifier() {
+  if (typeof firebase !== 'undefined' && firebase.auth && document.getElementById('recaptcha-container')) {
+    try {
+      if (!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container', {
+          'size': 'invisible'
+        });
+      }
+    } catch (e) {
+      console.warn("RecaptchaVerifier init error/warning:", e);
+    }
+  }
+}
+
+// Real OTP Send Function
+function sendRealOTP(mobileNumber) {
+  if (!window.recaptchaVerifier) {
+    initRecaptchaVerifier();
+  }
+  const formattedNumber = mobileNumber.startsWith('+91') ? mobileNumber : `+91${mobileNumber}`;
+  
+  firebase.auth().signInWithPhoneNumber(formattedNumber, window.recaptchaVerifier)
+    .then((confirmationResult) => {
+      window.confirmationResult = confirmationResult;
+      const otp = prompt(`${formattedNumber} par Real SMS OTP bheja gaya hai. Enter karein:`);
+      
+      if (otp) {
+        confirmationResult.confirm(otp)
+          .then((result) => {
+            alert("OTP Verified Successfully!");
+            // Perform Password/PIN Reset
+          })
+          .catch(() => alert("Galat OTP enter kiya!"));
+      }
+    })
+    .catch((err) => alert("SMS Send Error: " + err.message));
+}
+
 // Expose helper functions globally for inline onclick handlers
 window.handleLogin = handleLogin;
 window.handleForgotPin = handleForgotPin;
+window.sendRealOTP = sendRealOTP;
+window.initRecaptchaVerifier = initRecaptchaVerifier;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
@@ -5507,6 +5548,11 @@ window.onload = function() {
   }
   
   listenToDatabaseUpdates();
+  try {
+    initRecaptchaVerifier();
+  } catch (e) {
+    console.warn("Recaptcha verifier init on load:", e);
+  }
 };
 
 // 16. Progressive Web App (PWA) Service Worker Registration & Offline Support
