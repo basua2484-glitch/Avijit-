@@ -68,24 +68,7 @@ function getUsersDbPath(groupId = getActiveGroupId()) {
 const CLEAN_INITIAL_STATE = {
   groupId: MAIN_GROUP_ID,
   currentGroupId: MAIN_GROUP_ID,
-  currentUser: {
-    id: "usr_super_admin",
-    name: "Avijit Basu",
-    email: "basua2484@gmail.com",
-    mobile: "9876543210",
-    loginPin: "1234",
-    role: "SUPER_ADMIN",
-    assignedRoom: "Admin Office",
-    userIdCode: "SADM_001",
-    status: "ACTIVE",
-    currentShift: "OFF_DUTY",
-    referralCode: "101001",
-    groupId: MAIN_GROUP_ID,
-    messGroupId: MAIN_GROUP_ID,
-    isEmailVerified: true,
-    emailVerifiedAt: Date.now(),
-    isOtpVerified: true
-  },
+  currentUser: null, // Naye bandon ke liye HAMESHA Login Modal khulega (Super Admin auto-open nahi hoga)
   users: [
     {
       id: "usr_super_admin",
@@ -125,57 +108,57 @@ const CLEAN_INITIAL_STATE = {
 // RBAC ROLE HIERARCHY & PERMISSION HELPERS
 // ==========================================
 function isSuperAdmin(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   if (!user) return false;
   return user.role === "SUPER_ADMIN" || user.userIdCode === "SADM_001" || user.id === "usr_super_admin" || user.name === "Avijit Basu" || (user.role === "ADMIN" && user.userIdCode === "ADM_001");
 }
 
 function isNormalAdmin(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   if (!user) return false;
   return user.role === "ADMIN" && !isSuperAdmin(user);
 }
 
 function isManager(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   if (!user) return false;
   return user.role === "MANAGER";
 }
 
 function isEmployee(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   if (!user) return false;
   return user.role === "RESIDENT" || user.role === "EMPLOYEE" || user.role === "STAFF";
 }
 
 function isCook(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   if (!user) return false;
   return user.role === "COOK";
 }
 
 // Check if currently authenticated user has authorization to onboard new employees/residents
 function isAuthorizedToOnboardUsers(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   const hasRefCode = Boolean(sessionStorage.getItem("hostel_mess_ref_code") || (document.getElementById("form-user-referral-code") && document.getElementById("form-user-referral-code").value.trim()));
   return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user) || hasRefCode;
 }
 
 // Check if user has permission to approve employee kitchen purchase requests
 function canApprovePurchaseRequests(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   return isSuperAdmin(user) || isNormalAdmin(user) || isManager(user);
 }
 
 // Check if user has permission to approve user registrations (Super Admin exclusive)
 function canApproveUserRegistrations(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   return isSuperAdmin(user);
 }
 
 // Check if user has master deletion permission (Super Admin exclusive)
 function canDeleteData(u) {
-  const user = u || (typeof state !== "undefined" && (state.currentUser || (state.users && state.users[0])));
+  const user = (typeof u !== "undefined" && u !== null) ? u : (typeof state !== "undefined" ? state.currentUser : null);
   return isSuperAdmin(user);
 }
 
@@ -343,6 +326,24 @@ let state = (function() {
         parsed.currentUser.groupId = MAIN_GROUP_ID;
         parsed.currentUser.messGroupId = MAIN_GROUP_ID;
         parsed.currentUser.isEmailVerified = true;
+      }
+
+      // Check for explicitly saved user session in localStorage
+      const savedCurrentUserStr = localStorage.getItem("currentUser") || localStorage.getItem("hostel_mess_current_user");
+      if (savedCurrentUserStr) {
+        try {
+          const parsedUser = JSON.parse(savedCurrentUserStr);
+          if (parsedUser && parsedUser.id) {
+            // Find updated user from user list or keep parsedUser
+            const liveUser = (parsed.users || []).find(u => u.id === parsedUser.id || (u.mobile && parsedUser.mobile && u.mobile === parsedUser.mobile));
+            parsed.currentUser = liveUser || parsedUser;
+          }
+        } catch (e) {
+          parsed.currentUser = null;
+        }
+      } else {
+        // Automatic Super Admin band: No saved session means guest state
+        parsed.currentUser = null;
       }
 
       // Deduplicate and sanitize users
@@ -1879,7 +1880,33 @@ function renderUI() {
 
 // 1. Header Rendering
 function renderHeader() {
-  const user = state.currentUser || state.users[0];
+  const user = state.currentUser;
+  
+  if (!user) {
+    document.getElementById("header-avatar").textContent = "🔐";
+    document.getElementById("header-user-name").textContent = "Guest (Not Logged In)";
+    document.getElementById("header-user-role").textContent = "Tap 🔐 to Switch Account / Sign In";
+    
+    const roleBadge = document.getElementById("current-role-badge");
+    if (roleBadge) {
+      roleBadge.textContent = "SIGN IN";
+      roleBadge.className = "role-pill";
+      roleBadge.style.cursor = "pointer";
+      roleBadge.onclick = () => toggleModal(true);
+    }
+
+    const mgrBtn = document.getElementById("nav-manager-btn");
+    const expBtn = document.getElementById("nav-expense-btn");
+    const admBtn = document.getElementById("nav-admin-btn");
+    const kitBtn = document.getElementById("nav-kitchen-btn");
+
+    if (kitBtn) { kitBtn.style.opacity = "1"; kitBtn.style.display = "inline-flex"; kitBtn.title = "Hostel Kitchen"; }
+    if (mgrBtn) { mgrBtn.style.opacity = "0.4"; mgrBtn.style.display = "none"; }
+    if (expBtn) { expBtn.style.opacity = "0.4"; expBtn.style.display = "none"; }
+    if (admBtn) { admBtn.style.opacity = "0.4"; admBtn.style.display = "none"; }
+    return;
+  }
+
   const initials = user.name.split(" ").map(n => n[0]).join("").toUpperCase() || "U";
   
   document.getElementById("header-avatar").textContent = initials;
@@ -1890,6 +1917,7 @@ function renderHeader() {
   const roleBadge = document.getElementById("current-role-badge");
   if (roleBadge) {
     roleBadge.textContent = roleDisplay;
+    roleBadge.onclick = null;
     const badgeClass = isSuperAdmin(user) ? "super_admin" : (user.role === "ADMIN" ? "admin" : (user.role === "MANAGER" ? "manager" : (user.role === "COOK" ? "cook" : "resident")));
     roleBadge.className = `role-pill ${badgeClass}`;
   }
@@ -1943,7 +1971,63 @@ function isUserOnLeave(u) {
 
 // 2. Resident Screen Rendering (with Leave Lockout, Pending Approval & View-Only Mode)
 function renderResidentScreen() {
-  const user = state.currentUser || state.users[0];
+  const user = state.currentUser;
+
+  if (!user) {
+    const lockoutContainer = document.getElementById("resident-leave-lockout-container");
+    if (lockoutContainer) {
+      lockoutContainer.innerHTML = `
+        <div class="leave-lockout-banner" style="border-left: 4px solid var(--primary); background: #EFF6FF;">
+          <div class="leave-lockout-header">
+            <span class="leave-lockout-icon">🔐</span>
+            <div>
+              <div class="leave-lockout-title" style="color:var(--primary-dark);">SIGN IN TO ACCESS HOSTEL MESS PORTAL</div>
+              <div class="badge badge-success" style="margin-top:2px;">AUTHENTICATION REQUIRED</div>
+            </div>
+          </div>
+          <p class="leave-lockout-desc" style="color:#1E3A8A;">
+            Please log in with your 4-digit PIN or register your account to book meals, punch duty attendance, and manage hostel services.
+          </p>
+          <div class="mt-3" style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" id="btn-banner-login-action" style="width:auto; padding:8px 16px;">
+              🔐 Sign In / Switch Account
+            </button>
+            <button class="btn btn-secondary btn-sm" id="btn-banner-register-action" style="width:auto; padding:8px 16px; background:#FFFFFF; color:#1E293B; border:1px solid #CBD5E1;">
+              👤 Register New Account
+            </button>
+          </div>
+        </div>
+      `;
+      document.getElementById("btn-banner-login-action")?.addEventListener("click", () => toggleModal(true));
+      document.getElementById("btn-banner-register-action")?.addEventListener("click", () => {
+        closeModal("modal-switch-user");
+        openModal("modal-user-form");
+      });
+    }
+
+    const pulseDot = document.getElementById("resident-pulse-dot");
+    const statusBadge = document.getElementById("resident-punch-status-badge");
+    const statusText = document.getElementById("resident-punch-status-text");
+    const btnPunchIn = document.getElementById("btn-employee-punch-in");
+    const btnPunchOut = document.getElementById("btn-employee-punch-out");
+    if (pulseDot) pulseDot.className = "live-pulse-dot inactive";
+    if (statusBadge) {
+      statusBadge.textContent = "🔒 SIGN IN REQUIRED";
+      statusBadge.className = "badge badge-alert";
+    }
+    if (statusText) statusText.textContent = "Please sign in to punch duty attendance and book meals";
+    if (btnPunchIn) {
+      btnPunchIn.disabled = false;
+      btnPunchIn.onclick = () => toggleModal(true);
+      btnPunchIn.innerHTML = `🔐 Sign In to Punch In`;
+    }
+    if (btnPunchOut) {
+      btnPunchOut.disabled = true;
+      btnPunchOut.innerHTML = `Punch Out`;
+    }
+    return;
+  }
+
   const onLeave = isUserOnLeave(user);
   const pendingApproval = isUserPendingApproval(user);
 
@@ -5175,6 +5259,43 @@ document.querySelectorAll("#friends-role-filter-bar .filter-btn").forEach(btn =>
   });
 });
 
+// Database updates listener
+function listenToDatabaseUpdates() {
+  if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.init) {
+    FirebaseSyncService.init();
+  }
+}
+
+// Modal toggler helper (defaults to switch user/login modal)
+function toggleModal(open = true, modalId = "modal-switch-user") {
+  if (open) {
+    if (modalId === "modal-switch-user") {
+      updateSwitchModalSessionCard();
+      renderSwitchAccountList();
+    }
+    openModal(modalId);
+  } else {
+    closeModal(modalId);
+  }
+}
+
+// Session UI update helper
+function updateSessionUI(userId, userObj = null) {
+  let user = userObj;
+  if (!user && userId) {
+    user = (state.users || []).find(u => u && u.id === userId) || findUserByIdentifier(userId);
+  }
+  if (user) {
+    user.groupId = MAIN_GROUP_ID;
+    user.messGroupId = MAIN_GROUP_ID;
+    state.currentUser = user;
+    localStorage.setItem("currentUser", JSON.stringify(user));
+    localStorage.setItem("hostel_mess_current_user", JSON.stringify(user));
+    saveLocalState();
+    renderUI();
+  }
+}
+
 // Expose helper functions globally for inline onclick handlers
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
@@ -5186,13 +5307,35 @@ window.copyReferralCode = copyReferralCode;
 window.renderFriendsScreen = renderFriendsScreen;
 window.joinGroupByReferralId = joinGroupByReferralId;
 window.selfDeleteCurrentUserAccount = selfDeleteCurrentUserAccount;
+window.listenToDatabaseUpdates = listenToDatabaseUpdates;
+window.toggleModal = toggleModal;
+window.updateSessionUI = updateSessionUI;
 
-// Initial boot render, Firebase Realtime Database connection & routing
-renderUI();
-handleUrlRouting();
-if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.init) {
-  FirebaseSyncService.init();
-}
+// Window Load hone par automatic Super Admin mat kholein
+window.onload = function() {
+  handleUrlRouting();
+  const savedUser = localStorage.getItem('currentUser') || localStorage.getItem('hostel_mess_current_user');
+  
+  if (savedUser) {
+    try {
+      // Agar mobile me pehle se kisi ne Log In kiya hai tabhi Dashboard dikhayen
+      const user = JSON.parse(savedUser);
+      updateSessionUI(user.id, user);
+    } catch (e) {
+      console.warn("Saved currentUser session invalid:", e);
+      state.currentUser = null;
+      renderUI();
+      toggleModal(true);
+    }
+  } else {
+    // Naye bandon ke liye HAMESHA Login Modal khulega (Super Admin auto-open nahi hoga)
+    state.currentUser = null;
+    renderUI();
+    toggleModal(true); 
+  }
+  
+  listenToDatabaseUpdates();
+};
 
 // 16. Progressive Web App (PWA) Service Worker Registration & Offline Support
 if ('serviceWorker' in navigator) {
