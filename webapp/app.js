@@ -2576,7 +2576,8 @@ function renderKitchenScreen() {
   document.getElementById("kitchen-roster-count").textContent = `${activeMeals.length} active entries`;
 
   // Populate Table
-  const tbody = document.getElementById("kitchen-roster-tbody");
+  const tbody = document.getElementById("rosterTableBody") || document.getElementById("kitchen-roster-tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
 
   if (activeMeals.length === 0) {
@@ -5435,6 +5436,47 @@ function handleForgotPin() {
 function listenToDatabaseUpdates() {
   if (typeof FirebaseSyncService !== "undefined" && FirebaseSyncService.init) {
     FirebaseSyncService.init();
+  }
+
+  const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (databaseRef) {
+    // Roster render karte waqt sirf active members ko filter karein
+    databaseRef.ref('hostel_mess_data/users').once('value', (usersSnapshot) => {
+      const validUsers = usersSnapshot.val() || {};
+      
+      databaseRef.ref('hostel_mess_data/roster').on('value', (rosterSnapshot) => {
+        const rosterData = rosterSnapshot.val() || {};
+        let rosterHTML = '';
+
+        Object.keys(rosterData).forEach((key) => {
+          const entry = rosterData[key];
+          
+          // Filter: Check karein ki ye user 'users' list me hai ya nahi
+          if (entry && (validUsers[entry.userId] || validUsers[key])) {
+            const userObj = validUsers[entry.userId] || validUsers[key] || {};
+            const userName = entry.name || userObj.name || "Member";
+            const userRoom = entry.room || (userObj.assignedRoom ? `Room ${userObj.assignedRoom}` : "Room 101");
+            const userShift = entry.shift || entry.shiftAtTime || "Normal";
+            const userStatus = entry.status || "ACTIVE";
+            const badgeClass = (userStatus === 'ON' || userStatus === 'ACTIVE') ? 'badge-success' : (userStatus === 'PACK_TIFFIN' ? 'badge-blue' : 'badge-lilac');
+
+            rosterHTML += `
+              <tr>
+                <td><strong>${userName}</strong></td>
+                <td>${userRoom}</td>
+                <td>${userShift}</td>
+                <td><span class="badge ${badgeClass}">${userStatus}</span></td>
+              </tr>`;
+          }
+        });
+
+        const targetTbody = document.getElementById('rosterTableBody') || document.getElementById('kitchen-roster-tbody');
+        if (targetTbody && rosterHTML.trim().length > 0) {
+          targetTbody.innerHTML = rosterHTML;
+        }
+      });
+    });
   }
 }
 
