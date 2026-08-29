@@ -5727,6 +5727,53 @@ function deleteMemberByUniqueKey(userKey) {
     .catch(err => alert("Delete Error: " + err.message));
 }
 
+// Super Admin Full Access Deletion Handler
+function superAdminDeleteEmployee(employeeId, employeeName) {
+  if (!employeeId || employeeId === 'undefined') {
+    alert("Error: Invalid Employee Reference Key.");
+    return;
+  }
+
+  const confirmDelete = confirm(`⚠️ SUPER ADMIN PERMISSION\n\nKya aap Employee "${employeeName}" (ID: ${employeeId}) ka sara data permanently delete karna chahte hain?`);
+  
+  if (!confirmDelete) return;
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) {
+    alert("Database connection not initialized.");
+    return;
+  }
+  
+  // Single Atomic Delete Request for User Profile + Active Roster
+  const updates = {};
+  updates[`hostel_mess_data/users/${employeeId}`] = null;
+  updates[`hostel_mess_data/roster/${employeeId}`] = null;
+  updates[`hostel_mess_data/orders/${employeeId}`] = null;
+
+  db.ref().update(updates)
+    .then(() => {
+      // Clear Local Cache Storage
+      if (localStorage.getItem('cached_users')) {
+        let cached = JSON.parse(localStorage.getItem('cached_users') || '{}');
+        delete cached[employeeId];
+        localStorage.setItem('cached_users', JSON.stringify(cached));
+      }
+
+      alert(`✓ Employee "${employeeName}" permanently deleted by Super Admin.`);
+      
+      // Dynamic DOM Cleanup
+      const cardElement = document.getElementById(`user-card-${employeeId}`);
+      if (cardElement) cardElement.remove();
+
+      if (typeof renderManagerResidentDirectory === "function") {
+        renderManagerResidentDirectory();
+      }
+    })
+    .catch((error) => {
+      alert("Deletion Access Error: " + error.message);
+    });
+}
+
 // Expose helper functions globally for inline onclick handlers
 window.handleLogin = handleLogin;
 window.handleForgotPin = handleForgotPin;
@@ -5738,6 +5785,7 @@ window.cleanDuplicateResidents = cleanDuplicateResidents;
 window.cleanupDuplicateResidents = cleanupDuplicateResidents;
 window.loadAppUsers = loadAppUsers;
 window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
+window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.initFreshDashboard = initFreshDashboard;
 window.setElementText = setElementText;
 window.handleApprovePendingUser = handleApprovePendingUser;
