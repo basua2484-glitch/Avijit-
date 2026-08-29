@@ -5623,6 +5623,40 @@ if (document.readyState === 'loading') {
   syncDashboardCounters();
 }
 
+// Duplicate Auto-Generated Users Sweep Function
+function cleanDuplicateResidents() {
+  if (!confirm("Kya aap sabhi auto-generated dummy Residents ko delete karna chahte hain?")) return;
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) {
+    alert("Firebase database connection not initialized.");
+    return;
+  }
+  
+  db.ref('hostel_mess_data/users').once('value', (snapshot) => {
+    const users = snapshot.val() || {};
+    const updates = {};
+
+    Object.keys(users).forEach((key) => {
+      const user = users[key];
+      if (!user) return;
+      // Admin (Avijit Basu) ko chhodkar baki saare dummy 'Resident' users ko mark delete karein
+      if (user.name === "Resident" || user.email === "resident@gmail.com") {
+        updates[`hostel_mess_data/users/${key}`] = null;
+      }
+    });
+
+    // Batch Delete
+    db.ref().update(updates)
+      .then(() => {
+        localStorage.removeItem('cached_users');
+        alert("✓ Sabhi duplicate 'Resident' users permanently delete ho gaye hain!");
+        location.reload();
+      })
+      .catch(err => alert("Error: " + err.message));
+  });
+}
+
 // Expose helper functions globally for inline onclick handlers
 window.handleLogin = handleLogin;
 window.handleForgotPin = handleForgotPin;
@@ -5630,6 +5664,7 @@ window.sendRealOTP = sendRealOTP;
 window.initRecaptchaVerifier = initRecaptchaVerifier;
 window.syncDashboardCounters = syncDashboardCounters;
 window.updateCounterElement = updateCounterElement;
+window.cleanDuplicateResidents = cleanDuplicateResidents;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
