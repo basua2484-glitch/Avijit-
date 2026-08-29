@@ -5441,41 +5441,55 @@ function listenToDatabaseUpdates() {
   const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (databaseRef) {
-    // Roster render karte waqt sirf active members ko filter karein
-    databaseRef.ref('hostel_mess_data/users').once('value', (usersSnapshot) => {
-      const validUsers = usersSnapshot.val() || {};
+    // Dynamic Realtime Roster Sync (Only Valid Registered Users)
+    databaseRef.ref('hostel_mess_data').on('value', (snapshot) => {
+      const rootData = snapshot.val() || {};
+      const users = rootData.users || {};
+      const rosterData = rootData.roster || {};
       
-      databaseRef.ref('hostel_mess_data/roster').on('value', (rosterSnapshot) => {
-        const rosterData = rosterSnapshot.val() || {};
-        let rosterHTML = '';
+      let rosterHTML = '';
+      let activeCount = 0;
 
-        Object.keys(rosterData).forEach((key) => {
-          const entry = rosterData[key];
-          
-          // Filter: Check karein ki ye user 'users' list me hai ya nahi
-          if (entry && (validUsers[entry.userId] || validUsers[key])) {
-            const userObj = validUsers[entry.userId] || validUsers[key] || {};
-            const userName = entry.name || userObj.name || "Member";
-            const userRoom = entry.room || (userObj.assignedRoom ? `Room ${userObj.assignedRoom}` : "Room 101");
-            const userShift = entry.shift || entry.shiftAtTime || "Normal";
-            const userStatus = entry.status || "ACTIVE";
-            const badgeClass = (userStatus === 'ON' || userStatus === 'ACTIVE') ? 'badge-success' : (userStatus === 'PACK_TIFFIN' ? 'badge-blue' : 'badge-lilac');
+      Object.keys(rosterData).forEach((key) => {
+        const entry = rosterData[key];
+        if (!entry) return;
+        
+        // Check 1: User database me exist karta ho (by userId or matching phone/id)
+        // Check 2: Member Status Active ho
+        const userList = Object.values(users);
+        const isValidUser = userList.some(u => 
+          u && (
+            u.id === entry.userId || 
+            u.id === key ||
+            u.name === entry.name || 
+            u.phone === entry.userId || 
+            u.phone === entry.phone ||
+            (entry.userId && String(u.id) === String(entry.userId))
+          ) && (u.status === 'ACTIVE' || !u.status || u.status === 'APPROVED')
+        );
 
-            rosterHTML += `
-              <tr>
-                <td><strong>${userName}</strong></td>
-                <td>${userRoom}</td>
-                <td>${userShift}</td>
-                <td><span class="badge ${badgeClass}">${userStatus}</span></td>
-              </tr>`;
-          }
-        });
-
-        const targetTbody = document.getElementById('rosterTableBody') || document.getElementById('kitchen-roster-tbody');
-        if (targetTbody && rosterHTML.trim().length > 0) {
-          targetTbody.innerHTML = rosterHTML;
+        if (isValidUser) {
+          activeCount++;
+          const badgeClass = (entry.status === 'OFF' || entry.status === 'INACTIVE') ? 'status-off badge-off' : 'status-on badge-success';
+          rosterHTML += `
+            <tr>
+              <td><b>${entry.name || 'Member'}</b></td>
+              <td>${entry.room || 'N/A'}</td>
+              <td>${entry.shift || 'OFF_DUTY'}</td>
+              <td><span class="badge ${badgeClass}">${entry.status || 'ON'}</span></td>
+            </tr>`;
         }
       });
+
+      const rosterTable = document.getElementById('rosterTableBody') || document.getElementById('kitchen-roster-tbody');
+      if (rosterTable) {
+        rosterTable.innerHTML = rosterHTML || '<tr><td colspan="4" style="text-align:center; padding:16px; color:#888;">No active members in roster</td></tr>';
+      }
+
+      const counterEl = document.getElementById('kitchen-roster-count');
+      if (counterEl) {
+        counterEl.textContent = `${activeCount} active entries`;
+      }
     });
   }
 }
