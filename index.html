@@ -1082,18 +1082,18 @@
           <div class="login-auth-box">
             <div class="form-group">
               <div class="form-label-row">
-                <label for="login-identifier">Name, Mobile Number, or Referral Code *</label>
+                <label for="loginId">Name, Mobile Number, or Referral Code *</label>
               </div>
-              <input type="text" id="login-identifier" name="loginId" placeholder="e.g. 9874403889 or Avijit Basu or MESS101" autocomplete="username">
+              <input type="text" id="loginId" name="loginId" placeholder="e.g. 9874403889 or Avijit Basu or MESS101" autocomplete="username">
             </div>
             
             <div class="form-group">
               <div class="form-label-row">
-                <label for="login-pin">4-Digit Account PIN *</label>
-                <button type="button" class="btn-text-link" id="btn-forgot-pin" title="Recover forgotten PIN">Forgot PIN?</button>
+                <label for="loginPin">4-Digit Account PIN *</label>
+                <button type="button" class="btn-text-link" id="btn-forgot-pin" onclick="handleForgotPin()" title="Recover forgotten PIN">Forgot PIN?</button>
               </div>
               <div class="pin-input-wrap">
-                <input type="password" id="login-pin" name="loginPin" placeholder="•••• (Default: 1234)" maxlength="4" style="letter-spacing:4px; font-weight:700;" autocomplete="current-password">
+                <input type="password" id="loginPin" name="loginPin" placeholder="•••• (Default: 1234)" maxlength="4" style="letter-spacing:4px; font-weight:700;" autocomplete="current-password">
                 <button type="button" class="btn-toggle-pin-visibility" id="btn-toggle-login-pin" title="Toggle PIN visibility">👁️</button>
               </div>
             </div>

@@ -521,6 +521,8 @@ const firebaseConfig = {
 
 const CENTRAL_DB_NODE = "hostel_mess_data";
 let rtdb = null;
+let database = null;
+window.database = null;
 let db = null;
 let isFirebaseConnected = false;
 
@@ -564,6 +566,8 @@ const FirebaseSyncService = {
       if (typeof firebase.database === "function") {
         try {
           rtdb = firebase.database();
+          database = rtdb;
+          window.database = database;
           rtdb.ref(getGroupDbPath(activeGroupId)).keepSynced(true);
         } catch (e) {
           console.warn("RTDB keepSynced warning:", e);
@@ -5218,112 +5222,213 @@ document.querySelectorAll("#friends-role-filter-bar .filter-btn").forEach(btn =>
   });
 });
 
-// Login handler with Firebase Realtime Database lookup & PIN validation
+// 2. Handle Login + Mandatory PIN Change Check
 function handleLogin(e) {
   if (e && typeof e.preventDefault === "function") {
     e.preventDefault();
   }
-  
-  const idInput = document.getElementById('loginId') || document.getElementById('login-identifier');
-  const pinInput = document.getElementById('loginPin') || document.getElementById('login-pin');
-
-  const userId = idInput ? idInput.value.trim() : "";
-  const userPin = pinInput ? pinInput.value.trim() : "";
+  const idEl = document.getElementById('loginId') || document.getElementById('login-identifier');
+  const pinEl = document.getElementById('loginPin') || document.getElementById('login-pin');
+  const userId = idEl ? idEl.value.trim() : "";
+  const userPin = pinEl ? pinEl.value.trim() : "";
 
   if (!userId) {
-    alert("Please enter your User ID, Mobile Number, or Referral Code!");
+    alert("Pehle apna User ID enter karein.");
     return;
   }
 
-  // Get active database reference
-  const database = (typeof rtdb !== "undefined" && rtdb) ? rtdb : ((typeof firebase !== "undefined" && firebase.database) ? firebase.database() : null);
+  const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
-  if (database) {
-    // Check both hostel_mess_data/users/${userId} and group users path
-    database.ref(`hostel_mess_data/users/${userId}`).once('value')
-      .then((snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          
-          if (!data.pin || !data.loginPin || data.pin === userPin || data.loginPin === userPin || !userPin || userPin === "1234") {
-            // Object structure properly save karein
-            const sessionData = { id: userId, ...data };
-            sessionData.groupId = MAIN_GROUP_ID;
-            sessionData.messGroupId = MAIN_GROUP_ID;
-            localStorage.setItem('currentUser', JSON.stringify(sessionData));
-            localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
-            
-            updateSessionUI(userId, sessionData);
-            toggleModal(false); // Login hone par modal close karein
-            alert("Login successful!");
-          } else {
-            alert("Incorrect 4-digit PIN!");
-          }
-        } else {
-          // Fallback check against group users and local state by ID, Mobile, or Name
-          const matched = findUserByIdentifier(userId);
-          if (matched) {
-            const storedPin = matched.loginPin || matched.pin || "1234";
-            if (!userPin || userPin === storedPin || userPin === "1234") {
-              const sessionData = { ...matched, id: matched.id || userId };
-              sessionData.groupId = MAIN_GROUP_ID;
-              sessionData.messGroupId = MAIN_GROUP_ID;
-              localStorage.setItem('currentUser', JSON.stringify(sessionData));
-              localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
-              
-              updateSessionUI(sessionData.id, sessionData);
-              toggleModal(false);
-              alert("Login successful!");
-            } else {
-              alert("Incorrect 4-digit PIN!");
-            }
-          } else {
-            alert("User ID not found!");
-          }
-        }
-      })
-      .catch((err) => {
-        // In case of network error, check local state
-        const matched = findUserByIdentifier(userId);
-        if (matched) {
-          const storedPin = matched.loginPin || matched.pin || "1234";
-          if (!userPin || userPin === storedPin || userPin === "1234") {
-            const sessionData = { ...matched, id: matched.id || userId };
-            sessionData.groupId = MAIN_GROUP_ID;
-            sessionData.messGroupId = MAIN_GROUP_ID;
-            localStorage.setItem('currentUser', JSON.stringify(sessionData));
-            localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
-            
-            updateSessionUI(sessionData.id, sessionData);
-            toggleModal(false);
-            alert("Login successful!");
-            return;
-          }
-        }
-        alert("Database Connection Error: " + err.message);
-      });
-  } else {
-    // Local / Offline fallback
+  if (!databaseRef) {
+    // Offline / local fallback
     const matched = findUserByIdentifier(userId);
     if (matched) {
       const storedPin = matched.loginPin || matched.pin || "1234";
       if (!userPin || userPin === storedPin || userPin === "1234") {
-        const sessionData = { ...matched, id: matched.id || userId };
-        sessionData.groupId = MAIN_GROUP_ID;
-        sessionData.messGroupId = MAIN_GROUP_ID;
+        const sessionData = { id: matched.id || userId, ...matched };
         localStorage.setItem('currentUser', JSON.stringify(sessionData));
-        localStorage.setItem('hostel_mess_current_user', JSON.stringify(sessionData));
-        
-        updateSessionUI(sessionData.id, sessionData);
+        updateSessionUI(matched.id || userId, sessionData);
         toggleModal(false);
-        alert("Login successful!");
+        if (matched.isDefaultPin === true) {
+          setTimeout(() => {
+            const newCustomPin = prompt("Admin ne aapka PIN approve kar diya hai.\nApni pasand ka Naya 4-Digit PIN set karein:");
+            if (newCustomPin && newCustomPin.length === 4 && !isNaN(newCustomPin)) {
+              matched.loginPin = newCustomPin;
+              matched.pin = newCustomPin;
+              matched.isDefaultPin = false;
+              saveState();
+              alert("Aapka Naya PIN successfully set ho gaya!");
+            } else {
+              alert("Invalid PIN! Agli baar login par naya PIN set karna hoga.");
+            }
+          }, 300);
+        } else {
+          alert("Login successful!");
+        }
       } else {
         alert("Incorrect 4-digit PIN!");
       }
     } else {
       alert("User ID not found!");
     }
+    return;
   }
+
+  databaseRef.ref(`hostel_mess_data/users/${userId}`).once('value')
+    .then((snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        
+        if (!data.pin || data.pin === userPin || (!userPin && data.pin === "1234") || (data.loginPin && data.loginPin === userPin)) {
+          const sessionData = { id: userId, ...data };
+          localStorage.setItem('currentUser', JSON.stringify(sessionData));
+          
+          updateSessionUI(userId, data);
+          toggleModal(false);
+
+          // Check: Agar Admin ne Reset karke Temporary PIN (1234) diya tha
+          if (data.isDefaultPin === true) {
+            setTimeout(() => {
+              const newCustomPin = prompt("Admin ne aapka PIN approve kar diya hai.\nApni pasand ka Naya 4-Digit PIN set karein:");
+              if (newCustomPin && newCustomPin.length === 4 && !isNaN(newCustomPin)) {
+                databaseRef.ref(`hostel_mess_data/users/${userId}`).update({
+                  pin: newCustomPin,
+                  loginPin: newCustomPin,
+                  isDefaultPin: false
+                });
+                if (state.currentUser && state.currentUser.id === userId) {
+                  state.currentUser.pin = newCustomPin;
+                  state.currentUser.loginPin = newCustomPin;
+                  state.currentUser.isDefaultPin = false;
+                  saveState();
+                }
+                alert("Aapka Naya PIN successfully set ho gaya!");
+              } else {
+                alert("Invalid PIN! Agli baar login par naya PIN set karna hoga.");
+              }
+            }, 300);
+          } else {
+            alert("Login successful!");
+          }
+        } else {
+          alert("Incorrect 4-digit PIN!");
+        }
+      } else {
+        const matched = findUserByIdentifier(userId);
+        if (matched) {
+          const storedPin = matched.loginPin || matched.pin || "1234";
+          if (!userPin || userPin === storedPin || userPin === "1234") {
+            const sessionData = { id: matched.id || userId, ...matched };
+            localStorage.setItem('currentUser', JSON.stringify(sessionData));
+            updateSessionUI(matched.id || userId, sessionData);
+            toggleModal(false);
+            if (matched.isDefaultPin === true) {
+              setTimeout(() => {
+                const newCustomPin = prompt("Admin ne aapka PIN approve kar diya hai.\nApni pasand ka Naya 4-Digit PIN set karein:");
+                if (newCustomPin && newCustomPin.length === 4 && !isNaN(newCustomPin)) {
+                  databaseRef.ref(`hostel_mess_data/users/${matched.id || userId}`).update({
+                    pin: newCustomPin,
+                    loginPin: newCustomPin,
+                    isDefaultPin: false
+                  });
+                  alert("Aapka Naya PIN successfully set ho gaya!");
+                } else {
+                  alert("Invalid PIN! Agli baar login par naya PIN set karna hoga.");
+                }
+              }, 300);
+            } else {
+              alert("Login successful!");
+            }
+          } else {
+            alert("Incorrect 4-digit PIN!");
+          }
+        } else {
+          alert("User ID not found!");
+        }
+      }
+    })
+    .catch((err) => alert("Database Error: " + err.message));
+}
+
+// 3. Forgot PIN Request System (Admin OTP / Employee Request)
+function handleForgotPin() {
+  const idEl = document.getElementById('loginId') || document.getElementById('login-identifier');
+  const userId = idEl ? idEl.value.trim() : "";
+
+  if (!userId) {
+    alert("Pehle apna User ID enter karein.");
+    return;
+  }
+
+  const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!databaseRef) {
+    alert("Database offline hai. Kripya thodi der baad try karein.");
+    return;
+  }
+
+  databaseRef.ref(`hostel_mess_data/users/${userId}`).once('value')
+    .then((snapshot) => {
+      let userData = null;
+      let targetId = userId;
+      if (snapshot.exists()) {
+        userData = snapshot.val();
+      } else {
+        const matched = findUserByIdentifier(userId);
+        if (matched) {
+          userData = matched;
+          targetId = matched.id || userId;
+        }
+      }
+
+      if (!userData) {
+        alert("User ID nahi mila!");
+        return;
+      }
+
+      const userRole = userData.role ? userData.role.toUpperCase() : "MEMBER";
+
+      // Admin Dummy OTP Logic
+      if (userRole === "SUPER_ADMIN" || userRole === "ADMIN") {
+        const dummyOtp = Math.floor(1000 + Math.random() * 9000);
+        alert(`[ADMIN OTP] Aapka OTP hai: ${dummyOtp}`);
+        
+        const enteredOtp = prompt("Enter 4-Digit Dummy OTP:");
+        if (enteredOtp == dummyOtp) {
+          const newPin = prompt("Set New 4-Digit Admin PIN:");
+          if (newPin && newPin.length === 4 && !isNaN(newPin)) {
+            databaseRef.ref(`hostel_mess_data/users/${targetId}`).update({
+              pin: newPin,
+              loginPin: newPin,
+              isDefaultPin: false
+            });
+            if (state.currentUser && state.currentUser.id === targetId) {
+              state.currentUser.pin = newPin;
+              state.currentUser.loginPin = newPin;
+              state.currentUser.isDefaultPin = false;
+              saveState();
+            }
+            alert("Admin PIN Updated!");
+          } else {
+            alert("Invalid PIN! Must be 4 numeric digits.");
+          }
+        } else {
+          alert("Wrong OTP!");
+        }
+      } 
+      // Employee Request Logic
+      else {
+        databaseRef.ref(`hostel_mess_data/reset_requests/${targetId}`).set({
+          userId: targetId,
+          userName: userData.name || "Employee",
+          status: "PENDING",
+          timestamp: Date.now()
+        }).then(() => {
+          alert(`PIN Reset Request Admin ko bhej di gayi hai.\nAdmin approve karte hi aap temporary PIN '1234' se login karke naya PIN set kar sakte hain.`);
+        });
+      }
+    })
+    .catch((err) => alert("Database Error: " + err.message));
 }
 
 // Database updates listener
@@ -5365,6 +5470,7 @@ function updateSessionUI(userId, userObj = null) {
 
 // Expose helper functions globally for inline onclick handlers
 window.handleLogin = handleLogin;
+window.handleForgotPin = handleForgotPin;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
@@ -5379,7 +5485,7 @@ window.listenToDatabaseUpdates = listenToDatabaseUpdates;
 window.toggleModal = toggleModal;
 window.updateSessionUI = updateSessionUI;
 
-// Window Load hone par automatic Super Admin mat kholein
+// 1. Window Load - Secure Session Check (Refresh Fix)
 window.onload = function() {
   handleUrlRouting();
   const savedUser = localStorage.getItem('currentUser');
@@ -5389,16 +5495,14 @@ window.onload = function() {
       const user = JSON.parse(savedUser);
       if (user && user.id) {
         updateSessionUI(user.id, user);
-        toggleModal(false); // Logged-in hai toh modal hidden rakhein
+        toggleModal(false);
       } else {
         toggleModal(true);
       }
     } catch (e) {
-      console.error("Session parse error", e);
       toggleModal(true);
     }
   } else {
-    // Agar local storage empty hai tabhi modal open hoga
     toggleModal(true);
   }
   
