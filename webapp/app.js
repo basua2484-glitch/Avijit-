@@ -1382,6 +1382,7 @@ function renderMemberList(userList = (state && state.users ? state.users : [])) 
       const u = rawU;
       const div = document.createElement("div");
       div.className = "user-card-item";
+      div.id = `user-card-${u.id}`;
       const uIsSuperAdmin = isSuperAdmin(u);
       const roleBadgeClass = uIsSuperAdmin ? 'super_admin' : (u.role === 'ADMIN' ? 'admin' : (u.role === 'MANAGER' ? 'manager' : (u.role === 'COOK' ? 'cook' : 'resident')));
       const isBlocked = u.status === "BLOCKED";
@@ -1416,7 +1417,11 @@ function renderMemberList(userList = (state && state.users ? state.users : [])) 
         actionsHtml += `<button class="btn btn-secondary btn-sm" onclick="toggleUserStatus('${u.id}')">${isBlocked ? '🔓 Unblock' : '🔒 Lock'}</button>`;
       }
       if (canDelete) {
-        actionsHtml += `<button class="btn btn-alert btn-sm" onclick="deleteUser('${u.id}')" title="Super Admin Permanent Delete">🗑️</button>`;
+        actionsHtml += `
+          <button onclick="superAdminDeleteEmployee('${u.id}', '${(u.name || 'Employee').replace(/'/g, "\\'")}')" class="btn-superadmin-delete" title="Super Admin Wipe">
+            🗑️ Super Admin Wipe
+          </button>
+        `;
       }
       if (!canEdit && !canLock && !canDelete) {
         actionsHtml = `<span class="badge badge-gray" style="font-size:10px; padding:4px 8px;">👁️ View Only</span>`;
