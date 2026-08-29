@@ -5556,11 +5556,80 @@ function sendRealOTP(mobileNumber) {
     .catch((err) => alert("SMS Send Error: " + err.message));
 }
 
+// Secure Real-time Dashboard Syncing Function
+function syncDashboardCounters() {
+  const databaseRef = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!databaseRef) return;
+
+  const dbRef = databaseRef.ref('hostel_mess_data');
+
+  dbRef.on('value', (snapshot) => {
+    if (!snapshot.exists()) return;
+    
+    const rootData = snapshot.val() || {};
+    const usersObj = rootData.users || {};
+    const rosterObj = rootData.roster || rootData.orders || {};
+
+    // 1. Total Active Members Count (Object Safe)
+    const activeUsersList = Object.values(usersObj).filter(u => u && (u.status === 'ACTIVE' || u.status === 'APPROVED' || !u.status));
+    const totalMembersCount = activeUsersList.length;
+
+    // 2. Meal Plates Tally Calculation (Lunch / Dinner / Total)
+    let lunchCount = 0;
+    let dinnerCount = 0;
+    let liveOnDutyCount = 0;
+
+    Object.values(rosterObj).forEach((entry) => {
+      if (!entry) return;
+      
+      // Verification: Check if entry belongs to a valid active user
+      const isUserActive = activeUsersList.some(u => 
+        u && (u.id === entry.userId || u.name === entry.name || u.phone === entry.userId || (entry.userId && String(u.id) === String(entry.userId)))
+      );
+
+      if (isUserActive) {
+        if (entry.mealType === 'LUNCH' || entry.lunch || entry.status === 'ON' || entry.status === 'PACK_TIFFIN') lunchCount++;
+        if (entry.mealType === 'DINNER' || entry.dinner || entry.status === 'ON') dinnerCount++;
+        if (entry.shift && entry.shift !== 'OFF_DUTY') liveOnDutyCount++;
+      }
+    });
+
+    // 3. UI Counter Elements Security Mapping
+    updateCounterElement('totalMembersEl', totalMembersCount);
+    updateCounterElement('liveOnDutyEl', liveOnDutyCount);
+    updateCounterElement('lunchPlatesEl', lunchCount);
+    updateCounterElement('dinnerPlatesEl', dinnerCount);
+    updateCounterElement('totalPlatesEl', lunchCount + dinnerCount);
+
+    // Also update existing dashboard badges if present
+    updateCounterElement('mgr-active-count', `${totalMembersCount} Active`);
+  }, (error) => {
+    console.error("Firebase Read Error:", error);
+  });
+}
+
+// Helper function to safely update DOM elements
+function updateCounterElement(elementId, value) {
+  const el = document.getElementById(elementId);
+  if (el) {
+    el.innerText = value;
+  }
+}
+
+// Initialize on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', syncDashboardCounters);
+} else {
+  syncDashboardCounters();
+}
+
 // Expose helper functions globally for inline onclick handlers
 window.handleLogin = handleLogin;
 window.handleForgotPin = handleForgotPin;
 window.sendRealOTP = sendRealOTP;
 window.initRecaptchaVerifier = initRecaptchaVerifier;
+window.syncDashboardCounters = syncDashboardCounters;
+window.updateCounterElement = updateCounterElement;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
@@ -5597,6 +5666,11 @@ window.onload = function() {
   }
   
   listenToDatabaseUpdates();
+  try {
+    syncDashboardCounters();
+  } catch (e) {
+    console.warn("syncDashboardCounters on load:", e);
+  }
   try {
     initRecaptchaVerifier();
   } catch (e) {
