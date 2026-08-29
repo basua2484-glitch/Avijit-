@@ -1,0 +1,14 @@
+{
+  "rules": {
+    "hostel_mess_data": {
+      ".read": true,
+      ".write": true,
+      "users": {
+        ".indexOn": ["status", "id"]
+      },
+      "roster": {
+        ".indexOn": ["userId", "status"]
+      }
+    }
+  }
+}

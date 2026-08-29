@@ -5624,37 +5624,79 @@ if (document.readyState === 'loading') {
 }
 
 // Duplicate Auto-Generated Users Sweep Function
+function cleanupDuplicateResidents() {
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) {
+    alert("Firebase database connection not initialized.");
+    return;
+  }
+
+  const ref = db.ref('hostel_mess_data/users');
+  ref.once('value', (snapshot) => {
+    const data = snapshot.val() || {};
+    const updates = {};
+
+    Object.keys(data).forEach((key) => {
+      const item = data[key];
+      // Sirf 'Resident' dummy accounts ko delete target karein
+      if (item && (item.name === "Resident" || item.email === "resident@gmail.com")) {
+        updates[key] = null;
+      }
+    });
+
+    ref.update(updates).then(() => {
+      localStorage.clear();
+      alert("Sabhi duplicate dummy accounts clean kar diye gaye hain.");
+      location.reload();
+    }).catch(err => alert("Error: " + err.message));
+  });
+}
+
 function cleanDuplicateResidents() {
-  if (!confirm("Kya aap sabhi auto-generated dummy Residents ko delete karna chahte hain?")) return;
+  cleanupDuplicateResidents();
+}
+
+// User List Loader (Safe without auto-creating dummy residents)
+function loadAppUsers(users) {
+  const container = document.getElementById('userListContainer') || document.getElementById('mgr-resident-list');
+  if (!users || Object.keys(users).length === 0) {
+    if (container) {
+      container.innerHTML = '<p class="empty-msg empty-state">No members found.</p>';
+    }
+    return;
+  }
+
+  // Render normal users
+  if (typeof renderManagerResidentDirectory === "function") {
+    renderManagerResidentDirectory();
+  }
+}
+
+// Multi-location atomic delete by unique key
+function deleteMemberByUniqueKey(userKey) {
+  if (!userKey) return alert("Invalid User Key!");
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
   if (!db) {
     alert("Firebase database connection not initialized.");
     return;
   }
-  
-  db.ref('hostel_mess_data/users').once('value', (snapshot) => {
-    const users = snapshot.val() || {};
-    const updates = {};
 
-    Object.keys(users).forEach((key) => {
-      const user = users[key];
-      if (!user) return;
-      // Admin (Avijit Basu) ko chhodkar baki saare dummy 'Resident' users ko mark delete karein
-      if (user.name === "Resident" || user.email === "resident@gmail.com") {
-        updates[`hostel_mess_data/users/${key}`] = null;
+  // Multi-location atomic delete
+  const updates = {};
+  updates[`/hostel_mess_data/users/${userKey}`] = null;
+  updates[`/hostel_mess_data/roster/${userKey}`] = null;
+
+  db.ref().update(updates)
+    .then(() => {
+      // Clear local memory cache
+      localStorage.removeItem('cached_users');
+      alert("✓ User permanently deleted from Database & Local Memory.");
+      if (typeof renderManagerResidentDirectory === "function") {
+        renderManagerResidentDirectory();
       }
-    });
-
-    // Batch Delete
-    db.ref().update(updates)
-      .then(() => {
-        localStorage.removeItem('cached_users');
-        alert("✓ Sabhi duplicate 'Resident' users permanently delete ho gaye hain!");
-        location.reload();
-      })
-      .catch(err => alert("Error: " + err.message));
-  });
+    })
+    .catch(err => alert("Delete Error: " + err.message));
 }
 
 // Expose helper functions globally for inline onclick handlers
@@ -5665,6 +5707,9 @@ window.initRecaptchaVerifier = initRecaptchaVerifier;
 window.syncDashboardCounters = syncDashboardCounters;
 window.updateCounterElement = updateCounterElement;
 window.cleanDuplicateResidents = cleanDuplicateResidents;
+window.cleanupDuplicateResidents = cleanupDuplicateResidents;
+window.loadAppUsers = loadAppUsers;
+window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
 window.handleApprovePendingUser = handleApprovePendingUser;
 window.approveUserRegistration = approveUserRegistration;
 window.rejectUserRegistration = rejectUserRegistration;
