@@ -96,6 +96,30 @@
     <main class="main-container">
       <!-- 1. RESIDENT SCREEN -->
       <section id="resident-tab" class="tab-pane">
+        <!-- Logged-in Employee Specific Personal Tracking Panel -->
+        <div id="employeePersonalPanel" class="card" style="display:none; margin-bottom:16px; border-left:4px solid #3B82F6; background:#F8FAFC;">
+          <div class="card-header" style="margin-bottom:12px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:20px;">👤</span>
+              <div>
+                <h3 style="margin:0; font-size:15px; font-weight:700;">My Personal Duty & Mess Status</h3>
+                <span class="text-sub" style="font-size:11px; color:#64748B;">Live Personal Tracker</span>
+              </div>
+            </div>
+            <span class="badge badge-primary" id="myPunchStatus" style="font-size:12px; font-weight:700;">OFF DUTY</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px;">
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; padding:10px; text-align:center;">
+              <div style="font-size:11px; font-weight:600; color:#64748B; text-transform:uppercase;">My Lunch</div>
+              <div id="myLunchCount" style="font-size:20px; font-weight:800; color:#1E293B; margin-top:4px;">0</div>
+            </div>
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; padding:10px; text-align:center;">
+              <div style="font-size:11px; font-weight:600; color:#64748B; text-transform:uppercase;">My Dinner</div>
+              <div id="myDinnerCount" style="font-size:20px; font-weight:800; color:#1E293B; margin-top:4px;">0</div>
+            </div>
+          </div>
+        </div>
+
         <!-- Employee Live Duty Punch In/Out Card -->
         <div class="attendance-punch-card">
           <div class="flex-between">

@@ -5519,7 +5519,46 @@ function updateSessionUI(userId, userObj = null) {
     localStorage.setItem("hostel_mess_current_user", JSON.stringify(user));
     saveLocalState();
     renderUI();
+    try {
+      loadEmployeePersonalData(user.id);
+    } catch (e) {
+      console.warn("loadEmployeePersonalData error:", e);
+    }
   }
+}
+
+// Logged-in Employee Specific Personal Tracking
+function loadEmployeePersonalData(loggedInUserId) {
+  if (!loggedInUserId) return;
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+  
+  // Display Employee Panel
+  const panel = document.getElementById('employeePersonalPanel');
+  if (panel) panel.style.display = 'block';
+
+  // 1. Employee Self Punch & Roster Status Tracking
+  db.ref(`hostel_mess_data/roster/${loggedInUserId}`).on('value', (snapshot) => {
+    const rosterData = snapshot.val();
+
+    if (rosterData) {
+      setElementText('myPunchStatus', rosterData.shift || (rosterData.status === 'ON' ? 'ON DUTY' : 'OFF DUTY'));
+    } else {
+      setElementText('myPunchStatus', 'OFF DUTY');
+    }
+  });
+
+  // 2. Employee Self Mess Count Data Tracking
+  db.ref(`hostel_mess_data/orders/${loggedInUserId}`).on('value', (snapshot) => {
+    const orderData = snapshot.val() || {};
+
+    let lunch = orderData.lunchCount || (orderData.mealType === 'LUNCH' ? 1 : 0);
+    let dinner = orderData.dinnerCount || (orderData.mealType === 'DINNER' ? 1 : 0);
+
+    setElementText('myLunchCount', lunch);
+    setElementText('myDinnerCount', dinner);
+  });
 }
 
 // Recaptcha Init
@@ -5791,6 +5830,7 @@ window.cleanupDuplicateResidents = cleanupDuplicateResidents;
 window.loadAppUsers = loadAppUsers;
 window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
 window.superAdminDeleteEmployee = superAdminDeleteEmployee;
+window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.initFreshDashboard = initFreshDashboard;
 window.setElementText = setElementText;
 window.handleApprovePendingUser = handleApprovePendingUser;
