@@ -6190,35 +6190,96 @@ function renderRecordsTable() {
   });
 }
 
-// ===================================================
-// TWO-WAY REALTIME SYNC: RESIDENT HOME <-> REPORT MODULE
-// ===================================================
+// =========================================================================
+// TWO-WAY REALTIME SYNC & LOGGED-IN EMPLOYEE FILTER ENGINE
+// =========================================================================
 
+const PUNCHE_PATH = 'hostel_mess_data/punches';
 const FIREBASE_PATH = 'hostel_mess_data/punches';
 
-// 1. Two-Way Realtime Listener (Listens to DB changes from either tab)
-function initTwoWaySyncEngine() {
+// 1. Central Listener (Firebase Realtime Database Sync)
+function initLogsAndReportSyncEngine() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
   if (!db) return;
-  const dbRef = db.ref(FIREBASE_PATH);
+  const dbRef = db.ref(PUNCHE_PATH);
 
   dbRef.on('value', (snapshot) => {
-    const allPunches = snapshot.val() || {};
+    const rootPunches = snapshot.val() || {};
+    
+    // A. Today's Punch Logs (Sirf Logged-in Employee ke liye)
+    renderLoggedInUserTodayLogs(rootPunches);
+
+    // B. Attendance & OT Management Report (Sabhi Employees ke liye)
+    renderAttendanceReportTable(rootPunches);
+
+    // C. Top Summary Cards Calculate Karein
+    calculateReportSummaryCards(rootPunches);
+
+    // D. Sync Resident Home UI with Latest DB State
     const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
     const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
     const currentUserId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
     const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
-    // Update Report Table View
-    renderAttendanceReportTable(allPunches);
-
-    // Sync Resident Home UI with Latest DB State
-    const userTodayRecord = (allPunches[currentUserId] && allPunches[currentUserId][today]) 
-      ? allPunches[currentUserId][today] 
+    const userTodayRecord = (rootPunches[currentUserId] && rootPunches[currentUserId][today]) 
+      ? rootPunches[currentUserId][today] 
       : null;
 
     updateResidentHomeUI(userTodayRecord);
   });
+}
+
+// 2. Today's Punch Logs Table (Sirf Logged-In User Ka Record Dikhayega)
+function renderLoggedInUserTodayLogs(rootPunches) {
+  const logsTableBody = document.getElementById('todayLogsTableBody') || document.getElementById('punchesTableBody');
+  if (!logsTableBody) return;
+
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const currentUserId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001'); // Default Fallback User ID
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+
+  let logsHTML = '';
+
+  // Sirf logged-in user ka record check karein
+  if (rootPunches && rootPunches[currentUserId] && rootPunches[currentUserId][today]) {
+    const rec = rootPunches[currentUserId][today];
+
+    const regBadge = rec.assignedDepartment 
+      ? `<span style="background:#0284c7; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:11px;">${rec.assignedDepartment}</span><br><span style="font-size:10px; color:#94a3b8;">Time: ${rec.departmentAssignedTime || '--'}</span>`
+      : '<span style="color:#64748b;">--</span>';
+
+    const otBadge = rec.otTargetDepartment 
+      ? `<span style="background:#d97706; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold; font-size:11px;">🔥 ${rec.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${rec.otDeptAssignedTime || '--'}</span>`
+      : '<span style="color:#64748b;">--</span>';
+
+    logsHTML = `
+      <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
+        <td style="padding:10px;">
+          <b style="color:#fff;">${rec.userName || 'Employee'}</b><br>
+          <span style="font-size:10px; color:#64748b;">ID: ${rec.userId || currentUserId}</span>
+        </td>
+        <td style="padding:10px;">${regBadge}</td>
+        <td style="padding:10px;">${otBadge}</td>
+        <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
+        <td style="padding:10px; text-align:center;">
+          <button onclick="deleteMasterRecord('${currentUserId}', '${today}')" 
+                  style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:10px;">
+            Delete
+          </button>
+        </td>
+      </tr>
+    `;
+  }
+
+  logsTableBody.innerHTML = logsHTML !== '' 
+    ? logsHTML 
+    : `<tr><td colspan="5" style="text-align:center; padding:15px; color:#64748b;">Aapka aaj ka koi punch/duty log record nahi hai.</td></tr>`;
+}
+
+// 1. Two-Way Realtime Listener (Alias / Fallback)
+function initTwoWaySyncEngine() {
+  initLogsAndReportSyncEngine();
 }
 
 // 2. Action from Resident Home: Save Punch or Department Change
@@ -6420,133 +6481,38 @@ function saveMasterDutyAndMealAllocation(userId, userName, role, shiftType, regD
     .catch((err) => alert("Sync Error: " + err.message));
 }
 
-// 3. Central Cascading Delete Function (Deletes Punch + OT + Mess Plate)
-function deleteMasterRecord(userId, recordDate) {
-  if (!confirm("Kya aap Attendance, Duty Allocation, aur Mess Plate Count TEENO delete karna chahte hain?")) {
-    return;
-  }
+// 3. Attendance & OT Management Report Table (Sabhi Records Dikhayega)
+function renderAttendanceReportTable(rootPunches) {
+  const reportTableBody = document.getElementById('recordsTableBody') || document.getElementById('admin-attendance-tbody');
+  if (!reportTableBody) return;
 
-  const targetDate = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  let reportHTML = '';
 
-  if (!db) {
-    resetTopCardsAndDashboard();
-    alert("✓ Attendance, OT, aur Mess Plate Records successfully delete ho gaye!");
-    return;
-  }
-
-  let deleteUpdates = {};
-  deleteUpdates[`${BASE_PATH}/punches/${userId}/${targetDate}`] = null;
-  deleteUpdates[`${BASE_PATH}/meals/${targetDate}/${userId}`] = null;
-
-  db.ref().update(deleteUpdates)
-    .then(() => {
-      // Complete UI State Purge
-      resetTopCardsAndDashboard();
-      if (typeof renderRecordsTable === 'function') renderRecordsTable();
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
-      alert("✓ Attendance, OT, aur Mess Plate Records successfully delete ho gaye!");
-    })
-    .catch((err) => alert("Delete Failed: " + err.message));
-}
-
-// 1. Delete Punch Record & Reset Local UI
-function deletePunchRecord(recordId, recordDate, userId) {
-  if (!confirm("Kya aap is Record ko delete karna chahte hain?")) {
-    return;
-  }
-
-  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
-  const currentUserId = userId || (authUser ? authUser.uid : 'SADM_001');
-  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
-
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-
-  if (!db) {
-    resetTopCardsAndDashboard();
-    if (typeof renderRecordsTable === 'function') renderRecordsTable();
-    if (typeof loadPunchesTable === 'function') loadPunchesTable();
-    alert("✓ Record successfully delete ho gaya!");
-    return;
-  }
-
-  // Firebase Database se record remove karein
-  db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
-    .then(() => {
-      // Top cards aur status reset
-      resetTopCardsAndDashboard();
-
-      // Report Tables Reload
-      if (typeof renderRecordsTable === 'function') renderRecordsTable();
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
-
-      alert("✓ Record successfully delete ho gaya!");
-    })
-    .catch((err) => {
-      alert("Error deleting record: " + err.message);
-    });
-}
-
-// 2. Clear Dashboard & Top Cards
-function resetTopCardsAndDashboard() {
-  setElementText('textDeptDisplay', '--');
-  setElementText('textTimeNoteDisplay', '--');
-  setElementText('textOtTargetDeptDisplay', '--');
-  setElementText('textOtDeptDisplay', '--');
-  setElementText('textOtDept', '--');
-  setElementText('otTargetDeptEl', '--');
-  setElementText('textLiveOT', '0.00 hours');
-  setElementText('liveOtHoursEl', '0.00');
-  setElementText('textStandardHours', '0.0h');
-  const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
-  if (otBadge) otBadge.style.color = '#94a3b8';
-
-  // Reset Live Kitchen Tally Cards
-  setElementText('kitchenNormalDiningCount', '0');
-  setElementText('kitchenPackTiffinsCount', '0');
-  setElementText('textKitchenTotalPlates', '0');
-
-  const tableBody = document.getElementById('punchesTableBody');
-  if (tableBody) {
-    tableBody.innerHTML = `
-      <tr>
-        <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
-          No active punch or duty logs found for today.
-        </td>
-      </tr>
-    `;
-  }
-}
-
-const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
-
-// 5. Attendance & OT Report Table Renderer (Includes Reg & OT Dept Columns)
-function renderAttendanceReportTable(allPunches) {
-  const tableBody = document.getElementById('recordsTableBody');
-  if (!tableBody) return;
-
-  let rowsHTML = '';
-  let presentTodayCount = 0;
-
-  if (allPunches && typeof allPunches === 'object') {
-    Object.keys(allPunches).forEach((uId) => {
-      if (allPunches[uId] && typeof allPunches[uId] === 'object') {
-        Object.keys(allPunches[uId]).forEach((dateKey) => {
-          const rec = allPunches[uId][dateKey];
+  if (rootPunches && typeof rootPunches === 'object') {
+    Object.keys(rootPunches).forEach((userId) => {
+      if (rootPunches[userId] && typeof rootPunches[userId] === 'object') {
+        Object.keys(rootPunches[userId]).forEach((dateKey) => {
+          const rec = rootPunches[userId][dateKey];
           if (rec) {
-            if (rec.status === 'PUNCHED_IN') presentTodayCount++;
+            const regBadge = rec.assignedDepartment 
+              ? `<span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">${rec.assignedDepartment}</span>`
+              : '--';
 
-            rowsHTML += `
+            const otBadge = rec.otTargetDepartment 
+              ? `<span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">🔥 ${rec.otTargetDepartment}</span>`
+              : '--';
+
+            reportHTML += `
               <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-                <td style="padding:10px; color:#94a3b8;">${rec.date || dateKey || '--'}</td>
-                <td style="padding:10px;"><b>${rec.userName || 'Employee'}</b></td>
+                <td style="padding:10px; color:#94a3b8;"><b>${rec.date || dateKey || '--'}</b><br><small>${rec.shift || ''}</small></td>
+                <td style="padding:10px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
+                <td style="padding:10px;">${regBadge}</td>
+                <td style="padding:10px;">${otBadge}</td>
                 <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
                 <td style="padding:10px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
-                <td style="padding:10px;"><span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px;">${rec.assignedDepartment || '1'}</span></td>
-                <td style="padding:10px;"><span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px;">🔥 ${rec.otTargetDepartment || '2'}</span></td>
                 <td style="padding:10px; text-align:center;">
-                  <button onclick="deleteRecordFromReport('${uId}', '${rec.date || dateKey}')" 
-                          style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">
+                  <button onclick="deleteMasterRecord('${userId}', '${rec.date || dateKey}')" 
+                          style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">
                     Delete
                   </button>
                 </td>
@@ -6558,10 +6524,61 @@ function renderAttendanceReportTable(allPunches) {
     });
   }
 
+  reportTableBody.innerHTML = reportHTML !== '' 
+    ? reportHTML 
+    : `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No attendance punch records found.</td></tr>`;
+}
+
+// 4. Multi-Location Central Delete Function
+function deleteMasterRecord(userId, recordDate) {
+  if (!confirm("Kya aap is record ko delete karna chahte hain? Yeh Today Logs aur Attendance Report dono se hatt jayega.")) {
+    return;
+  }
+
+  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    resetTopCardsAndDashboard();
+    alert("✓ Record successfully delete aur sync ho gaya!");
+    return;
+  }
+
+  let deleteUpdates = {};
+  deleteUpdates[`${PUNCHE_PATH}/${userId}/${dateKey}`] = null;
+  deleteUpdates[`${BASE_PATH}/meals/${dateKey}/${userId}`] = null;
+
+  db.ref().update(deleteUpdates)
+    .then(() => {
+      resetTopCardsAndDashboard();
+      if (typeof renderRecordsTable === 'function') renderRecordsTable();
+      if (typeof loadPunchesTable === 'function') loadPunchesTable();
+      alert("✓ Record successfully delete aur sync ho gaya!");
+    })
+    .catch((err) => {
+      alert("Delete failed: " + err.message);
+    });
+}
+
+// 5. Report Cards Summary Calculation
+function calculateReportSummaryCards(rootPunches) {
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+  let presentTodayCount = 0;
+
+  if (rootPunches && typeof rootPunches === 'object') {
+    Object.keys(rootPunches).forEach((userId) => {
+      if (rootPunches[userId] && rootPunches[userId][today]) {
+        const rec = rootPunches[userId][today];
+        if (rec.punchInTime || rec.status === 'PUNCHED_IN') {
+          presentTodayCount++;
+        }
+      }
+    });
+  }
+
+  setElementText('textPresentToday', presentTodayCount.toString());
   setElementText('countPresentToday', presentTodayCount.toString());
-  tableBody.innerHTML = rowsHTML !== '' 
-    ? rowsHTML 
-    : `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No active records found.</td></tr>`;
+  setElementText('admin-att-punched-today', presentTodayCount.toString());
 }
 
 // 6. Live Kitchen Meal Plate Counter Sync
@@ -7004,6 +7021,9 @@ window.deleteMasterRecord = deleteMasterRecord;
 window.renderAttendanceReportTable = renderAttendanceReportTable;
 window.syncKitchenAndMealPlates = syncKitchenAndMealPlates;
 window.initTwoWaySyncEngine = initTwoWaySyncEngine;
+window.initLogsAndReportSyncEngine = initLogsAndReportSyncEngine;
+window.renderLoggedInUserTodayLogs = renderLoggedInUserTodayLogs;
+window.calculateReportSummaryCards = calculateReportSummaryCards;
 window.savePunchFromResidentHome = savePunchFromResidentHome;
 window.deleteRecordFromReport = deleteRecordFromReport;
 window.updateResidentHomeUI = updateResidentHomeUI;
@@ -7016,6 +7036,7 @@ document.addEventListener('DOMContentLoaded', () => {
     listenForRealtimeUpdates();
     initCentralRealtimeListener();
     initTwoWaySyncEngine();
+    initLogsAndReportSyncEngine();
   } catch (e) {
     console.warn("Live duty init error on DOMContentLoaded:", e);
   }
