@@ -5808,16 +5808,16 @@ function executeGatePunchIn() {
     .catch(err => alert("Database Error: " + err.message));
 }
 
-// 1. Open Modal with Empty Textbox
+// 1. Open Modal & Clear Input Focus
 function openDeptAssignModal() {
   const modal = document.getElementById('deptAssignModal');
-  if (!modal) return alert("Modal HTML missing!");
+  if (!modal) return alert("Modal missing!");
 
-  // Input field ko khali rakhein
   const inputField = document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
   modal.style.display = 'flex';
+  setTimeout(() => inputField && inputField.focus(), 200);
 }
 
 function closeDeptModal() {
@@ -5825,17 +5825,15 @@ function closeDeptModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// 2. Save Custom Department + Auto Current Time
+// 2. Save Custom Department with Auto Entry Time
 function saveDepartmentAllocation() {
-  const customInputEl = document.getElementById('customDeptInput');
-  const deptInput = customInputEl ? customInputEl.value.trim() : '';
+  const deptInput = (document.getElementById('customDeptInput') ? document.getElementById('customDeptInput').value : '').trim();
 
   if (!deptInput) {
     alert("Kripya Department ka naam type karein!");
     return;
   }
 
-  // Auto-generate current entry time (e.g. 06:48:02 PM)
   const now = new Date();
   const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -5854,23 +5852,14 @@ function saveDepartmentAllocation() {
 
   if (!db) {
     closeDeptModal();
-    const deptDisplay = document.getElementById('textDeptDisplay');
-    if (deptDisplay) deptDisplay.innerText = deptInput;
-    const currentDeptDisplay = document.getElementById('textCurrentDept');
-    if (currentDeptDisplay) currentDeptDisplay.innerText = deptInput;
+    setElementText('textDeptDisplay', deptInput);
+    setElementText('textTimeNoteDisplay', entryTime);
 
-    const timeDisplay = document.getElementById('textTimeNoteDisplay');
-    if (timeDisplay) timeDisplay.innerText = entryTime;
-    const assignedTimeDisplay = document.getElementById('textAssignedTime');
-    if (assignedTimeDisplay) assignedTimeDisplay.innerText = entryTime;
-
-    const dutyStatusText = document.getElementById('textDutyStatus');
-    if (dutyStatusText) {
-      dutyStatusText.innerText = 'ON DUTY (ACTIVE)';
-      dutyStatusText.style.color = '#4ade80';
+    if (typeof loadPunchesTable === 'function') {
+      loadPunchesTable();
     }
 
-    alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+    alert(`✓ Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     return;
   }
 
@@ -5878,26 +5867,17 @@ function saveDepartmentAllocation() {
     .then(() => {
       closeDeptModal();
 
-      // UI Screen Updates
-      const deptDisplay = document.getElementById('textDeptDisplay');
-      if (deptDisplay) deptDisplay.innerText = deptInput;
-      const currentDeptDisplay = document.getElementById('textCurrentDept');
-      if (currentDeptDisplay) currentDeptDisplay.innerText = deptInput;
+      // Refresh Live Cards & Logs Table
+      setElementText('textDeptDisplay', deptInput);
+      setElementText('textTimeNoteDisplay', entryTime);
 
-      const timeDisplay = document.getElementById('textTimeNoteDisplay');
-      if (timeDisplay) timeDisplay.innerText = entryTime;
-      const assignedTimeDisplay = document.getElementById('textAssignedTime');
-      if (assignedTimeDisplay) assignedTimeDisplay.innerText = entryTime;
-
-      const dutyStatusText = document.getElementById('textDutyStatus');
-      if (dutyStatusText) {
-        dutyStatusText.innerText = 'ON DUTY (ACTIVE)';
-        dutyStatusText.style.color = '#4ade80';
+      if (typeof loadPunchesTable === 'function') {
+        loadPunchesTable();
       }
 
-      alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+      alert(`✓ Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     })
-    .catch((err) => alert("Save Error: " + err.message));
+    .catch((err) => alert("Error: " + err.message));
 }
 
 // Live Clock & Running OT State Variables
@@ -6029,36 +6009,69 @@ function initLiveOTEngine(startTimeISO, dept, otDept) {
   runningOtInterval = liveOTTimer;
 }
 
-// 4. Listen to Realtime State & Calculate Live OT Running
-function renderPunchTableRow(punchRecord, empName) {
+// 3. Updated Attendance Table Rendering Logic (Adds Department Column)
+function renderPunchTableRow(punchData) {
+  if (!punchData) return '';
+  const deptName = punchData.assignedDepartment || (punchData.departmentDuty && punchData.departmentDuty.deptName) || '--';
+  const deptTime = punchData.departmentAssignedTime || (punchData.departmentDuty && punchData.departmentDuty.assignedTime) || '--';
+
+  return `
+    <tr>
+      <td style="padding:10px; border-bottom:1px solid #334155;">
+        <b>${punchData.userName || 'Employee'}</b><br>
+        <span style="font-size:11px; color:#94a3b8;">${punchData.userId || ''}</span>
+      </td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">
+        <span style="color:#38bdf8; font-weight:bold;">${deptName}</span><br>
+        <span style="font-size:11px; color:#cbd5e1;">Time: ${deptTime}</span>
+      </td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.punchInTime || punchData.punchInTimeFormatted || '--'}</td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.punchOutTime || (punchData.status === 'COMPLETED' ? (punchData.punchOut || 'Completed') : 'Active Live')}</td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.totalHours || (punchData.totalWorked ? `${punchData.totalWorked} hrs` : '0.00 hrs')}</td>
+    </tr>
+  `;
+}
+
+function loadPunchesTable() {
   const tbody = document.getElementById('punchesTableBody');
   if (!tbody) return;
 
-  const employeeName = empName || (punchRecord && punchRecord.userName) || (typeof state !== 'undefined' && state.currentUser ? state.currentUser.name : 'Super Admin');
-  const dept = (punchRecord && punchRecord.assignedDepartment) || (punchRecord && punchRecord.departmentDuty && punchRecord.departmentDuty.deptName) || (punchRecord && punchRecord.assignedDept) || 'Pending Assignment';
-  const deptTime = (punchRecord && punchRecord.departmentAssignedTime) || (punchRecord && punchRecord.departmentDuty && punchRecord.departmentDuty.assignedTime) || (punchRecord && punchRecord.assignedTimeNote) || '--';
-  const punchIn = (punchRecord && (punchRecord.punchInTime || punchRecord.punchInTimeFormatted)) || (punchRecord && punchRecord.punchIn ? new Date(punchRecord.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '--');
-  const punchOut = (punchRecord && punchRecord.punchOut ? (punchRecord.punchOut.includes('T') ? new Date(punchRecord.punchOut).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : punchRecord.punchOut) : (punchRecord && punchRecord.status === 'COMPLETED' ? 'Completed' : '<span style="color:#4ade80; font-weight:600;">Active Duty</span>'));
-  
-  let totalWorked = '--';
-  if (punchRecord && punchRecord.totalWorked) {
-    totalWorked = `${punchRecord.totalWorked} hrs`;
-  } else if (punchRecord && punchRecord.punchIn && punchRecord.status !== 'COMPLETED') {
-    const diff = (new Date() - new Date(punchRecord.punchIn || punchRecord.punchInTimestamp)) / (1000 * 60 * 60);
-    totalWorked = `${Math.max(0, diff).toFixed(1)} hrs (Live)`;
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    const punchData = {
+      userName: currentLocalUser ? currentLocalUser.name : 'Employee',
+      userId: userId,
+      assignedDepartment: (document.getElementById('textDeptDisplay') || {}).innerText || '--',
+      departmentAssignedTime: (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--',
+      punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      punchOutTime: 'Active Live',
+      totalHours: '0.00 hrs'
+    };
+    tbody.innerHTML = renderPunchTableRow(punchData);
+    return;
   }
 
-  tbody.innerHTML = `
-    <tr style="border-bottom:1px solid #334155;">
-      <td style="padding:10px; font-weight:600;">${employeeName}</td>
-      <td style="padding:10px; color:#38bdf8; font-weight:500;">
-        🏢 ${dept} <span style="font-size:11px; color:#94a3b8;">(${deptTime})</span>
-      </td>
-      <td style="padding:10px; color:#4ade80;">${punchIn}</td>
-      <td style="padding:10px;">${punchOut}</td>
-      <td style="padding:10px; font-weight:700; color:#facc15;">${totalWorked}</td>
-    </tr>
-  `;
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value', (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+      const punchData = {
+        userName: currentLocalUser ? currentLocalUser.name : 'Employee',
+        userId: userId,
+        assignedDepartment: data.assignedDepartment || (data.departmentDuty && data.departmentDuty.deptName) || '--',
+        departmentAssignedTime: data.departmentAssignedTime || (data.departmentDuty && data.departmentDuty.assignedTime) || '--',
+        punchInTime: data.punchInTime || data.punchInTimeFormatted || (data.punchIn ? new Date(data.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--'),
+        punchOutTime: data.punchOutTime || (data.status === 'COMPLETED' ? (data.punchOut || 'Completed') : 'Active Live'),
+        totalHours: data.totalWorked ? `${data.totalWorked} hrs` : (data.totalHours || '0.00 hrs')
+      };
+      tbody.innerHTML = renderPunchTableRow(punchData);
+    }
+  });
 }
 
 function listenToActiveDutyState() {
@@ -6076,13 +6089,13 @@ function listenToActiveDutyState() {
     if (!data || data.status === 'COMPLETED') {
       resetDutyUI();
       if (data) {
-        renderPunchTableRow(data, currentLocalUser ? currentLocalUser.name : 'Super Admin');
+        loadPunchesTable();
       }
       return;
     }
 
-    // Render table row
-    renderPunchTableRow(data, currentLocalUser ? currentLocalUser.name : 'Super Admin');
+    // Refresh table row
+    loadPunchesTable();
 
     // Update Basic Duty Info
     setElementText('textDutyStatus', 'ON DUTY (ACTIVE)');
@@ -6350,6 +6363,7 @@ window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
 window.renderPunchTableRow = renderPunchTableRow;
+window.loadPunchesTable = loadPunchesTable;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
 window.executeGatePunchIn = executeGatePunchIn;
