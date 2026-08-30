@@ -6184,19 +6184,32 @@ function renderRecordsTable() {
   });
 }
 
+// Function to Reset Top Cards and Dashboard Display UI
 function clearDashboardDepartmentUI() {
+  // Clear Top Cards
   setElementText('textDeptDisplay', '--');
   setElementText('textTimeNoteDisplay', '--');
+  setElementText('textOtTargetDeptDisplay', '--');
   setElementText('textOtDeptDisplay', '--');
   setElementText('textOtDept', '--');
   setElementText('otTargetDeptEl', '--');
-  setElementText('textOtTargetDeptDisplay', '--');
-  setElementText('textOtDeptAssignedTime', '--');
   setElementText('textLiveOT', '0.00 hours');
   setElementText('liveOtHoursEl', '0.00');
-  setElementText('textStandardHours', '0.00 hours');
+  setElementText('textStandardHours', '0.0h');
   const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
   if (otBadge) otBadge.style.color = '#94a3b8';
+
+  // Today's Table UI ko empty state par set karein
+  const tableBody = document.getElementById('punchesTableBody');
+  if (tableBody) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
+          No active punch or department logs available for today.
+        </td>
+      </tr>
+    `;
+  }
 }
 
 // Complete Record Delete Function with Department Clean-Up
@@ -6236,10 +6249,8 @@ function deletePunchRecord(recordId, recordDate, userId) {
     });
 }
 
+// Today's Logs Table Loading Sync Function
 function loadPunchesTable() {
-  const tbody = document.getElementById('punchesTableBody');
-  if (!tbody) return;
-
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
@@ -6248,54 +6259,30 @@ function loadPunchesTable() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    const regDept = (document.getElementById('textDeptDisplay') || {}).innerText || '--';
-    const regTime = (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--';
-    const otDept = (document.getElementById('textOtDeptDisplay') || {}).innerText || (document.getElementById('textOtDept') || {}).innerText || '--';
-    const otTime = (document.getElementById('textOtDeptAssignedTime') || {}).innerText || '--';
-
-    const punchData = {
-      userName: currentLocalUser ? currentLocalUser.name : 'Employee',
-      userId: userId,
-      assignedDepartment: regDept,
-      departmentAssignedTime: regTime,
-      regularDepartment: regDept,
-      regularDeptTime: regTime,
-      otTargetDepartment: otDept,
-      otDeptAssignedTime: otTime,
-      otDepartment: otDept,
-      otDeptTime: otTime,
-      punchInTimestamp: Date.now() - (8.5 * 3600 * 1000),
-      punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      regHrs: '8.00 hrs',
-      otHours: (document.getElementById('textRunningOT') || {}).innerText || '0.00 hrs'
-    };
-    tbody.innerHTML = renderPunchTableRow(punchData);
+    const tableBody = document.getElementById('punchesTableBody');
+    if (!tableBody) return;
+    clearDashboardDepartmentUI();
     return;
   }
 
-  db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value', (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      const punchData = {
-        userName: currentLocalUser ? currentLocalUser.name : 'Employee',
-        userId: userId,
-        assignedDepartment: data.assignedDepartment || '--',
-        departmentAssignedTime: data.departmentAssignedTime || '--',
-        regularDepartment: data.assignedDepartment || data.regularDepartment || '--',
-        regularDeptTime: data.departmentAssignedTime || data.regularDeptTime || '--',
-        otTargetDepartment: data.otTargetDepartment || data.otDepartment || '--',
-        otDeptAssignedTime: data.otDeptAssignedTime || data.otDeptTime || '--',
-        otDepartment: data.otTargetDepartment || data.otDepartment || '--',
-        otDeptTime: data.otDeptAssignedTime || data.otDeptTime || '--',
-        punchInTimestamp: data.punchInTimestamp || data.punchInTime || data.punchIn,
-        punchOutTimestamp: data.punchOutTimestamp || data.punchOutTime || data.punchOut,
-        punchInTime: data.punchInTime || data.punchInTimeFormatted || (data.punchIn ? new Date(data.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--'),
-        regHrs: data.totalWorked ? `${data.totalWorked} hrs` : (data.regHrs || '8.00 hrs'),
-        otHours: data.otHours || data.runningOT || (document.getElementById('textRunningOT') ? document.getElementById('textRunningOT').innerText : '0.00 hrs')
-      };
-      tbody.innerHTML = renderPunchTableRow(punchData);
-    }
-  });
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value')
+    .then((snapshot) => {
+      const data = snapshot.val();
+      const tableBody = document.getElementById('punchesTableBody');
+      if (!tableBody) return;
+
+      // Agar data null/delete ho chuka hai, toh complete clean render karein
+      if (!data || Object.keys(data).length === 0) {
+        clearDashboardDepartmentUI();
+        return;
+      }
+
+      // Agar record exist karta hai tabhi table row render karein
+      tableBody.innerHTML = renderPunchTableRow(data);
+    })
+    .catch((err) => {
+      console.warn("loadPunchesTable error:", err);
+    });
 }
 
 // Realtime Auto-Sync Listener (No Manual Refresh Needed)
