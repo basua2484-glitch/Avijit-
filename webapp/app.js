@@ -5843,6 +5843,10 @@ function saveDepartmentAllocation() {
     return;
   }
 
+  const deptTypeRadio = document.querySelector('input[name="deptTypeSelection"]:checked');
+  const deptType = deptTypeRadio ? deptTypeRadio.value : 'REGULAR';
+  const displayDept = deptType === 'OT_DEPT' ? `[OT] ${deptInput}` : deptInput;
+
   // Auto-generate Exact Duty Entry Time
   const now = new Date();
   const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -5853,8 +5857,9 @@ function saveDepartmentAllocation() {
   const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
   const payload = {
-    assignedDepartment: deptInput,
+    assignedDepartment: displayDept,
     departmentAssignedTime: entryTime,
+    dutyType: deptType,
     status: 'ON_DUTY'
   };
 
@@ -5865,7 +5870,7 @@ function saveDepartmentAllocation() {
 
     // UI Live Updates
     const deptDisplay = document.getElementById('textDeptDisplay');
-    if (deptDisplay) deptDisplay.innerText = deptInput;
+    if (deptDisplay) deptDisplay.innerText = displayDept;
 
     const timeDisplay = document.getElementById('textTimeNoteDisplay');
     if (timeDisplay) timeDisplay.innerText = entryTime;
@@ -5875,7 +5880,7 @@ function saveDepartmentAllocation() {
       loadPunchesTable();
     }
 
-    alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+    alert(`✓ Department Duty Saved!\nDept: ${displayDept}\nEntry Time: ${entryTime}`);
     return;
   }
 
@@ -5885,7 +5890,7 @@ function saveDepartmentAllocation() {
 
       // UI Live Updates
       const deptDisplay = document.getElementById('textDeptDisplay');
-      if (deptDisplay) deptDisplay.innerText = deptInput;
+      if (deptDisplay) deptDisplay.innerText = displayDept;
 
       const timeDisplay = document.getElementById('textTimeNoteDisplay');
       if (timeDisplay) timeDisplay.innerText = entryTime;
@@ -5895,7 +5900,7 @@ function saveDepartmentAllocation() {
         loadPunchesTable();
       }
 
-      alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+      alert(`✓ Department Duty Saved!\nDept: ${displayDept}\nEntry Time: ${entryTime}`);
     })
     .catch((err) => alert("Error saving duty: " + err.message));
 }

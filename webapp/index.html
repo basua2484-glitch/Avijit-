@@ -1556,21 +1556,33 @@
       </div>
     </div>
 
-    <!-- Bottom Floating Duty Assignment Sheet (Gemini Chat Style) -->
+    <!-- Enhanced Duty & OT Department Assignment Bottom Sheet -->
     <div id="deptAssignSheet" style="display:none; position:fixed; bottom:0; left:0; width:100%; background:#1e293b; border-top:2px solid #38bdf8; border-top-left-radius:18px; border-top-right-radius:18px; box-shadow:0 -10px 30px rgba(0,0,0,0.8); z-index:999999; padding:16px; box-sizing:border-box;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-        <span style="color:#38bdf8; font-size:14px; font-weight:bold;">📝 Department Duty Entry</span>
+      
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="color:#38bdf8; font-size:14px; font-weight:bold;">📝 Assign Department / OT Duty</span>
         <button onclick="closeDeptSheet()" style="background:none; border:none; color:#94a3b8; font-size:18px; cursor:pointer;">✕</button>
       </div>
 
-      <!-- Typing Box -->
+      <!-- Type Selection: Regular Duty vs OT Dept Duty -->
+      <div style="display:flex; gap:10px; margin-bottom:10px;">
+        <label style="flex:1; background:#0f172a; padding:8px; border-radius:8px; border:1px solid #334155; font-size:12px; color:#fff; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="radio" name="deptTypeSelection" value="REGULAR" checked /> Regular Dept Duty
+        </label>
+        <label style="flex:1; background:#0f172a; padding:8px; border-radius:8px; border:1px solid #334155; font-size:12px; color:#f59e0b; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="radio" name="deptTypeSelection" value="OT_DEPT" /> OT Specific Dept
+        </label>
+      </div>
+
+      <!-- Live Typing Box -->
       <div style="display:flex; gap:8px; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:12px; padding:6px 12px;">
-        <input type="text" id="customDeptInput" onkeydown="if(event.key==='Enter') saveDepartmentAllocation()" placeholder="Type Department Name (e.g. ICU Ward 2)..." style="flex:1; background:transparent; border:none; color:#fff; font-size:15px; outline:none; padding:8px 0;" />
+        <input type="text" id="customDeptInput" onkeydown="if(event.key==='Enter') saveDepartmentAllocation()" placeholder="Type Dept Name (e.g. ICU Ward 2, Emergency)..." style="flex:1; background:transparent; border:none; color:#fff; font-size:15px; outline:none; padding:8px 0;" />
         
         <button onclick="saveDepartmentAllocation()" style="background:#0284c7; color:#fff; border:none; padding:10px 16px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer;">
-          Save ➔
+          Save Duty ➔
         </button>
       </div>
+
     </div>
   </div>
 
