@@ -5816,7 +5816,7 @@ function openDeptAssignModal() {
   const inputField = document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
-  sheet.style.display = 'flex';
+  sheet.style.display = 'block';
 
   // Smooth Focus on Input for Instant Typing
   setTimeout(() => {
