@@ -6034,11 +6034,18 @@ function initLiveOTEngine(startTimeISO, dept, otDept) {
   runningOtInterval = liveOTTimer;
 }
 
-// 3. Updated Attendance Table Rendering Logic (Adds Department Column)
+// 3. Updated Attendance Table Rendering Logic (Adds Separate Regular & OT Dept Columns)
 function renderPunchTableRow(punchData) {
   if (!punchData) return '';
-  const deptName = punchData.assignedDepartment || (punchData.departmentDuty && punchData.departmentDuty.deptName) || '--';
-  const deptTime = punchData.departmentAssignedTime || (punchData.departmentDuty && punchData.departmentDuty.assignedTime) || '--';
+  const regDept = punchData.regularDepartment || punchData.regDept || (punchData.dutyType !== 'OT_DEPT' ? punchData.assignedDepartment : '--') || '--';
+  const regDeptTime = punchData.regularDeptTime || punchData.regDeptTime || (punchData.dutyType !== 'OT_DEPT' ? punchData.departmentAssignedTime : '--') || '--';
+
+  const otDept = punchData.otDepartment || punchData.otDept || (punchData.dutyType === 'OT_DEPT' ? punchData.assignedDepartment : '--') || '--';
+  const otDeptTime = punchData.otDeptTime || punchData.otTime || (punchData.dutyType === 'OT_DEPT' ? punchData.departmentAssignedTime : '--') || '--';
+
+  const punchIn = punchData.punchInTime || punchData.punchInTimeFormatted || '--';
+  const regHrs = punchData.regHrs || punchData.regularHours || (punchData.totalWorked ? `${punchData.totalWorked} hrs` : '8.00 hrs');
+  const otHrs = punchData.otHours || punchData.liveOtHours || punchData.otHrs || '0.00 hrs';
 
   return `
     <tr>
@@ -6047,12 +6054,16 @@ function renderPunchTableRow(punchData) {
         <span style="font-size:11px; color:#94a3b8;">${punchData.userId || ''}</span>
       </td>
       <td style="padding:10px; border-bottom:1px solid #334155;">
-        <span style="color:#38bdf8; font-weight:bold;">${deptName}</span><br>
-        <span style="font-size:11px; color:#cbd5e1;">Time: ${deptTime}</span>
+        <span style="color:#38bdf8; font-weight:bold;">${regDept}</span><br>
+        <span style="font-size:11px; color:#cbd5e1;">Time: ${regDeptTime}</span>
       </td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.punchInTime || punchData.punchInTimeFormatted || '--'}</td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.punchOutTime || (punchData.status === 'COMPLETED' ? (punchData.punchOut || 'Completed') : 'Active Live')}</td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">${punchData.totalHours || (punchData.totalWorked ? `${punchData.totalWorked} hrs` : '0.00 hrs')}</td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">
+        <span style="color:#f59e0b; font-weight:bold;">${otDept}</span><br>
+        <span style="font-size:11px; color:#cbd5e1;">Time: ${otDeptTime}</span>
+      </td>
+      <td style="padding:10px; border-bottom:1px solid #334155; color:#4ade80;">${punchIn}</td>
+      <td style="padding:10px; border-bottom:1px solid #334155;">${regHrs}</td>
+      <td style="padding:10px; border-bottom:1px solid #334155; font-weight:700; color:#f59e0b;">${otHrs}</td>
     </tr>
   `;
 }
@@ -6069,14 +6080,23 @@ function loadPunchesTable() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
+    const liveDept = (document.getElementById('textDeptDisplay') || {}).innerText || '--';
+    const liveTime = (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--';
+    const isOt = liveDept.startsWith('[OT]');
+
     const punchData = {
       userName: currentLocalUser ? currentLocalUser.name : 'Employee',
       userId: userId,
-      assignedDepartment: (document.getElementById('textDeptDisplay') || {}).innerText || '--',
-      departmentAssignedTime: (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--',
+      dutyType: isOt ? 'OT_DEPT' : 'REGULAR',
+      assignedDepartment: liveDept,
+      departmentAssignedTime: liveTime,
+      regularDepartment: isOt ? '--' : liveDept,
+      regularDeptTime: isOt ? '--' : liveTime,
+      otDepartment: isOt ? liveDept : '--',
+      otDeptTime: isOt ? liveTime : '--',
       punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      punchOutTime: 'Active Live',
-      totalHours: '0.00 hrs'
+      regHrs: '8.00 hrs',
+      otHours: (document.getElementById('textRunningOT') || {}).innerText || '0.00 hrs'
     };
     tbody.innerHTML = renderPunchTableRow(punchData);
     return;
@@ -6085,14 +6105,21 @@ function loadPunchesTable() {
   db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value', (snapshot) => {
     const data = snapshot.val();
     if (data) {
+      const isOt = data.dutyType === 'OT_DEPT' || (data.assignedDepartment && data.assignedDepartment.startsWith('[OT]'));
+      const deptName = data.assignedDepartment || (data.departmentDuty && data.departmentDuty.deptName) || '--';
+      const deptTime = data.departmentAssignedTime || (data.departmentDuty && data.departmentDuty.assignedTime) || '--';
+
       const punchData = {
         userName: currentLocalUser ? currentLocalUser.name : 'Employee',
         userId: userId,
-        assignedDepartment: data.assignedDepartment || (data.departmentDuty && data.departmentDuty.deptName) || '--',
-        departmentAssignedTime: data.departmentAssignedTime || (data.departmentDuty && data.departmentDuty.assignedTime) || '--',
+        dutyType: data.dutyType || (isOt ? 'OT_DEPT' : 'REGULAR'),
+        regularDepartment: data.regularDepartment || (!isOt ? deptName : '--'),
+        regularDeptTime: data.regularDeptTime || (!isOt ? deptTime : '--'),
+        otDepartment: data.otDepartment || (isOt ? deptName : '--'),
+        otDeptTime: data.otDeptTime || (isOt ? deptTime : '--'),
         punchInTime: data.punchInTime || data.punchInTimeFormatted || (data.punchIn ? new Date(data.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--'),
-        punchOutTime: data.punchOutTime || (data.status === 'COMPLETED' ? (data.punchOut || 'Completed') : 'Active Live'),
-        totalHours: data.totalWorked ? `${data.totalWorked} hrs` : (data.totalHours || '0.00 hrs')
+        regHrs: data.totalWorked ? `${data.totalWorked} hrs` : (data.regHrs || '8.00 hrs'),
+        otHours: data.otHours || data.runningOT || (document.getElementById('textRunningOT') ? document.getElementById('textRunningOT').innerText : '0.00 hrs')
       };
       tbody.innerHTML = renderPunchTableRow(punchData);
     }
