@@ -6190,6 +6190,126 @@ function renderRecordsTable() {
   });
 }
 
+// ===================================================
+// TWO-WAY REALTIME SYNC: RESIDENT HOME <-> REPORT MODULE
+// ===================================================
+
+const FIREBASE_PATH = 'hostel_mess_data/punches';
+
+// 1. Two-Way Realtime Listener (Listens to DB changes from either tab)
+function initTwoWaySyncEngine() {
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+  const dbRef = db.ref(FIREBASE_PATH);
+
+  dbRef.on('value', (snapshot) => {
+    const allPunches = snapshot.val() || {};
+    const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+    const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+    const currentUserId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+    const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+
+    // Update Report Table View
+    renderAttendanceReportTable(allPunches);
+
+    // Sync Resident Home UI with Latest DB State
+    const userTodayRecord = (allPunches[currentUserId] && allPunches[currentUserId][today]) 
+      ? allPunches[currentUserId][today] 
+      : null;
+
+    updateResidentHomeUI(userTodayRecord);
+  });
+}
+
+// 2. Action from Resident Home: Save Punch or Department Change
+function savePunchFromResidentHome(userId, userName, type, regDept, otDept) {
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+  const timeNow = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+  const dbRef = db.ref(`${FIREBASE_PATH}/${userId}/${today}`);
+
+  let updatePayload = {
+    userId: userId,
+    userName: userName || 'Employee',
+    date: today,
+    lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
+  };
+
+  if (type === 'PUNCH_IN') {
+    updatePayload.punchInTime = timeNow;
+    updatePayload.status = 'PUNCHED_IN';
+  } else if (type === 'PUNCH_OUT') {
+    updatePayload.punchOutTime = timeNow;
+    updatePayload.status = 'PUNCHED_OUT';
+  }
+
+  if (regDept) {
+    updatePayload.assignedDepartment = regDept;
+    updatePayload.departmentAssignedTime = timeNow;
+  }
+  if (otDept) {
+    updatePayload.otTargetDepartment = otDept;
+    updatePayload.otDeptAssignedTime = timeNow;
+  }
+
+  // Atomic Update: Saves directly to report node
+  dbRef.update(updatePayload)
+    .then(() => console.log("✓ Resident Home update synced to Report Table!"))
+    .catch((err) => alert("Sync Error: " + err.message));
+}
+
+// 3. Action from Attendance Report: Delete Record (Updates Resident Home instantly)
+function deleteRecordFromReport(userId, recordDate) {
+  if (!confirm("Kya aap is record ko delete karna chahte hain? Resident Home ka status bhi reset ho jayega.")) {
+    return;
+  }
+
+  const targetDate = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) {
+    alert("Database connection is not available.");
+    return;
+  }
+
+  db.ref(`${FIREBASE_PATH}/${userId}/${targetDate}`).remove()
+    .then(() => {
+      alert("✓ Record Report aur Resident Home dono se delete ho gaya!");
+    })
+    .catch((err) => alert("Delete Failed: " + err.message));
+}
+
+// 4. Resident Home UI Controller
+function updateResidentHomeUI(record) {
+  const dutyBadge = document.getElementById('textDutyStatusBadge');
+
+  if (!record || record.status === 'PUNCHED_OUT') {
+    // Reset to "Not Punched In" State
+    if (dutyBadge) {
+      dutyBadge.innerText = 'NOT PUNCHED IN';
+      dutyBadge.style.background = '#fecdd3';
+      dutyBadge.style.color = '#e11d48';
+    }
+    setElementText('textDeptDisplay', '1');
+    setElementText('textOtTargetDeptDisplay', '2');
+    setElementText('textLiveOT', '0.00 hours');
+    setElementText('textStandardHours', '0.0h');
+    return;
+  }
+
+  // Active Punch-In State
+  if (dutyBadge) {
+    dutyBadge.innerText = 'PUNCHED IN';
+    dutyBadge.style.background = '#dcfce7';
+    dutyBadge.style.color = '#15803d';
+  }
+
+  setElementText('textDeptDisplay', record.assignedDepartment || '1');
+  setElementText('textOtTargetDeptDisplay', record.otTargetDepartment || '2');
+  setElementText('textTimeNoteDisplay', record.departmentAssignedTime || '--:--');
+  setElementText('textStandardHours', '8.0h');
+}
+
 // ==========================================
 // CENTRALIZED SYSTEM STATE & REALTIME ENGINE
 // ==========================================
@@ -6401,39 +6521,31 @@ function resetTopCardsAndDashboard() {
 const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
 
 // 5. Attendance & OT Report Table Renderer (Includes Reg & OT Dept Columns)
-function renderAttendanceReportTable(punchesData) {
+function renderAttendanceReportTable(allPunches) {
   const tableBody = document.getElementById('recordsTableBody');
   if (!tableBody) return;
 
   let rowsHTML = '';
-  let activeUsers = 0;
+  let presentTodayCount = 0;
 
-  if (punchesData) {
-    Object.keys(punchesData).forEach((uId) => {
-      if (punchesData[uId] && typeof punchesData[uId] === 'object') {
-        Object.keys(punchesData[uId]).forEach((dateKey) => {
-          const rec = punchesData[uId][dateKey];
+  if (allPunches && typeof allPunches === 'object') {
+    Object.keys(allPunches).forEach((uId) => {
+      if (allPunches[uId] && typeof allPunches[uId] === 'object') {
+        Object.keys(allPunches[uId]).forEach((dateKey) => {
+          const rec = allPunches[uId][dateKey];
           if (rec) {
-            activeUsers++;
-
-            const regBadge = rec.assignedDepartment 
-              ? `<span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">${rec.assignedDepartment}</span>`
-              : '--';
-
-            const otBadge = rec.otTargetDepartment 
-              ? `<span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">🔥 ${rec.otTargetDepartment}</span>`
-              : '--';
+            if (rec.status === 'PUNCHED_IN') presentTodayCount++;
 
             rowsHTML += `
               <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-                <td style="padding:8px;">${rec.date || dateKey || '--'}<br><small style="color:#64748b;">${rec.shift || ''}</small></td>
-                <td style="padding:8px;"><b>${rec.userName || 'User'}</b><br><small style="color:#64748b;">${rec.role || 'Staff'}</small></td>
-                <td style="padding:8px;">${regBadge}</td>
-                <td style="padding:8px;">${otBadge}</td>
-                <td style="padding:8px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
-                <td style="padding:8px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
-                <td style="padding:8px; text-align:center;">
-                  <button onclick="deleteMasterRecord('${uId}', '${rec.date || dateKey}')" 
+                <td style="padding:10px; color:#94a3b8;">${rec.date || dateKey || '--'}</td>
+                <td style="padding:10px;"><b>${rec.userName || 'Employee'}</b></td>
+                <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
+                <td style="padding:10px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
+                <td style="padding:10px;"><span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px;">${rec.assignedDepartment || '1'}</span></td>
+                <td style="padding:10px;"><span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px;">🔥 ${rec.otTargetDepartment || '2'}</span></td>
+                <td style="padding:10px; text-align:center;">
+                  <button onclick="deleteRecordFromReport('${uId}', '${rec.date || dateKey}')" 
                           style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">
                     Delete
                   </button>
@@ -6446,11 +6558,10 @@ function renderAttendanceReportTable(punchesData) {
     });
   }
 
-  if (rowsHTML === '') {
-    tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No records found.</td></tr>`;
-  } else {
-    tableBody.innerHTML = rowsHTML;
-  }
+  setElementText('countPresentToday', presentTodayCount.toString());
+  tableBody.innerHTML = rowsHTML !== '' 
+    ? rowsHTML 
+    : `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No active records found.</td></tr>`;
 }
 
 // 6. Live Kitchen Meal Plate Counter Sync
@@ -6892,6 +7003,10 @@ window.saveMasterDutyAndMealAllocation = saveMasterDutyAndMealAllocation;
 window.deleteMasterRecord = deleteMasterRecord;
 window.renderAttendanceReportTable = renderAttendanceReportTable;
 window.syncKitchenAndMealPlates = syncKitchenAndMealPlates;
+window.initTwoWaySyncEngine = initTwoWaySyncEngine;
+window.savePunchFromResidentHome = savePunchFromResidentHome;
+window.deleteRecordFromReport = deleteRecordFromReport;
+window.updateResidentHomeUI = updateResidentHomeUI;
 
 // 1. Live Running Clock & Active Duty State Handler
 document.addEventListener('DOMContentLoaded', () => {
@@ -6900,6 +7015,7 @@ document.addEventListener('DOMContentLoaded', () => {
     listenToActiveDutyState();
     listenForRealtimeUpdates();
     initCentralRealtimeListener();
+    initTwoWaySyncEngine();
   } catch (e) {
     console.warn("Live duty init error on DOMContentLoaded:", e);
   }
