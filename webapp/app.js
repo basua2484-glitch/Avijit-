@@ -6063,20 +6063,17 @@ function calculateDutyAndOT(punchInTimestamp, punchOutTimestamp) {
 
 // 3. Updated Attendance Table Rendering Logic
 function renderPunchTableRow(punchData) {
-  if (!punchData) return '';
-
-  // 1. Regular Department Display
+  // Regular Dept Display
   const regDept = punchData.assignedDepartment 
-    ? `<span style="background:#0284c7; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px; display:inline-block;">${punchData.assignedDepartment}</span><br><span style="font-size:10px; color:#94a3b8;">Time: ${punchData.departmentAssignedTime || '--'}</span>`
-    : '<span style="color:#64748b;">--</span>';
+    ? `<span style="background:#0284c7; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;">${punchData.assignedDepartment}</span><br><span style="font-size:10px; color:#94a3b8;">Time: ${punchData.departmentAssignedTime || ''}</span>`
+    : '<span style="color:#64748b; font-size:12px;">--</span>';
 
-  // 2. OT Department Display
+  // OT Dept Display
   const otDept = punchData.otTargetDepartment 
-    ? `<span style="background:#d97706; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px; display:inline-block;">🔥 ${punchData.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${punchData.otDeptAssignedTime || '--'}</span>`
-    : '<span style="color:#64748b;">--</span>';
+    ? `<span style="background:#d97706; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;">🔥 ${punchData.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${punchData.otDeptAssignedTime || ''}</span>`
+    : '<span style="color:#64748b; font-size:12px;">--</span>';
 
-  // Hours Auto Calculation
-  const stats = calculateDutyAndOT(punchData.punchInTimestamp || punchData.punchIn, punchData.punchOutTimestamp || punchData.punchOut);
+  const stats = calculateDutyAndOT(punchData.punchInTimestamp, punchData.punchOutTimestamp);
 
   return `
     <tr style="border-bottom:1px solid #334155;">
