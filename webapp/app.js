@@ -6039,36 +6039,53 @@ function initLiveOTEngine(startTimeISO, dept, otDept) {
   runningOtInterval = liveOTTimer;
 }
 
-// 3. Updated Attendance Table Rendering Logic (Adds Separate Regular & OT Dept Columns)
+// Hours Calculation Helper (Standard 8 Hours + OT Calculation)
+function calculateDutyAndOT(punchInTimestamp, punchOutTimestamp) {
+  if (!punchInTimestamp) {
+    return { standardHours: '0.00', otHours: '0.00' };
+  }
+  const inTime = typeof punchInTimestamp === 'number' ? punchInTimestamp : new Date(punchInTimestamp).getTime();
+  const outTime = punchOutTimestamp ? (typeof punchOutTimestamp === 'number' ? punchOutTimestamp : new Date(punchOutTimestamp).getTime()) : Date.now();
+
+  if (isNaN(inTime) || isNaN(outTime) || outTime < inTime) {
+    return { standardHours: '0.00', otHours: '0.00' };
+  }
+
+  const totalWorkedHrs = (outTime - inTime) / (1000 * 60 * 60);
+  const standardHours = Math.min(totalWorkedHrs, 8.0).toFixed(2);
+  const otHours = Math.max(0, totalWorkedHrs - 8.0).toFixed(2);
+
+  return { standardHours, otHours };
+}
+
+// 3. Updated Attendance Table Rendering Logic
 function renderPunchTableRow(punchData) {
   if (!punchData) return '';
-  const regDept = punchData.regularDepartment || punchData.assignedDepartment || punchData.regDept || '--';
-  const regDeptTime = punchData.regularDeptTime || punchData.departmentAssignedTime || punchData.regDeptTime || '--';
 
-  const otDept = punchData.otTargetDepartment || punchData.otDepartment || punchData.otDept || '--';
-  const otDeptTime = punchData.otDeptAssignedTime || punchData.otDeptTime || punchData.otTime || '--';
+  // 1. Regular Department Display
+  const regDept = punchData.assignedDepartment 
+    ? `<span style="background:#0284c7; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px; display:inline-block;">${punchData.assignedDepartment}</span><br><span style="font-size:10px; color:#94a3b8;">Time: ${punchData.departmentAssignedTime || '--'}</span>`
+    : '<span style="color:#64748b;">--</span>';
 
-  const punchIn = punchData.punchInTime || punchData.punchInTimeFormatted || '--';
-  const regHrs = punchData.regHrs || punchData.regularHours || (punchData.totalWorked ? `${punchData.totalWorked} hrs` : '8.00 hrs');
-  const otHrs = punchData.otHours || punchData.liveOtHours || punchData.otHrs || '0.00 hrs';
+  // 2. OT Department Display
+  const otDept = punchData.otTargetDepartment 
+    ? `<span style="background:#d97706; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px; display:inline-block;">🔥 ${punchData.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${punchData.otDeptAssignedTime || '--'}</span>`
+    : '<span style="color:#64748b;">--</span>';
+
+  // Hours Auto Calculation
+  const stats = calculateDutyAndOT(punchData.punchInTimestamp || punchData.punchIn, punchData.punchOutTimestamp || punchData.punchOut);
 
   return `
-    <tr>
-      <td style="padding:10px; border-bottom:1px solid #334155;">
-        <b>${punchData.userName || 'Employee'}</b><br>
-        <span style="font-size:11px; color:#94a3b8;">${punchData.userId || ''}</span>
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:10px;">
+        <b style="color:#fff;">${punchData.userName || 'Employee'}</b><br>
+        <span style="font-size:10px; color:#94a3b8;">${punchData.userId || ''}</span>
       </td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">
-        <span style="color:#38bdf8; font-weight:bold;">${regDept}</span><br>
-        <span style="font-size:11px; color:#cbd5e1;">Time: ${regDeptTime}</span>
-      </td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">
-        <span style="color:#f59e0b; font-weight:bold;">${otDept}</span><br>
-        <span style="font-size:11px; color:#cbd5e1;">Time: ${otDeptTime}</span>
-      </td>
-      <td style="padding:10px; border-bottom:1px solid #334155; color:#4ade80;">${punchIn}</td>
-      <td style="padding:10px; border-bottom:1px solid #334155;">${regHrs}</td>
-      <td style="padding:10px; border-bottom:1px solid #334155; font-weight:700; color:#f59e0b;">${otHrs}</td>
+      <td style="padding:10px;">${regDept}</td>
+      <td style="padding:10px;">${otDept}</td>
+      <td style="padding:10px; color:#38bdf8;">${punchData.punchInTime || '--'}</td>
+      <td style="padding:10px; color:#4ade80; font-weight:bold;">${stats.standardHours} hrs</td>
+      <td style="padding:10px; color:#f59e0b; font-weight:bold;">${stats.otHours} hrs</td>
     </tr>
   `;
 }
@@ -6101,6 +6118,7 @@ function loadPunchesTable() {
       otDeptAssignedTime: otTime,
       otDepartment: otDept,
       otDeptTime: otTime,
+      punchInTimestamp: Date.now() - (8.5 * 3600 * 1000),
       punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       regHrs: '8.00 hrs',
       otHours: (document.getElementById('textRunningOT') || {}).innerText || '0.00 hrs'
@@ -6123,6 +6141,8 @@ function loadPunchesTable() {
         otDeptAssignedTime: data.otDeptAssignedTime || data.otDeptTime || '--',
         otDepartment: data.otTargetDepartment || data.otDepartment || '--',
         otDeptTime: data.otDeptAssignedTime || data.otDeptTime || '--',
+        punchInTimestamp: data.punchInTimestamp || data.punchInTime || data.punchIn,
+        punchOutTimestamp: data.punchOutTimestamp || data.punchOutTime || data.punchOut,
         punchInTime: data.punchInTime || data.punchInTimeFormatted || (data.punchIn ? new Date(data.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--'),
         regHrs: data.totalWorked ? `${data.totalWorked} hrs` : (data.regHrs || '8.00 hrs'),
         otHours: data.otHours || data.runningOT || (document.getElementById('textRunningOT') ? document.getElementById('textRunningOT').innerText : '0.00 hrs')
