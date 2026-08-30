@@ -6227,24 +6227,19 @@ function deletePunchRecord(recordId, recordDate, userId) {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    clearDashboardDepartmentUI();
-    if (typeof loadPunchesTable === 'function') loadPunchesTable();
+    resetTopCardsAndDashboard();
     if (typeof renderRecordsTable === 'function') renderRecordsTable();
-    alert("✓ Punch record aur sabhi associated Department Duty entries successfully delete ho gayi hain!");
+    alert("✓ Record aur Department Allocation data successfully delete ho gaya hai!");
     return;
   }
 
-  // 1. Firebase Database se Complete Record Remove Karein
   db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
     .then(() => {
-      // 2. Clear Live Dashboard UI Displays
-      clearDashboardDepartmentUI();
+      // Direct UI Wipe
+      resetTopCardsAndDashboard();
 
-      // 3. Reload All Tables
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
       if (typeof renderRecordsTable === 'function') renderRecordsTable();
-
-      alert("✓ Punch record aur sabhi associated Department Duty entries successfully delete ho gayi hain!");
+      alert("✓ Record aur Department Allocation data successfully delete ho gaya hai!");
     })
     .catch((err) => {
       alert("Error deleting record: " + err.message);
