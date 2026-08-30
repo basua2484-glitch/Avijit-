@@ -6246,6 +6246,55 @@ function loadPunchesTable() {
   });
 }
 
+// Realtime Auto-Sync Listener (No Manual Refresh Needed)
+function listenForRealtimeUpdates() {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+
+  // Firebase Realtime DB Listener
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).on('value', (snapshot) => {
+    const data = snapshot.val();
+
+    if (data) {
+      // 1. Live Overtime & Duty Calculation
+      if (data.punchInTimestamp || data.punchIn) {
+        const stats = calculateDutyAndOT(data.punchInTimestamp || data.punchIn, data.punchOutTimestamp || data.punchOut);
+        
+        setElementText('textLiveOT', `${stats.otHours} hours`);
+        setElementText('liveOtHoursEl', `${stats.otHours} hours`);
+        setElementText('textStandardHours', `${stats.standardHours} hours`);
+
+        if (parseFloat(stats.otHours) > 0) {
+          const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
+          if (otBadge) otBadge.style.color = '#f59e0b'; // Highlight OT in Yellow
+        }
+      }
+
+      // 2. Department Displays Auto-Sync
+      if (data.assignedDepartment) {
+        setElementText('textDeptDisplay', data.assignedDepartment);
+      }
+      if (data.otTargetDepartment) {
+        setElementText('textOtTargetDeptDisplay', data.otTargetDepartment);
+        setElementText('otTargetDeptEl', data.otTargetDepartment);
+      }
+
+      // 3. Auto-Reload Table UI
+      if (typeof loadPunchesTable === 'function') {
+        loadPunchesTable();
+      }
+      if (typeof renderRecordsTable === 'function') {
+        renderRecordsTable();
+      }
+    }
+  });
+}
+
 function listenToActiveDutyState() {
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
@@ -6555,6 +6604,7 @@ window.initLiveOTEngine = initLiveOTEngine;
 window.openSupervisorDutyModal = openSupervisorDutyModal;
 window.closeSupervisorDeptModal = closeSupervisorDeptModal;
 window.confirmPunchInWithDept = confirmPunchInWithDept;
+window.listenForRealtimeUpdates = listenForRealtimeUpdates;
 window.listenToActiveDutyState = listenToActiveDutyState;
 window.startLiveOTTracker = startLiveOTTracker;
 window.executePunchOut = executePunchOut;
@@ -6582,6 +6632,7 @@ document.addEventListener('DOMContentLoaded', () => {
   try {
     startLiveClock();
     listenToActiveDutyState();
+    listenForRealtimeUpdates();
   } catch (e) {
     console.warn("Live duty init error on DOMContentLoaded:", e);
   }
@@ -6612,6 +6663,7 @@ window.onload = function() {
   try {
     startLiveClock();
     listenToActiveDutyState();
+    listenForRealtimeUpdates();
   } catch (e) {
     console.warn("Live duty init on window.onload:", e);
   }
