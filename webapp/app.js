@@ -6184,9 +6184,9 @@ function renderRecordsTable() {
   });
 }
 
-// Function to Reset Top Cards and Dashboard Display UI
-function clearDashboardDepartmentUI() {
-  // Clear Top Cards
+// Top Cards & Allocation UI Clear Function
+function resetTopCardsAndDashboard() {
+  // Top Card Labels Reset
   setElementText('textDeptDisplay', '--');
   setElementText('textTimeNoteDisplay', '--');
   setElementText('textOtTargetDeptDisplay', '--');
@@ -6199,20 +6199,20 @@ function clearDashboardDepartmentUI() {
   const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
   if (otBadge) otBadge.style.color = '#94a3b8';
 
-  // Today's Table UI ko empty state par set karein
+  // Today's Allocation Table Reset
   const tableBody = document.getElementById('punchesTableBody');
   if (tableBody) {
     tableBody.innerHTML = `
-      <tr>
+      <tr style="border-bottom:1px solid #334155;">
         <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
-          No active punch or department logs available for today.
+          No active punch or duty record found for today.
         </td>
       </tr>
     `;
   }
 }
 
-const resetTopCardsAndDashboard = clearDashboardDepartmentUI;
+const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
 
 // Complete Record Delete Function with Department Clean-Up
 function deletePunchRecord(recordId, recordDate, userId) {
