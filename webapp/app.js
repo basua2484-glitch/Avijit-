@@ -5833,54 +5833,58 @@ function closeDeptModal() {
   closeDeptSheet();
 }
 
-// 2. Save Custom Department + Live Entry Time
+// Corrected Department & OT Saving Logic
 function saveDepartmentAllocation() {
-  const customDeptInputEl = document.getElementById('customDeptInput');
-  const deptInput = customDeptInputEl ? customDeptInputEl.value.trim() : '';
+  const deptInput = (document.getElementById('customDeptInput') ? document.getElementById('customDeptInput').value : '').trim();
+  
+  // Radio button value check
+  const selectedTypeEl = document.querySelector('input[name="deptTypeSelection"]:checked');
+  const isOTDept = selectedTypeEl ? (selectedTypeEl.value === 'OT_DEPT') : false;
 
   if (!deptInput) {
     alert("Kripya Department ka naam type karein!");
     return;
   }
 
-  const deptTypeRadio = document.querySelector('input[name="deptTypeSelection"]:checked');
-  const deptType = deptTypeRadio ? deptTypeRadio.value : 'REGULAR';
-  const displayDept = deptType === 'OT_DEPT' ? `[OT] ${deptInput}` : deptInput;
-
-  // Auto-generate Exact Duty Entry Time
   const now = new Date();
   const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+  const today = now.toISOString().split('T')[0];
 
-  const payload = {
-    assignedDepartment: displayDept,
-    departmentAssignedTime: entryTime,
-    dutyType: deptType,
-    status: 'ON_DUTY'
-  };
+  let payload = {};
+
+  if (isOTDept) {
+    // Save ONLY into OT fields
+    payload.otTargetDepartment = deptInput;
+    payload.otDeptAssignedTime = entryTime;
+  } else {
+    // Save ONLY into Regular Dept fields
+    payload.assignedDepartment = deptInput;
+    payload.departmentAssignedTime = entryTime;
+  }
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
     closeDeptSheet();
 
-    // UI Live Updates
-    const deptDisplay = document.getElementById('textDeptDisplay');
-    if (deptDisplay) deptDisplay.innerText = displayDept;
-
-    const timeDisplay = document.getElementById('textTimeNoteDisplay');
-    if (timeDisplay) timeDisplay.innerText = entryTime;
-
-    // Reload Table Logs if function exists
-    if (typeof loadPunchesTable === 'function') {
-      loadPunchesTable();
+    if (isOTDept) {
+      setElementText('textOtDeptDisplay', deptInput);
+      setElementText('textOtDept', deptInput);
+      setElementText('otTargetDeptEl', deptInput);
+      alert(`✓ OT Department Duty Registered!\nOT Dept: ${deptInput}\nTime: ${entryTime}`);
+    } else {
+      setElementText('textDeptDisplay', deptInput);
+      setElementText('textTimeNoteDisplay', entryTime);
+      alert(`✓ Regular Department Duty Saved!\nDept: ${deptInput}\nTime: ${entryTime}`);
     }
 
-    alert(`✓ Department Duty Saved!\nDept: ${displayDept}\nEntry Time: ${entryTime}`);
+    // Refresh Tables
+    if (typeof loadPunchesTable === 'function') loadPunchesTable();
+    if (typeof renderRecordsTable === 'function') renderRecordsTable();
     return;
   }
 
@@ -5888,21 +5892,22 @@ function saveDepartmentAllocation() {
     .then(() => {
       closeDeptSheet();
 
-      // UI Live Updates
-      const deptDisplay = document.getElementById('textDeptDisplay');
-      if (deptDisplay) deptDisplay.innerText = displayDept;
-
-      const timeDisplay = document.getElementById('textTimeNoteDisplay');
-      if (timeDisplay) timeDisplay.innerText = entryTime;
-
-      // Reload Table Logs if function exists
-      if (typeof loadPunchesTable === 'function') {
-        loadPunchesTable();
+      if (isOTDept) {
+        setElementText('textOtDeptDisplay', deptInput);
+        setElementText('textOtDept', deptInput);
+        setElementText('otTargetDeptEl', deptInput);
+        alert(`✓ OT Department Duty Registered!\nOT Dept: ${deptInput}\nTime: ${entryTime}`);
+      } else {
+        setElementText('textDeptDisplay', deptInput);
+        setElementText('textTimeNoteDisplay', entryTime);
+        alert(`✓ Regular Department Duty Saved!\nDept: ${deptInput}\nTime: ${entryTime}`);
       }
 
-      alert(`✓ Department Duty Saved!\nDept: ${displayDept}\nEntry Time: ${entryTime}`);
+      // Refresh Tables
+      if (typeof loadPunchesTable === 'function') loadPunchesTable();
+      if (typeof renderRecordsTable === 'function') renderRecordsTable();
     })
-    .catch((err) => alert("Error saving duty: " + err.message));
+    .catch((err) => alert("Database Save Error: " + err.message));
 }
 
 // Live Clock & Running OT State Variables
@@ -6037,11 +6042,11 @@ function initLiveOTEngine(startTimeISO, dept, otDept) {
 // 3. Updated Attendance Table Rendering Logic (Adds Separate Regular & OT Dept Columns)
 function renderPunchTableRow(punchData) {
   if (!punchData) return '';
-  const regDept = punchData.regularDepartment || punchData.regDept || (punchData.dutyType !== 'OT_DEPT' ? punchData.assignedDepartment : '--') || '--';
-  const regDeptTime = punchData.regularDeptTime || punchData.regDeptTime || (punchData.dutyType !== 'OT_DEPT' ? punchData.departmentAssignedTime : '--') || '--';
+  const regDept = punchData.regularDepartment || punchData.assignedDepartment || punchData.regDept || '--';
+  const regDeptTime = punchData.regularDeptTime || punchData.departmentAssignedTime || punchData.regDeptTime || '--';
 
-  const otDept = punchData.otDepartment || punchData.otDept || (punchData.dutyType === 'OT_DEPT' ? punchData.assignedDepartment : '--') || '--';
-  const otDeptTime = punchData.otDeptTime || punchData.otTime || (punchData.dutyType === 'OT_DEPT' ? punchData.departmentAssignedTime : '--') || '--';
+  const otDept = punchData.otTargetDepartment || punchData.otDepartment || punchData.otDept || '--';
+  const otDeptTime = punchData.otDeptAssignedTime || punchData.otDeptTime || punchData.otTime || '--';
 
   const punchIn = punchData.punchInTime || punchData.punchInTimeFormatted || '--';
   const regHrs = punchData.regHrs || punchData.regularHours || (punchData.totalWorked ? `${punchData.totalWorked} hrs` : '8.00 hrs');
@@ -6075,25 +6080,27 @@ function loadPunchesTable() {
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const today = getTodayDate();
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    const liveDept = (document.getElementById('textDeptDisplay') || {}).innerText || '--';
-    const liveTime = (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--';
-    const isOt = liveDept.startsWith('[OT]');
+    const regDept = (document.getElementById('textDeptDisplay') || {}).innerText || '--';
+    const regTime = (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--';
+    const otDept = (document.getElementById('textOtDeptDisplay') || {}).innerText || (document.getElementById('textOtDept') || {}).innerText || '--';
+    const otTime = (document.getElementById('textOtDeptAssignedTime') || {}).innerText || '--';
 
     const punchData = {
       userName: currentLocalUser ? currentLocalUser.name : 'Employee',
       userId: userId,
-      dutyType: isOt ? 'OT_DEPT' : 'REGULAR',
-      assignedDepartment: liveDept,
-      departmentAssignedTime: liveTime,
-      regularDepartment: isOt ? '--' : liveDept,
-      regularDeptTime: isOt ? '--' : liveTime,
-      otDepartment: isOt ? liveDept : '--',
-      otDeptTime: isOt ? liveTime : '--',
+      assignedDepartment: regDept,
+      departmentAssignedTime: regTime,
+      regularDepartment: regDept,
+      regularDeptTime: regTime,
+      otTargetDepartment: otDept,
+      otDeptAssignedTime: otTime,
+      otDepartment: otDept,
+      otDeptTime: otTime,
       punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       regHrs: '8.00 hrs',
       otHours: (document.getElementById('textRunningOT') || {}).innerText || '0.00 hrs'
@@ -6105,18 +6112,17 @@ function loadPunchesTable() {
   db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value', (snapshot) => {
     const data = snapshot.val();
     if (data) {
-      const isOt = data.dutyType === 'OT_DEPT' || (data.assignedDepartment && data.assignedDepartment.startsWith('[OT]'));
-      const deptName = data.assignedDepartment || (data.departmentDuty && data.departmentDuty.deptName) || '--';
-      const deptTime = data.departmentAssignedTime || (data.departmentDuty && data.departmentDuty.assignedTime) || '--';
-
       const punchData = {
         userName: currentLocalUser ? currentLocalUser.name : 'Employee',
         userId: userId,
-        dutyType: data.dutyType || (isOt ? 'OT_DEPT' : 'REGULAR'),
-        regularDepartment: data.regularDepartment || (!isOt ? deptName : '--'),
-        regularDeptTime: data.regularDeptTime || (!isOt ? deptTime : '--'),
-        otDepartment: data.otDepartment || (isOt ? deptName : '--'),
-        otDeptTime: data.otDeptTime || (isOt ? deptTime : '--'),
+        assignedDepartment: data.assignedDepartment || '--',
+        departmentAssignedTime: data.departmentAssignedTime || '--',
+        regularDepartment: data.assignedDepartment || data.regularDepartment || '--',
+        regularDeptTime: data.departmentAssignedTime || data.regularDeptTime || '--',
+        otTargetDepartment: data.otTargetDepartment || data.otDepartment || '--',
+        otDeptAssignedTime: data.otDeptAssignedTime || data.otDeptTime || '--',
+        otDepartment: data.otTargetDepartment || data.otDepartment || '--',
+        otDeptTime: data.otDeptAssignedTime || data.otDeptTime || '--',
         punchInTime: data.punchInTime || data.punchInTimeFormatted || (data.punchIn ? new Date(data.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--'),
         regHrs: data.totalWorked ? `${data.totalWorked} hrs` : (data.regHrs || '8.00 hrs'),
         otHours: data.otHours || data.runningOT || (document.getElementById('textRunningOT') ? document.getElementById('textRunningOT').innerText : '0.00 hrs')
