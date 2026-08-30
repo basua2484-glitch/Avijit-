@@ -6191,153 +6191,126 @@ function renderRecordsTable() {
 }
 
 // =========================================================================
-// FIXED LIVE SYNC, REALTIME CLOCK & DUTY ASSIGNMENT ENGINE
+// CLEAN & LIGHTWEIGHT ENGINE (LIVE CLOCK + UI STATUS FIX)
 // =========================================================================
 
 const PUNCHE_PATH = 'hostel_mess_data/punches';
 const FIREBASE_PATH = 'hostel_mess_data/punches';
 
-// 1. Live Digital Clock Ticker
+// 1. Live Clock Engine (Original Simple Ticker)
 function initLiveClock() {
   setInterval(() => {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('en-US', { hour12: true });
-    setElementText('liveClockDisplay', timeStr);
-    setElementText('liveClockTime', timeStr);
+    const clock = document.getElementById('liveClockDisplay') || 
+                  document.querySelector('.live-punch-clock-time') ||
+                  document.getElementById('textLiveClock') ||
+                  document.getElementById('liveClockTime');
+    if (clock) {
+      clock.innerText = new Date().toLocaleTimeString('en-US', { hour12: true });
+    }
   }, 1000);
 }
 
-// 2. Master Realtime Database Listener
-function initLogsAndReportSyncEngine() {
+// 2. Realtime Firebase Listener
+function initAppSync() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
   if (!db) return;
-  const dbRef = db.ref(PUNCHE_PATH);
 
-  dbRef.on('value', (snapshot) => {
+  db.ref(PUNCHE_PATH).on('value', (snapshot) => {
     const rootPunches = snapshot.val() || {};
     const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
     const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
     const currentUserId = currentUser ? currentUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
     const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
-    const userTodayRecord = (rootPunches[currentUserId] && rootPunches[currentUserId][today]) 
-      ? rootPunches[currentUserId][today] 
-      : null;
+    const userTodayRecord = (rootPunches[currentUserId] && rootPunches[currentUserId][today]) ? rootPunches[currentUserId][today] : null;
 
-    // A. Sync Top Cards UI
-    updateResidentHomeUI(userTodayRecord);
-
-    // B. Sync Tables
-    renderLoggedInUserTodayLogs(rootPunches, currentUserId, today);
-    renderAttendanceReportTable(rootPunches);
-    calculateReportSummaryCards(rootPunches);
+    updateStatusUI(userTodayRecord);
+    renderTodayLogs(userTodayRecord);
+    renderReportTable(rootPunches);
   });
 }
 
-// 3. UI Status Handler (Conflict Fix)
-function updateResidentHomeUI(rec) {
+// Alias for listener
+const initLogsAndReportSyncEngine = initAppSync;
+
+// 3. Simple UI Status Sync (Fixes Not Punched In / On Duty Conflict)
+function updateStatusUI(rec) {
   const statusText = document.getElementById('textDutyStatusMain') || document.getElementById('textDutyStatus');
   const dutyBadge = document.getElementById('textDutyStatusBadge') || document.getElementById('resident-punch-status-badge');
+  const isPunched = rec && (rec.status === 'PUNCHED_IN' || rec.punchInTime) && !rec.punchOutTime;
 
-  if (rec && (rec.status === 'PUNCHED_IN' || rec.punchInTime)) {
-    if (statusText) {
-      statusText.innerText = 'PUNCHED IN';
-      statusText.style.color = '#4ade80';
-    }
-    if (dutyBadge) {
-      dutyBadge.innerText = 'ON DUTY (ACTIVE)';
-      dutyBadge.style.background = '#dcfce7';
-      dutyBadge.style.color = '#15803d';
-    }
-
-    setElementText('textPunchInDisplay', rec.punchInTime || '--:--');
-    setElementText('duty-in-time', rec.punchInTime || '--:--');
-    setElementText('textPunchOutDisplay', rec.punchOutTime || 'Active...');
-    setElementText('duty-out-time', rec.punchOutTime || 'Active...');
-    setElementText('textDeptDisplay', rec.assignedDepartment || '--');
-    setElementText('textOtTargetDeptDisplay', rec.otTargetDepartment || '--');
-    setElementText('textOtDeptDisplay', rec.otTargetDepartment || '--');
-    setElementText('otTargetDeptEl', rec.otTargetDepartment || '--');
-    setElementText('textTimeNoteDisplay', rec.departmentAssignedTime || rec.otDeptAssignedTime || '--');
-    setElementText('textStandardHours', '8.0h');
-  } else {
-    if (statusText) {
-      statusText.innerText = 'NOT PUNCHED IN';
-      statusText.style.color = '#f87171';
-    }
-    if (dutyBadge) {
-      dutyBadge.innerText = 'OFF DUTY';
-      dutyBadge.style.background = '#fecdd3';
-      dutyBadge.style.color = '#e11d48';
-    }
-
-    setElementText('textPunchInDisplay', '-- : --');
-    setElementText('duty-in-time', '--:--');
-    setElementText('textPunchOutDisplay', '-- : --');
-    setElementText('duty-out-time', '--:--');
-    setElementText('textDeptDisplay', '--');
-    setElementText('textOtTargetDeptDisplay', '--');
-    setElementText('textOtDeptDisplay', '--');
-    setElementText('otTargetDeptEl', '--');
-    setElementText('textTimeNoteDisplay', '--');
-    setElementText('textStandardHours', '0.0h');
-    setElementText('textLiveOT', '0.00 hours');
-    setElementText('liveOtHoursEl', '0.00 hours');
+  if (statusText) {
+    statusText.innerText = isPunched ? 'PUNCHED IN' : 'NOT PUNCHED IN';
+    statusText.style.color = isPunched ? '#4ade80' : '#f87171';
   }
+
+  if (dutyBadge) {
+    dutyBadge.innerText = isPunched ? 'ON DUTY (ACTIVE)' : 'OFF DUTY';
+    dutyBadge.style.background = isPunched ? '#15803d' : '#be123c';
+    dutyBadge.style.color = '#ffffff';
+  }
+
+  const setTxt = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+  setTxt('textPunchInDisplay', isPunched ? (rec.punchInTime || '--:--') : '-- : --');
+  setTxt('duty-in-time', isPunched ? (rec.punchInTime || '--:--') : '--:--');
+  setTxt('textPunchOutDisplay', isPunched ? (rec.punchOutTime || 'Active...') : '-- : --');
+  setTxt('duty-out-time', isPunched ? (rec.punchOutTime || 'Active...') : '--:--');
+  setTxt('textDeptDisplay', isPunched ? (rec.assignedDepartment || '--') : '--');
+  setTxt('textOtTargetDeptDisplay', isPunched ? (rec.otTargetDepartment || '--') : '--');
+  setTxt('textOtDeptDisplay', isPunched ? (rec.otTargetDepartment || '--') : '--');
+  setTxt('otTargetDeptEl', isPunched ? (rec.otTargetDepartment || '--') : '--');
+  setTxt('textTimeNoteDisplay', isPunched ? (rec.departmentAssignedTime || rec.otDeptAssignedTime || '--') : '--');
+  setTxt('textStandardHours', isPunched ? '8.0h' : '0.0h');
 }
 
-// 4. Save Department / OT Duty Modal Trigger Action
+const updateResidentHomeUI = updateStatusUI;
+
+// 4. Save Duty Function
 function saveDutyAssignment() {
   const inputEl = document.getElementById('deptInputText') || document.getElementById('customDeptInput');
   const radioOt = document.getElementById('radioOtDuty');
-  const isOtDuty = (radioOt && radioOt.checked) || (document.querySelector('input[name="deptTypeSelection"]:checked')?.value === 'OT_DEPT');
-  const deptValue = inputEl ? inputEl.value.trim() : '';
+  const isOt = (radioOt && radioOt.checked) || (document.querySelector('input[name="deptTypeSelection"]:checked')?.value === 'OT_DEPT');
+  const deptVal = inputEl ? inputEl.value.trim() : '';
 
-  if (!deptValue) {
-    alert("Kripya Department ka naam ya number type karein.");
-    return;
-  }
+  if (!deptVal) return alert("Department type karein.");
 
   const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
-  const userId = currentUser ? currentUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const userName = currentUser ? (currentUser.displayName || 'Avijit Basu') : (currentLocalUser ? currentLocalUser.name : 'Avijit Basu');
+  const uid = currentUser ? currentUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const uName = currentUser ? (currentUser.displayName || 'Avijit Basu') : (currentLocalUser ? currentLocalUser.name : 'Avijit Basu');
   const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
   const timeNow = new Date().toLocaleTimeString('en-US', { hour12: false });
 
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-  if (!db) {
-    alert("Database connection is not available.");
-    return;
-  }
-
-  const dbRef = db.ref(`${PUNCHE_PATH}/${userId}/${today}`);
-
-  let payload = {
-    userId: userId,
-    userName: userName,
+  let data = {
+    userId: uid,
+    userName: uName,
     date: today,
     status: 'PUNCHED_IN',
     lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
   };
 
-  if (isOtDuty) {
-    payload.otTargetDepartment = deptValue;
-    payload.otDeptAssignedTime = timeNow;
+  if (isOt) {
+    data.otTargetDepartment = deptVal;
+    data.otDeptAssignedTime = timeNow;
   } else {
-    payload.assignedDepartment = deptValue;
-    payload.departmentAssignedTime = timeNow;
+    data.assignedDepartment = deptVal;
+    data.departmentAssignedTime = timeNow;
   }
 
-  dbRef.update(payload)
-    .then(() => {
-      alert("✓ Duty Allocation successfully save aur trigger ho gaya!");
-      if (inputEl) inputEl.value = '';
-      const customInput = document.getElementById('customDeptInput');
-      if (customInput) customInput.value = '';
-      closeDutyModal();
-    })
-    .catch((err) => alert("Save Duty Error: " + err.message));
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (db) {
+    db.ref(`${PUNCHE_PATH}/${uid}/${today}`).update(data)
+      .then(() => {
+        if (inputEl) inputEl.value = '';
+        const customInput = document.getElementById('customDeptInput');
+        if (customInput) customInput.value = '';
+        const modal = document.getElementById('assignDeptModal');
+        if (modal) modal.style.display = 'none';
+        const sheet = document.getElementById('deptAssignSheet');
+        if (sheet) sheet.style.display = 'none';
+      })
+      .catch((err) => alert("Save Duty Error: " + err.message));
+  }
 }
 
 // Helper to Close Modal
@@ -6348,103 +6321,95 @@ function closeDutyModal() {
   if (sheet) sheet.style.display = 'none';
 }
 
-// 5. Today's Punch Logs Table (Logged-in User Filter)
-function renderLoggedInUserTodayLogs(rootPunches, currentUserId, today) {
-  const logsTableBody = document.getElementById('todayLogsTableBody') || document.getElementById('punchesTableBody');
-  if (!logsTableBody) return;
+// 5. Today's Logs Table Renderer
+function renderTodayLogs(rec) {
+  const tbody = document.getElementById('todayLogsTableBody') || document.getElementById('punchesTableBody');
+  if (!tbody) return;
 
-  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
-  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
-  const targetUserId = currentUserId || (authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001'));
-  const targetDate = today || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
-
-  let logsHTML = '';
-  if (rootPunches && rootPunches[targetUserId] && rootPunches[targetUserId][targetDate]) {
-    const rec = rootPunches[targetUserId][targetDate];
-
-    const regBadge = rec.assignedDepartment 
-      ? `<span style="background:#0284c7; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold;">${rec.assignedDepartment}</span><br><small style="color:#94a3b8;">${rec.departmentAssignedTime || ''}</small>`
-      : '--';
-
-    const otBadge = rec.otTargetDepartment 
-      ? `<span style="background:#d97706; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold;">🔥 ${rec.otTargetDepartment}</span><br><small style="color:#fcd34d;">${rec.otDeptAssignedTime || ''}</small>`
-      : '--';
-
-    logsHTML = `
-      <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-        <td style="padding:10px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
-        <td style="padding:10px;">${regBadge}</td>
-        <td style="padding:10px;">${otBadge}</td>
-        <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
-        <td style="padding:10px; text-align:center;">
-          <button onclick="deleteMasterRecord('${targetUserId}', '${targetDate}')" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
-        </td>
-      </tr>
-    `;
+  if (!rec) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:12px; color:#64748b;">No active logs for today.</td></tr>`;
+    return;
   }
 
-  logsTableBody.innerHTML = logsHTML || `<tr><td colspan="5" style="text-align:center; padding:15px; color:#64748b;">No active logs for today.</td></tr>`;
+  const regBadge = rec.assignedDepartment 
+    ? `<span style="background:#0284c7; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold;">${rec.assignedDepartment}</span><br><small style="color:#94a3b8;">${rec.departmentAssignedTime || ''}</small>`
+    : '--';
+
+  const otBadge = rec.otTargetDepartment 
+    ? `<span style="background:#d97706; color:#fff; padding:2px 8px; border-radius:4px; font-weight:bold;">🔥 ${rec.otTargetDepartment}</span><br><small style="color:#fcd34d;">${rec.otDeptAssignedTime || ''}</small>`
+    : '--';
+
+  tbody.innerHTML = `
+    <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
+      <td style="padding:8px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
+      <td style="padding:8px;">${regBadge}</td>
+      <td style="padding:8px;">${otBadge}</td>
+      <td style="padding:8px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
+      <td style="padding:8px; text-align:center;">
+        <button onclick="deleteRecord('${rec.userId}', '${rec.date}')" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
+      </td>
+    </tr>`;
 }
 
-// 6. Report Table Renderer
-function renderAttendanceReportTable(rootPunches) {
-  const reportTableBody = document.getElementById('recordsTableBody') || document.getElementById('admin-attendance-tbody');
-  if (!reportTableBody) return;
+const renderLoggedInUserTodayLogs = (rootPunches, currentUserId, today) => {
+  const userRec = (rootPunches && rootPunches[currentUserId] && rootPunches[currentUserId][today]) ? rootPunches[currentUserId][today] : null;
+  renderTodayLogs(userRec);
+};
 
-  let reportHTML = '';
+// 6. Global Report Table Renderer
+function renderReportTable(rootPunches) {
+  const tbody = document.getElementById('recordsTableBody') || document.getElementById('admin-attendance-tbody');
+  if (!tbody) return;
+
+  let html = '';
   if (rootPunches && typeof rootPunches === 'object') {
-    Object.keys(rootPunches).forEach((userId) => {
-      if (rootPunches[userId] && typeof rootPunches[userId] === 'object') {
-        Object.keys(rootPunches[userId]).forEach((dateKey) => {
-          const rec = rootPunches[userId][dateKey];
+    Object.keys(rootPunches).forEach((uid) => {
+      if (rootPunches[uid] && typeof rootPunches[uid] === 'object') {
+        Object.keys(rootPunches[uid]).forEach((date) => {
+          const rec = rootPunches[uid][date];
           if (rec) {
-            reportHTML += `
+            const regBadge = rec.assignedDepartment 
+              ? `<span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">${rec.assignedDepartment}</span>`
+              : '--';
+
+            const otBadge = rec.otTargetDepartment 
+              ? `<span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">🔥 ${rec.otTargetDepartment}</span>`
+              : '--';
+
+            html += `
               <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-                <td style="padding:10px;"><b>${rec.date || dateKey || '--'}</b></td>
-                <td style="padding:10px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
-                <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
-                <td style="padding:10px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
-                <td style="padding:10px;">${rec.assignedDepartment || '--'}</td>
-                <td style="padding:10px;">${rec.otTargetDepartment || '--'}</td>
-                <td style="padding:10px; text-align:center;">
-                  <button onclick="deleteMasterRecord('${userId}', '${rec.date || dateKey}')" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
+                <td style="padding:8px;"><b>${rec.date || date || '--'}</b></td>
+                <td style="padding:8px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
+                <td style="padding:8px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
+                <td style="padding:8px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
+                <td style="padding:8px;">${regBadge}</td>
+                <td style="padding:8px;">${otBadge}</td>
+                <td style="padding:8px; text-align:center;">
+                  <button onclick="deleteRecord('${uid}', '${date}')" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
                 </td>
-              </tr>
-            `;
+              </tr>`;
           }
         });
       }
     });
   }
 
-  reportTableBody.innerHTML = reportHTML || `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No attendance records found.</td></tr>`;
+  tbody.innerHTML = html || `<tr><td colspan="7" style="text-align:center; padding:12px; color:#64748b;">No records found.</td></tr>`;
 }
+
+const renderAttendanceReportTable = renderReportTable;
 
 // 7. Cascading Delete
-function deleteMasterRecord(userId, recordDate) {
-  if (!confirm("Kya aap is record ko delete karna chahte hain?")) return;
-  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-  
-  if (!db) {
-    resetTopCardsAndDashboard();
-    alert("✓ Record successfully delete ho gaya!");
-    return;
+function deleteRecord(uid, date) {
+  if (confirm("Record delete karna chahte hain?")) {
+    const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+    if (db) {
+      db.ref(`${PUNCHE_PATH}/${uid}/${date}`).remove();
+    }
   }
-
-  let deleteUpdates = {};
-  deleteUpdates[`${PUNCHE_PATH}/${userId}/${dateKey}`] = null;
-  deleteUpdates[`${BASE_PATH}/meals/${dateKey}/${userId}`] = null;
-
-  db.ref().update(deleteUpdates)
-    .then(() => {
-      resetTopCardsAndDashboard();
-      if (typeof renderRecordsTable === 'function') renderRecordsTable();
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
-      alert("✓ Record successfully delete ho gaya!");
-    })
-    .catch((err) => alert("Delete Error: " + err.message));
 }
+
+const deleteMasterRecord = deleteRecord;
 
 // 1. Two-Way Realtime Listener (Alias / Fallback)
 function initTwoWaySyncEngine() {
@@ -6617,85 +6582,6 @@ function saveMasterDutyAndMealAllocation(userId, userName, role, shiftType, regD
   db.ref().update(updates)
     .then(() => alert("✓ Duty Allocation aur Mess Plate Tally live sync ho gaya!"))
     .catch((err) => alert("Sync Error: " + err.message));
-}
-
-// 3. Attendance & OT Management Report Table (Sabhi Records Dikhayega)
-function renderAttendanceReportTable(rootPunches) {
-  const reportTableBody = document.getElementById('recordsTableBody') || document.getElementById('admin-attendance-tbody');
-  if (!reportTableBody) return;
-
-  let reportHTML = '';
-
-  if (rootPunches && typeof rootPunches === 'object') {
-    Object.keys(rootPunches).forEach((userId) => {
-      if (rootPunches[userId] && typeof rootPunches[userId] === 'object') {
-        Object.keys(rootPunches[userId]).forEach((dateKey) => {
-          const rec = rootPunches[userId][dateKey];
-          if (rec) {
-            const regBadge = rec.assignedDepartment 
-              ? `<span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">${rec.assignedDepartment}</span>`
-              : '--';
-
-            const otBadge = rec.otTargetDepartment 
-              ? `<span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">🔥 ${rec.otTargetDepartment}</span>`
-              : '--';
-
-            reportHTML += `
-              <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-                <td style="padding:10px; color:#94a3b8;"><b>${rec.date || dateKey || '--'}</b><br><small>${rec.shift || ''}</small></td>
-                <td style="padding:10px;"><b style="color:#fff;">${rec.userName || 'Employee'}</b></td>
-                <td style="padding:10px;">${regBadge}</td>
-                <td style="padding:10px;">${otBadge}</td>
-                <td style="padding:10px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
-                <td style="padding:10px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
-                <td style="padding:10px; text-align:center;">
-                  <button onclick="deleteMasterRecord('${userId}', '${rec.date || dateKey}')" 
-                          style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            `;
-          }
-        });
-      }
-    });
-  }
-
-  reportTableBody.innerHTML = reportHTML !== '' 
-    ? reportHTML 
-    : `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No attendance punch records found.</td></tr>`;
-}
-
-// 4. Multi-Location Central Delete Function
-function deleteMasterRecord(userId, recordDate) {
-  if (!confirm("Kya aap is record ko delete karna chahte hain? Yeh Today Logs aur Attendance Report dono se hatt jayega.")) {
-    return;
-  }
-
-  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-
-  if (!db) {
-    resetTopCardsAndDashboard();
-    alert("✓ Record successfully delete aur sync ho gaya!");
-    return;
-  }
-
-  let deleteUpdates = {};
-  deleteUpdates[`${PUNCHE_PATH}/${userId}/${dateKey}`] = null;
-  deleteUpdates[`${BASE_PATH}/meals/${dateKey}/${userId}`] = null;
-
-  db.ref().update(deleteUpdates)
-    .then(() => {
-      resetTopCardsAndDashboard();
-      if (typeof renderRecordsTable === 'function') renderRecordsTable();
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
-      alert("✓ Record successfully delete aur sync ho gaya!");
-    })
-    .catch((err) => {
-      alert("Delete failed: " + err.message);
-    });
 }
 
 // 5. Report Cards Summary Calculation
