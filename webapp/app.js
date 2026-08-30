@@ -6194,44 +6194,152 @@ function renderRecordsTable() {
   });
 }
 
-// Central Delete Record Function - Cleans DB & UI Status Completely
-function deletePunchRecord(recordId, recordDate, userId) {
-  if (!confirm("Kya aap is Record ko aur iski sabhi Regular/OT Department Duties ko delete karna chahte hain?")) {
+// ==========================================
+// CENTRALIZED SYSTEM STATE & REALTIME ENGINE
+// ==========================================
+
+const BASE_PATH = 'hostel_mess_data';
+
+// 1. Unified Realtime Listener Across All Roles & Modules
+function initCentralRealtimeListener() {
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+
+  const dbRef = db.ref(BASE_PATH);
+
+  dbRef.on('value', (snapshot) => {
+    const rootData = snapshot.val() || {};
+    
+    // Core Modules Sync
+    syncAttendanceAndDuty(rootData.punches || {});
+    syncKitchenAndMealPlates(rootData.meals || {}, rootData.settings || {});
+    renderAttendanceReportTable(rootData.punches || {});
+  });
+}
+
+function syncAttendanceAndDuty(punchesData) {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+
+  const userPunches = punchesData && punchesData[userId] ? punchesData[userId] : null;
+  const data = userPunches ? userPunches[today] : null;
+
+  if (!data) {
+    resetTopCardsAndDashboard();
     return;
   }
 
-  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
-  const currentUserId = userId || (authUser ? authUser.uid : 'SADM_001');
-  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
+  setElementText('textDeptDisplay', data.assignedDepartment || '--');
+  setElementText('textTimeNoteDisplay', data.departmentAssignedTime || '--');
+  setElementText('textOtTargetDeptDisplay', data.otTargetDepartment || '--');
+  setElementText('textOtDeptDisplay', data.otTargetDepartment || '--');
+  setElementText('textOtDept', data.otTargetDepartment || '--');
+  setElementText('otTargetDeptEl', data.otTargetDepartment || '--');
 
+  if (data.punchInTimestamp || data.punchIn) {
+    const stats = calculateDutyAndOT(data.punchInTimestamp || data.punchIn, data.punchOutTimestamp || data.punchOut);
+    setElementText('textLiveOT', `${stats.otHours} hours`);
+    setElementText('liveOtHoursEl', `${stats.otHours} hours`);
+    setElementText('textStandardHours', `${stats.standardHours} hours`);
+
+    if (parseFloat(stats.otHours) > 0) {
+      const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
+      if (otBadge) otBadge.style.color = '#f59e0b';
+    }
+  }
+
+  const tableBody = document.getElementById('punchesTableBody');
+  if (tableBody) {
+    tableBody.innerHTML = renderPunchTableRow(data);
+  }
+}
+
+// 2. Multi-Node Combined Save Action (Punch, Shift, Mess Plate)
+function saveMasterDutyAndMealAllocation(userId, userName, role, shiftType, regDept, otDept) {
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+  const timestamp = new Date().toLocaleTimeString();
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    alert("Database connection is not available.");
+    return;
+  }
+
+  let updates = {};
+
+  // A. Punch & Duty Node Update
+  const punchPath = `${BASE_PATH}/punches/${userId}/${today}`;
+  updates[`${punchPath}/userId`] = userId;
+  updates[`${punchPath}/userName`] = userName;
+  updates[`${punchPath}/role`] = role;
+  updates[`${punchPath}/date`] = today;
+  updates[`${punchPath}/shift`] = shiftType;
+
+  if (regDept) {
+    updates[`${punchPath}/assignedDepartment`] = regDept;
+    updates[`${punchPath}/departmentAssignedTime`] = timestamp;
+  }
+  if (otDept) {
+    updates[`${punchPath}/otTargetDepartment`] = otDept;
+    updates[`${punchPath}/otDeptAssignedTime`] = timestamp;
+  }
+
+  // B. Auto Meal Plate Mapping Based on Shift Rules
+  let mealType = 'Dinner'; // Default
+  if (shiftType === 'Morning Shift') mealType = 'Lunch';
+  if (shiftType === 'Evening Shift') mealType = 'Dinner';
+  if (shiftType === 'Off-Duty') mealType = 'Both';
+
+  const mealPath = `${BASE_PATH}/meals/${today}/${userId}`;
+  updates[`${mealPath}/userName`] = userName;
+  updates[`${mealPath}/mealType`] = mealType;
+  updates[`${mealPath}/plateCount`] = 1;
+  updates[`${mealPath}/status`] = 'BOOKED';
+
+  // Atomic Multi-Path Broadcast
+  db.ref().update(updates)
+    .then(() => alert("✓ Duty Allocation aur Mess Plate Tally live sync ho gaya!"))
+    .catch((err) => alert("Sync Error: " + err.message));
+}
+
+// 3. Central Cascading Delete Function (Deletes Punch + OT + Mess Plate)
+function deleteMasterRecord(userId, recordDate) {
+  if (!confirm("Kya aap Attendance, Duty Allocation, aur Mess Plate Count TEENO delete karna chahte hain?")) {
+    return;
+  }
+
+  const targetDate = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
     resetTopCardsAndDashboard();
-    if (typeof renderRecordsTable === 'function') renderRecordsTable();
-    if (typeof loadPunchesTable === 'function') loadPunchesTable();
-    alert("✓ Record aur uski sabhi Department Duty Entries successfully delete ho gayi hain!");
+    alert("✓ Attendance, OT, aur Mess Plate Records successfully delete ho gaye!");
     return;
   }
 
-  // 1. Firebase Database path se complete record delete karein
-  db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
-    .then(() => {
-      // 2. Local Live Dashboard UI ko completely wipe karein
-      resetTopCardsAndDashboard();
+  let deleteUpdates = {};
+  deleteUpdates[`${BASE_PATH}/punches/${userId}/${targetDate}`] = null;
+  deleteUpdates[`${BASE_PATH}/meals/${targetDate}/${userId}`] = null;
 
-      // 3. Reports & Duty Tables Reload Karein
+  db.ref().update(deleteUpdates)
+    .then(() => {
+      // Complete UI State Purge
+      resetTopCardsAndDashboard();
       if (typeof renderRecordsTable === 'function') renderRecordsTable();
       if (typeof loadPunchesTable === 'function') loadPunchesTable();
-
-      alert("✓ Record aur uski sabhi Department Duty Entries successfully delete ho gayi hain!");
+      alert("✓ Attendance, OT, aur Mess Plate Records successfully delete ho gaye!");
     })
-    .catch((err) => {
-      alert("Error deleting record: " + err.message);
-    });
+    .catch((err) => alert("Delete Failed: " + err.message));
 }
 
-// Helper Function to Clear Live Cards & Allocation UI
+// Central Delete Record Function - Cleans DB & UI Status Completely
+function deletePunchRecord(recordId, recordDate, userId) {
+  deleteMasterRecord(userId || (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : 'SADM_001'), recordDate);
+}
+
+// 4. UI Reset Handler for Deleted/Empty States
 function resetTopCardsAndDashboard() {
   setElementText('textDeptDisplay', '--');
   setElementText('textTimeNoteDisplay', '--');
@@ -6245,12 +6353,17 @@ function resetTopCardsAndDashboard() {
   const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
   if (otBadge) otBadge.style.color = '#94a3b8';
 
+  // Reset Live Kitchen Tally Cards
+  setElementText('kitchenNormalDiningCount', '0');
+  setElementText('kitchenPackTiffinsCount', '0');
+  setElementText('textKitchenTotalPlates', '0');
+
   const tableBody = document.getElementById('punchesTableBody');
   if (tableBody) {
     tableBody.innerHTML = `
       <tr style="border-bottom:1px solid #334155;">
         <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
-          No active punch or department duty logs available for today.
+          No active punch, duty allocation, or meal record found.
         </td>
       </tr>
     `;
@@ -6258,6 +6371,75 @@ function resetTopCardsAndDashboard() {
 }
 
 const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
+
+// 5. Attendance & OT Report Table Renderer (Includes Reg & OT Dept Columns)
+function renderAttendanceReportTable(punchesData) {
+  const tableBody = document.getElementById('recordsTableBody');
+  if (!tableBody) return;
+
+  let rowsHTML = '';
+  let activeUsers = 0;
+
+  if (punchesData) {
+    Object.keys(punchesData).forEach((uId) => {
+      if (punchesData[uId] && typeof punchesData[uId] === 'object') {
+        Object.keys(punchesData[uId]).forEach((dateKey) => {
+          const rec = punchesData[uId][dateKey];
+          if (rec) {
+            activeUsers++;
+
+            const regBadge = rec.assignedDepartment 
+              ? `<span style="background:#0284c7; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">${rec.assignedDepartment}</span>`
+              : '--';
+
+            const otBadge = rec.otTargetDepartment 
+              ? `<span style="background:#d97706; color:#fff; padding:2px 6px; border-radius:4px; font-size:11px;">🔥 ${rec.otTargetDepartment}</span>`
+              : '--';
+
+            rowsHTML += `
+              <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
+                <td style="padding:8px;">${rec.date || dateKey || '--'}<br><small style="color:#64748b;">${rec.shift || ''}</small></td>
+                <td style="padding:8px;"><b>${rec.userName || 'User'}</b><br><small style="color:#64748b;">${rec.role || 'Staff'}</small></td>
+                <td style="padding:8px;">${regBadge}</td>
+                <td style="padding:8px;">${otBadge}</td>
+                <td style="padding:8px; color:#38bdf8;">${rec.punchInTime || '--'}</td>
+                <td style="padding:8px; color:#4ade80;">${rec.punchOutTime || 'Active'}</td>
+                <td style="padding:8px; text-align:center;">
+                  <button onclick="deleteMasterRecord('${uId}', '${rec.date || dateKey}')" 
+                          style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">
+                    Delete
+                  </button>
+                </td>
+              </tr>
+            `;
+          }
+        });
+      }
+    });
+  }
+
+  if (rowsHTML === '') {
+    tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:15px; color:#64748b;">No records found.</td></tr>`;
+  } else {
+    tableBody.innerHTML = rowsHTML;
+  }
+}
+
+// 6. Live Kitchen Meal Plate Counter Sync
+function syncKitchenAndMealPlates(mealsData, settings) {
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+  const todaysMeals = (mealsData && mealsData[today]) ? mealsData[today] : {};
+  
+  let totalPlates = 0;
+  Object.keys(todaysMeals).forEach((uId) => {
+    if (todaysMeals[uId] && (todaysMeals[uId].status === 'BOOKED' || todaysMeals[uId].status === 'ACTIVE' || !todaysMeals[uId].status)) {
+      totalPlates += (todaysMeals[uId].plateCount || 1);
+    }
+  });
+
+  // Direct Live Display Updates for Cook / Mess Manager
+  setElementText('textKitchenTotalPlates', totalPlates.toString());
+}
 
 // Today's Logs Table Loading Sync Function
 function loadPunchesTable() {
@@ -6676,6 +6858,12 @@ window.selfDeleteCurrentUserAccount = selfDeleteCurrentUserAccount;
 window.listenToDatabaseUpdates = listenToDatabaseUpdates;
 window.toggleModal = toggleModal;
 window.updateSessionUI = updateSessionUI;
+window.initCentralRealtimeListener = initCentralRealtimeListener;
+window.syncAttendanceAndDuty = syncAttendanceAndDuty;
+window.saveMasterDutyAndMealAllocation = saveMasterDutyAndMealAllocation;
+window.deleteMasterRecord = deleteMasterRecord;
+window.renderAttendanceReportTable = renderAttendanceReportTable;
+window.syncKitchenAndMealPlates = syncKitchenAndMealPlates;
 
 // 1. Live Running Clock & Active Duty State Handler
 document.addEventListener('DOMContentLoaded', () => {
@@ -6683,6 +6871,7 @@ document.addEventListener('DOMContentLoaded', () => {
     startLiveClock();
     listenToActiveDutyState();
     listenForRealtimeUpdates();
+    initCentralRealtimeListener();
   } catch (e) {
     console.warn("Live duty init error on DOMContentLoaded:", e);
   }
