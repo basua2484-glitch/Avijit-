@@ -6090,6 +6090,100 @@ function renderPunchTableRow(punchData) {
   `;
 }
 
+// Header for All Records / History Table
+function getRecordsTableHeaderHTML() {
+  return `
+    <thead>
+      <tr style="background:#0f172a; text-align:left; border-bottom:2px solid #334155; color:#94a3b8; font-size:11px;">
+        <th style="padding:8px;">Date & Shift</th>
+        <th style="padding:8px;">Employee</th>
+        <th style="padding:8px; color:#38bdf8;">Regular Dept</th>
+        <th style="padding:8px; color:#f59e0b;">OT Dept</th>
+        <th style="padding:8px;">Punch In</th>
+        <th style="padding:8px;">Punch Out</th>
+        <th style="padding:8px; color:#f59e0b;">OT Hours</th>
+      </tr>
+    </thead>
+  `;
+}
+
+// Row Renderer for All Records / History Table
+function renderRecordHistoryRow(record) {
+  if (!record) return '';
+  const regDept = record.assignedDepartment 
+    ? `<b style="color:#38bdf8;">${record.assignedDepartment}</b><br><span style="font-size:9px; color:#64748b;">${record.departmentAssignedTime || ''}</span>`
+    : '--';
+
+  const otDept = record.otTargetDepartment 
+    ? `<b style="color:#f59e0b;">🔥 ${record.otTargetDepartment}</b><br><span style="font-size:9px; color:#64748b;">${record.otDeptAssignedTime || ''}</span>`
+    : '--';
+
+  const stats = calculateDutyAndOT(record.punchInTimestamp || record.punchIn, record.punchOutTimestamp || record.punchOut);
+
+  return `
+    <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
+      <td style="padding:8px; color:#94a3b8;">
+        <b>${record.date || '--'}</b><br>
+        <span style="font-size:10px;">${record.shift || ''}</span>
+      </td>
+      <td style="padding:8px;">
+        <b>${record.userName || 'Employee'}</b><br>
+        <span style="font-size:10px; color:#64748b;">${record.userId || ''}</span>
+      </td>
+      <td style="padding:8px;">${regDept}</td>
+      <td style="padding:8px;">${otDept}</td>
+      <td style="padding:8px;">${record.punchInTime || '--'}</td>
+      <td style="padding:8px;">${record.punchOutTime || '<span style="color:#4ade80;">Active</span>'}</td>
+      <td style="padding:8px; color:#f59e0b; font-weight:bold;">${stats.otHours} h</td>
+    </tr>
+  `;
+}
+
+function renderRecordsTable() {
+  const recordsContainer = document.getElementById('recordsHistoryTableBody') || document.getElementById('historyTableBody');
+  if (!recordsContainer) return;
+
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    recordsContainer.innerHTML = renderRecordHistoryRow({
+      date: today,
+      shift: 'Day Shift',
+      userName: currentLocalUser ? currentLocalUser.name : 'Employee',
+      userId: userId,
+      assignedDepartment: (document.getElementById('textDeptDisplay') || {}).innerText || '--',
+      departmentAssignedTime: (document.getElementById('textTimeNoteDisplay') || {}).innerText || '--',
+      otTargetDepartment: (document.getElementById('textOtDeptDisplay') || {}).innerText || '--',
+      otDeptAssignedTime: (document.getElementById('textOtDeptAssignedTime') || {}).innerText || '--',
+      punchInTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      punchInTimestamp: Date.now() - (8.5 * 3600 * 1000)
+    });
+    return;
+  }
+
+  db.ref(`hostel_mess_data/punches/${userId}`).limitToLast(15).once('value', (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+    let html = '';
+    const dates = Object.keys(data).reverse();
+    dates.forEach(d => {
+      const rec = data[d];
+      if (rec) {
+        rec.date = rec.date || d;
+        rec.userId = rec.userId || userId;
+        rec.userName = rec.userName || (currentLocalUser ? currentLocalUser.name : 'Employee');
+        html += renderRecordHistoryRow(rec);
+      }
+    });
+    if (html) recordsContainer.innerHTML = html;
+  });
+}
+
 function loadPunchesTable() {
   const tbody = document.getElementById('punchesTableBody');
   if (!tbody) return;
@@ -6442,12 +6536,17 @@ window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
 window.renderPunchTableRow = renderPunchTableRow;
 window.loadPunchesTable = loadPunchesTable;
+window.getRecordsTableHeaderHTML = getRecordsTableHeaderHTML;
+window.renderRecordHistoryRow = renderRecordHistoryRow;
+window.renderRecordsTable = renderRecordsTable;
+window.calculateDutyAndOT = calculateDutyAndOT;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
 window.executeGatePunchIn = executeGatePunchIn;
 window.openDeptAssignModal = openDeptAssignModal;
 window.closeDeptModal = closeDeptModal;
 window.closeDeptSheet = closeDeptSheet;
+
 window.saveDepartmentAllocation = saveDepartmentAllocation;
 window.handlePunchInButtonClick = handlePunchInButtonClick;
 window.closeSupervisorModal = closeSupervisorModal;
