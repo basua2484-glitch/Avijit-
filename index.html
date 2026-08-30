@@ -162,14 +162,15 @@
               <span class="text-sub" style="color:#CBD5E1;">CURRENT DUTY STATUS</span>
               <div style="font-weight:700; font-size:14px; margin-top:2px;" id="textDutyStatus">NOT PUNCHED IN</div>
               <div style="font-size:11px; color:#94A3B8; margin-top:3px;">
-                Dept: <strong id="textCurrentDept" style="color:#E2E8F0;">--</strong> | Time: <strong id="textAssignedTime" style="color:#E2E8F0;">--</strong>
+                Dept: <strong id="textDeptDisplay" style="color:#E2E8F0;">--</strong> <span id="textCurrentDept" style="display:none;">--</span> | 
+                Time: <strong id="textTimeNoteDisplay" style="color:#E2E8F0;">--</strong> <span id="textAssignedTime" style="display:none;">--</span>
               </div>
             </div>
             <span class="badge badge-alert" id="resident-punch-status-badge">NOT PUNCHED IN</span>
           </div>
 
           <div class="punch-btn-group">
-            <button class="btn-punch-in" id="btn-employee-punch-in" onclick="openSupervisorDutyModal()">
+            <button class="btn-punch-in" id="btn-employee-punch-in" onclick="handlePunchInButtonClick()">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Punch In (Start Duty)
             </button>
@@ -191,11 +192,13 @@
             </div>
             <div class="duty-metric-box">
               <div class="duty-metric-lbl">LIVE OVERTIME (OT)</div>
-              <div class="duty-metric-val" style="color:#FBBF24;" id="textLiveOT">0.00 hours</div>
+              <div class="duty-metric-val" style="color:#FBBF24;" id="liveOtHoursEl">0.00 hours</div>
+              <span id="textLiveOT" style="display:none;">0.00 hours</span>
             </div>
             <div class="duty-metric-box">
               <div class="duty-metric-lbl">OT TARGET DEPT</div>
-              <div class="duty-metric-val" style="font-size:12px; color:#38BDF8;" id="textOtDept">--</div>
+              <div class="duty-metric-val" style="font-size:12px; color:#38BDF8;" id="otTargetDeptEl">--</div>
+              <span id="textOtDept" style="display:none;">--</span>
             </div>
           </div>
           <p class="text-sub mt-2" style="color:#94A3B8; font-size:10px; text-align:center;">
@@ -1481,20 +1484,20 @@
       </div>
     </div>
 
-    <!-- 10. Supervisor Department Assignment Modal -->
-    <div class="modal" id="supervisorDeptModal" style="display:none; align-items:center; justify-content:center;">
+    <!-- 10. Supervisor Department Assignment & Allocation Modal -->
+    <div class="modal" id="supervisorAllocationModal" style="display:none; align-items:center; justify-content:center;">
       <div class="modal-content" style="max-width:440px; width:90%;">
         <div class="modal-header">
           <h3 style="display:flex; align-items:center; gap:8px;">
-            🏢 Punch In & Department Assignment
+            🏢 Punch In & Department Allocation
           </h3>
-          <button class="close-btn" onclick="closeSupervisorDeptModal()">&times;</button>
+          <button class="close-btn" onclick="closeSupervisorModal()">&times;</button>
         </div>
-        <p class="text-sub">Supervisor note: Select current work station and overtime target department for this shift.</p>
+        <p class="text-sub">Supervisor note: Select current work station, duty start note, and overtime target department for this shift.</p>
 
         <div class="form-group mt-3">
           <label style="font-size:12px; font-weight:700; color:#334155;">Assigned Department</label>
-          <select id="selectDepartment" class="form-select" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:13px; margin-top:4px;">
+          <select id="superDeptSelect" class="form-select" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:13px; margin-top:4px;">
             <option value="Hostel Maintenance">Hostel Maintenance</option>
             <option value="Mess & Kitchen">Mess & Kitchen</option>
             <option value="Security & Guard">Security & Guard</option>
@@ -1505,8 +1508,13 @@
         </div>
 
         <div class="form-group mt-3">
+          <label style="font-size:12px; font-weight:700; color:#334155;">Duty Start Time Note</label>
+          <input type="time" id="superTimeInput" class="form-control" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:13px; margin-top:4px;" />
+        </div>
+
+        <div class="form-group mt-3">
           <label style="font-size:12px; font-weight:700; color:#334155;">Target OT Department</label>
-          <select id="selectOtDepartment" class="form-select" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:13px; margin-top:4px;">
+          <select id="superOtDeptSelect" class="form-select" style="width:100%; padding:9px 12px; border:1px solid #CBD5E1; border-radius:8px; font-size:13px; margin-top:4px;">
             <option value="Same Department">Same Department</option>
             <option value="Mess & Kitchen">Mess & Kitchen</option>
             <option value="Hostel Maintenance">Hostel Maintenance</option>
@@ -1517,8 +1525,8 @@
         </div>
 
         <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px;">
-          <button class="btn btn-secondary" onclick="closeSupervisorDeptModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="confirmPunchInWithDept()" style="background:#10B981; border-color:#059669; font-weight:700;">
+          <button class="btn btn-secondary" onclick="closeSupervisorModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="confirmSupervisorPunchIn()" style="background:#10B981; border-color:#059669; font-weight:700;">
             ✓ Confirm Punch In
           </button>
         </div>

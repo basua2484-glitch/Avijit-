@@ -5779,6 +5779,7 @@ function getTodayDate() {
 // Live Clock & Running OT State Variables
 let liveClockInterval = null;
 let runningOtInterval = null;
+let liveOTTimer = null;
 
 function startLiveClock() {
   if (liveClockInterval) clearInterval(liveClockInterval);
@@ -5790,22 +5791,44 @@ function startLiveClock() {
   }, 1000);
 }
 
-// 2. Open/Close Supervisor Modal
-function openSupervisorDutyModal() {
-  const modal = document.getElementById('supervisorDeptModal');
-  if (modal) modal.style.display = 'flex';
+// 1. Force Trigger Modal on "Punch In" Click
+function handlePunchInButtonClick() {
+  const modal = document.getElementById('supervisorAllocationModal') || document.getElementById('supervisorDeptModal');
+  
+  // Set default current time in time input
+  const now = new Date();
+  const timeStr = now.toTimeString().substring(0, 5);
+  const timeInput = document.getElementById('superTimeInput');
+  if (timeInput) timeInput.value = timeStr;
+
+  if (modal) {
+    modal.style.display = 'flex';
+  } else {
+    alert("Error: Supervisor Modal HTML not found.");
+  }
 }
 
-function closeSupervisorDeptModal() {
-  const modal = document.getElementById('supervisorDeptModal');
+function closeSupervisorModal() {
+  const modal = document.getElementById('supervisorAllocationModal') || document.getElementById('supervisorDeptModal');
   if (modal) modal.style.display = 'none';
 }
 
-// 3. Confirm Punch In & Record Supervisor Notes
-function confirmPunchInWithDept() {
-  const deptEl = document.getElementById('selectDepartment');
-  const otDeptEl = document.getElementById('selectOtDepartment');
+function openSupervisorDutyModal() {
+  handlePunchInButtonClick();
+}
+
+function closeSupervisorDeptModal() {
+  closeSupervisorModal();
+}
+
+// 2. Save Supervisor Selection & Start Live Shift
+function confirmSupervisorPunchIn() {
+  const deptEl = document.getElementById('superDeptSelect') || document.getElementById('selectDepartment');
+  const noteTimeEl = document.getElementById('superTimeInput');
+  const otDeptEl = document.getElementById('superOtDeptSelect') || document.getElementById('selectOtDepartment');
+  
   const dept = deptEl ? deptEl.value : 'Hostel Maintenance';
+  const noteTime = noteTimeEl ? noteTimeEl.value : new Date().toTimeString().substring(0, 5);
   const otDept = otDeptEl ? otDeptEl.value : 'Same Department';
   
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
@@ -5813,31 +5836,73 @@ function confirmPunchInWithDept() {
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
   const today = getTodayDate();
   const startTime = new Date().toISOString();
-  const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   const payload = {
+    status: 'PUNCHED_IN',
     punchIn: startTime,
-    punchInTimeFormatted: timeString,
+    punchInTimeFormatted: noteTime,
+    assignedDept: dept,
     assignedDepartment: dept,
+    assignedTimeNote: noteTime,
+    otTargetDept: otDept === 'Same Department' ? dept : otDept,
     targetOtDepartment: otDept === 'Same Department' ? dept : otDept,
-    status: 'ON_DUTY',
+    shiftDate: today,
     date: today
   };
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    closeSupervisorDeptModal();
-    alert(`✓ Duty Started!\nDept: ${dept}\nTime: ${timeString}`);
+    closeSupervisorModal();
+    alert(`✓ Duty Started!\nDepartment: ${dept}\nTime Note: ${noteTime}`);
+    initLiveOTEngine(startTime, dept, otDept === 'Same Department' ? dept : otDept);
     return;
   }
 
   db.ref(`hostel_mess_data/punches/${userId}/${today}`).set(payload)
     .then(() => {
-      closeSupervisorDeptModal();
-      alert(`✓ Duty Started!\nDept: ${dept}\nTime: ${timeString}`);
+      closeSupervisorModal();
+      alert(`✓ Duty Started!\nDepartment: ${dept}\nTime Note: ${noteTime}`);
+      initLiveOTEngine(startTime, dept, otDept === 'Same Department' ? dept : otDept);
     })
-    .catch(err => alert("Database Error: " + err.message));
+    .catch((err) => alert("Database Error: " + err.message));
+}
+
+function confirmPunchInWithDept() {
+  confirmSupervisorPunchIn();
+}
+
+// 3. Real-Time Running OT & Department Display Engine
+function initLiveOTEngine(startTimeISO, dept, otDept) {
+  if (liveOTTimer) clearInterval(liveOTTimer);
+  if (runningOtInterval) clearInterval(runningOtInterval);
+
+  liveOTTimer = setInterval(() => {
+    const start = new Date(startTimeISO);
+    const now = new Date();
+    const workedHours = (now - start) / (1000 * 60 * 60);
+
+    let otHours = 0;
+    let currentOtDept = "--";
+
+    // 8 Hours exceed hone par OT live start hoga
+    if (workedHours > 8.0) {
+      otHours = workedHours - 8.0;
+      currentOtDept = otDept;
+    }
+
+    // UI Element Updates
+    setElementText('textDeptDisplay', dept);
+    setElementText('textCurrentDept', dept);
+    setElementText('textTimeNoteDisplay', new Date(startTimeISO).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    setElementText('textAssignedTime', new Date(startTimeISO).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}));
+    setElementText('liveOtHoursEl', otHours.toFixed(2) + " hours");
+    setElementText('textLiveOT', otHours.toFixed(2) + " hours");
+    setElementText('otTargetDeptEl', currentOtDept);
+    setElementText('textOtDept', currentOtDept);
+  }, 1000);
+
+  runningOtInterval = liveOTTimer;
 }
 
 // 4. Listen to Realtime State & Calculate Live OT Running
@@ -5930,12 +5995,17 @@ function executePunchOut() {
 
 function resetDutyUI() {
   if (runningOtInterval) clearInterval(runningOtInterval);
+  if (liveOTTimer) clearInterval(liveOTTimer);
   setElementText('textDutyStatus', 'NOT PUNCHED IN');
   const dutyStatusEl = document.getElementById('textDutyStatus');
   if (dutyStatusEl) dutyStatusEl.style.color = '#f87171';
+  setElementText('textDeptDisplay', '--');
   setElementText('textCurrentDept', '--');
+  setElementText('textTimeNoteDisplay', '--');
   setElementText('textAssignedTime', '--');
+  setElementText('liveOtHoursEl', '0.00 hours');
   setElementText('textLiveOT', '0.00 hours');
+  setElementText('otTargetDeptEl', '--');
   setElementText('textOtDept', '--');
 }
 
@@ -6114,6 +6184,10 @@ window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
+window.handlePunchInButtonClick = handlePunchInButtonClick;
+window.closeSupervisorModal = closeSupervisorModal;
+window.confirmSupervisorPunchIn = confirmSupervisorPunchIn;
+window.initLiveOTEngine = initLiveOTEngine;
 window.openSupervisorDutyModal = openSupervisorDutyModal;
 window.closeSupervisorDeptModal = closeSupervisorDeptModal;
 window.confirmPunchInWithDept = confirmPunchInWithDept;
