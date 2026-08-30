@@ -5776,6 +5776,125 @@ function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
 
+// 1. Gate Punch In (Standard Initial Punch)
+function executeGatePunchIn() {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+  const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const startTime = new Date().toISOString();
+
+  const initialPayload = {
+    status: 'PUNCHED_IN',
+    punchIn: startTime,
+    punchInTime: currentTime,
+    punchInTimeFormatted: currentTime,
+    punchInTimestamp: startTime,
+    departmentDuty: null // Initial allocation empty rahega
+  };
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    alert(`✓ Punch In Successful at ${currentTime}\nDepartment duty supervisor dwara baad mein assign ki ja sakti hai.`);
+    return;
+  }
+
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).set(initialPayload)
+    .then(() => {
+      alert(`✓ Punch In Successful at ${currentTime}\nDepartment duty supervisor dwara baad mein assign ki ja sakti hai.`);
+    })
+    .catch(err => alert("Database Error: " + err.message));
+}
+
+// 2. Open Supervisor Duty Allocation Modal
+function openDeptAssignModal() {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    const now = new Date();
+    const inputDeptTime = document.getElementById('inputDeptTime');
+    if (inputDeptTime) inputDeptTime.value = now.toTimeString().substring(0, 5);
+    const modal = document.getElementById('deptAssignModal');
+    if (modal) modal.style.display = 'flex';
+    return;
+  }
+
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).once('value', (snapshot) => {
+    const data = snapshot.val();
+    if (!data || data.status !== 'PUNCHED_IN') {
+      alert("Pehle Gate Punch In hona zaroori hai!");
+      return;
+    }
+
+    setElementText('displayGatePunchIn', data.punchInTime || data.punchInTimeFormatted || '--');
+    
+    // Default current time in time picker
+    const now = new Date();
+    const inputDeptTime = document.getElementById('inputDeptTime');
+    if (inputDeptTime) inputDeptTime.value = now.toTimeString().substring(0, 5);
+
+    const modal = document.getElementById('deptAssignModal');
+    if (modal) modal.style.display = 'flex';
+  });
+}
+
+function closeDeptModal() {
+  const modal = document.getElementById('deptAssignModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// 3. Save Department Allocation inside same Punch In record
+function saveDepartmentAllocation() {
+  const deptNameEl = document.getElementById('inputDeptName');
+  const deptTimeEl = document.getElementById('inputDeptTime');
+  const deptName = deptNameEl ? deptNameEl.value : 'Hostel Maintenance';
+  const deptTime = deptTimeEl ? deptTimeEl.value : new Date().toTimeString().substring(0, 5);
+
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+
+  const deptData = {
+    deptName: deptName,
+    assignedTime: deptTime,
+    updatedAt: new Date().toLocaleTimeString()
+  };
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    closeDeptModal();
+    setElementText('textDeptDisplay', deptName);
+    setElementText('textCurrentDept', deptName);
+    setElementText('textTimeNoteDisplay', deptTime);
+    setElementText('textAssignedTime', deptTime);
+    alert(`✓ Department Duty Saved!\nDepartment: ${deptName}\nDuty Start Time: ${deptTime}`);
+    return;
+  }
+
+  // Same Punch In node ke andar sub-data update karna
+  db.ref(`hostel_mess_data/punches/${userId}/${today}/departmentDuty`).set(deptData)
+    .then(() => {
+      // Also sync top-level department field for compatibility
+      db.ref(`hostel_mess_data/punches/${userId}/${today}`).update({
+        assignedDept: deptName,
+        assignedDepartment: deptName,
+        assignedTimeNote: deptTime
+      });
+      closeDeptModal();
+      alert(`✓ Department Duty Saved!\nDepartment: ${deptName}\nDuty Start Time: ${deptTime}`);
+    })
+    .catch((err) => alert("Error saving department duty: " + err.message));
+}
+
 // Live Clock & Running OT State Variables
 let liveClockInterval = null;
 let runningOtInterval = null;
@@ -5927,11 +6046,17 @@ function listenToActiveDutyState() {
     setElementText('textDutyStatus', 'ON DUTY (ACTIVE)');
     const dutyStatusEl = document.getElementById('textDutyStatus');
     if (dutyStatusEl) dutyStatusEl.style.color = '#4ade80';
-    setElementText('textCurrentDept', data.assignedDepartment || '--');
-    setElementText('textAssignedTime', data.punchInTimeFormatted || '--');
+
+    const deptName = (data.departmentDuty && data.departmentDuty.deptName) || data.assignedDept || data.assignedDepartment || '--';
+    const deptTime = (data.departmentDuty && data.departmentDuty.assignedTime) || data.assignedTimeNote || data.punchInTimeFormatted || data.punchInTime || '--';
+
+    setElementText('textDeptDisplay', deptName);
+    setElementText('textCurrentDept', deptName);
+    setElementText('textTimeNoteDisplay', deptTime);
+    setElementText('textAssignedTime', deptTime);
 
     // Start Live OT Engine
-    startLiveOTTracker(data.punchIn, data.targetOtDepartment || data.assignedDepartment);
+    startLiveOTTracker(data.punchIn || data.punchInTimestamp, data.otTargetDept || data.targetOtDepartment || deptName);
   });
 }
 
@@ -6184,6 +6309,10 @@ window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
+window.executeGatePunchIn = executeGatePunchIn;
+window.openDeptAssignModal = openDeptAssignModal;
+window.closeDeptModal = closeDeptModal;
+window.saveDepartmentAllocation = saveDepartmentAllocation;
 window.handlePunchInButtonClick = handlePunchInButtonClick;
 window.closeSupervisorModal = closeSupervisorModal;
 window.confirmSupervisorPunchIn = confirmSupervisorPunchIn;
