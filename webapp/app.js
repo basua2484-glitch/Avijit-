@@ -5872,6 +5872,7 @@ function saveDepartmentAllocation() {
     closeDeptSheet();
 
     if (isOTDept) {
+      setElementText('textOtTargetDeptDisplay', deptInput);
       setElementText('textOtDeptDisplay', deptInput);
       setElementText('textOtDept', deptInput);
       setElementText('otTargetDeptEl', deptInput);
@@ -5893,6 +5894,8 @@ function saveDepartmentAllocation() {
       closeDeptSheet();
 
       if (isOTDept) {
+        // Is line se Top Card ka OT TARGET DEPT live update ho jayega
+        setElementText('textOtTargetDeptDisplay', deptInput);
         setElementText('textOtDeptDisplay', deptInput);
         setElementText('textOtDept', deptInput);
         setElementText('otTargetDeptEl', deptInput);
