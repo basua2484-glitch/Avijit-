@@ -6184,39 +6184,9 @@ function renderRecordsTable() {
   });
 }
 
-// Top Cards & Allocation UI Clear Function
-function resetTopCardsAndDashboard() {
-  // Top Card Labels Reset
-  setElementText('textDeptDisplay', '--');
-  setElementText('textTimeNoteDisplay', '--');
-  setElementText('textOtTargetDeptDisplay', '--');
-  setElementText('textOtDeptDisplay', '--');
-  setElementText('textOtDept', '--');
-  setElementText('otTargetDeptEl', '--');
-  setElementText('textLiveOT', '0.00 hours');
-  setElementText('liveOtHoursEl', '0.00');
-  setElementText('textStandardHours', '0.0h');
-  const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
-  if (otBadge) otBadge.style.color = '#94a3b8';
-
-  // Today's Allocation Table Reset
-  const tableBody = document.getElementById('punchesTableBody');
-  if (tableBody) {
-    tableBody.innerHTML = `
-      <tr style="border-bottom:1px solid #334155;">
-        <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
-          No active punch or duty record found for today.
-        </td>
-      </tr>
-    `;
-  }
-}
-
-const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
-
-// Complete Record Delete Function with Department Clean-Up
+// Central Delete Record Function - Cleans DB & UI Status Completely
 function deletePunchRecord(recordId, recordDate, userId) {
-  if (!confirm("Kya aap is Punch Record aur iski sabhi Department Duties ko delete karna chahte hain?")) {
+  if (!confirm("Kya aap is Record ko aur iski sabhi Regular/OT Department Duties ko delete karna chahte hain?")) {
     return;
   }
 
@@ -6229,22 +6199,55 @@ function deletePunchRecord(recordId, recordDate, userId) {
   if (!db) {
     resetTopCardsAndDashboard();
     if (typeof renderRecordsTable === 'function') renderRecordsTable();
-    alert("✓ Record aur Department Allocation data successfully delete ho gaya hai!");
+    if (typeof loadPunchesTable === 'function') loadPunchesTable();
+    alert("✓ Record aur uski sabhi Department Duty Entries successfully delete ho gayi hain!");
     return;
   }
 
+  // 1. Firebase Database path se complete record delete karein
   db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
     .then(() => {
-      // Direct UI Wipe
+      // 2. Local Live Dashboard UI ko completely wipe karein
       resetTopCardsAndDashboard();
 
+      // 3. Reports & Duty Tables Reload Karein
       if (typeof renderRecordsTable === 'function') renderRecordsTable();
-      alert("✓ Record aur Department Allocation data successfully delete ho gaya hai!");
+      if (typeof loadPunchesTable === 'function') loadPunchesTable();
+
+      alert("✓ Record aur uski sabhi Department Duty Entries successfully delete ho gayi hain!");
     })
     .catch((err) => {
       alert("Error deleting record: " + err.message);
     });
 }
+
+// Helper Function to Clear Live Cards & Allocation UI
+function resetTopCardsAndDashboard() {
+  setElementText('textDeptDisplay', '--');
+  setElementText('textTimeNoteDisplay', '--');
+  setElementText('textOtTargetDeptDisplay', '--');
+  setElementText('textOtDeptDisplay', '--');
+  setElementText('textOtDept', '--');
+  setElementText('otTargetDeptEl', '--');
+  setElementText('textLiveOT', '0.00 hours');
+  setElementText('liveOtHoursEl', '0.00');
+  setElementText('textStandardHours', '0.0h');
+  const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
+  if (otBadge) otBadge.style.color = '#94a3b8';
+
+  const tableBody = document.getElementById('punchesTableBody');
+  if (tableBody) {
+    tableBody.innerHTML = `
+      <tr style="border-bottom:1px solid #334155;">
+        <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
+          No active punch or department duty logs available for today.
+        </td>
+      </tr>
+    `;
+  }
+}
+
+const clearDashboardDepartmentUI = resetTopCardsAndDashboard;
 
 // Today's Logs Table Loading Sync Function
 function loadPunchesTable() {
