@@ -6108,34 +6108,40 @@ function getRecordsTableHeaderHTML() {
   `;
 }
 
-// Row Renderer for All Records / History Table
-function renderRecordHistoryRow(record) {
+// Row Renderer for Attendance & OT Management Report Table
+function renderRecordHistoryRow(recordKey, record) {
   if (!record) return '';
   const regDept = record.assignedDepartment 
-    ? `<b style="color:#38bdf8;">${record.assignedDepartment}</b><br><span style="font-size:9px; color:#64748b;">${record.departmentAssignedTime || ''}</span>`
-    : '--';
+    ? `<span style="background:#0284c7; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;">${record.assignedDepartment}</span><br><span style="font-size:10px; color:#94a3b8;">Time: ${record.departmentAssignedTime || '--'}</span>`
+    : '<span style="color:#64748b;">--</span>';
 
   const otDept = record.otTargetDepartment 
-    ? `<b style="color:#f59e0b;">🔥 ${record.otTargetDepartment}</b><br><span style="font-size:9px; color:#64748b;">${record.otDeptAssignedTime || ''}</span>`
-    : '--';
+    ? `<span style="background:#d97706; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;">🔥 ${record.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${record.otDeptAssignedTime || '--'}</span>`
+    : '<span style="color:#64748b;">--</span>';
 
   const stats = calculateDutyAndOT(record.punchInTimestamp || record.punchIn, record.punchOutTimestamp || record.punchOut);
 
   return `
     <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-      <td style="padding:8px; color:#94a3b8;">
+      <td style="padding:10px; color:#94a3b8;">
         <b>${record.date || '--'}</b><br>
         <span style="font-size:10px;">${record.shift || ''}</span>
       </td>
-      <td style="padding:8px;">
-        <b>${record.userName || 'Employee'}</b><br>
+      <td style="padding:10px;">
+        <b style="color:#fff;">${record.userName || 'Employee'}</b><br>
         <span style="font-size:10px; color:#64748b;">${record.userId || ''}</span>
       </td>
-      <td style="padding:8px;">${regDept}</td>
-      <td style="padding:8px;">${otDept}</td>
-      <td style="padding:8px;">${record.punchInTime || '--'}</td>
-      <td style="padding:8px;">${record.punchOutTime || '<span style="color:#4ade80;">Active</span>'}</td>
-      <td style="padding:8px; color:#f59e0b; font-weight:bold;">${stats.otHours} h</td>
+      <td style="padding:10px;">${regDept}</td>
+      <td style="padding:10px;">${otDept}</td>
+      <td style="padding:10px; color:#38bdf8;">${record.punchInTime || '--'}</td>
+      <td style="padding:10px; color:#4ade80;">${record.punchOutTime || 'Active'}</td>
+      <td style="padding:10px; color:#f59e0b; font-weight:bold;">${stats.otHours} hrs</td>
+      <td style="padding:10px; text-align:center;">
+        <button onclick="deletePunchRecord('${recordKey}', '${record.date}', '${record.userId}')" 
+                style="background:#ef4444; color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer;">
+          Delete
+        </button>
+      </td>
     </tr>
   `;
 }
@@ -6152,7 +6158,7 @@ function renderRecordsTable() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    recordsContainer.innerHTML = renderRecordHistoryRow({
+    recordsContainer.innerHTML = renderRecordHistoryRow(today, {
       date: today,
       shift: 'Day Shift',
       userName: currentLocalUser ? currentLocalUser.name : 'Employee',
@@ -6169,7 +6175,10 @@ function renderRecordsTable() {
 
   db.ref(`hostel_mess_data/punches/${userId}`).limitToLast(15).once('value', (snapshot) => {
     const data = snapshot.val();
-    if (!data) return;
+    if (!data) {
+      recordsContainer.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">No historical records found.</td></tr>`;
+      return;
+    }
     let html = '';
     const dates = Object.keys(data).reverse();
     dates.forEach(d => {
@@ -6178,7 +6187,7 @@ function renderRecordsTable() {
         rec.date = rec.date || d;
         rec.userId = rec.userId || userId;
         rec.userName = rec.userName || (currentLocalUser ? currentLocalUser.name : 'Employee');
-        html += renderRecordHistoryRow(rec);
+        html += renderRecordHistoryRow(d, rec);
       }
     });
     if (html) recordsContainer.innerHTML = html;
