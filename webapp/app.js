@@ -5808,39 +5808,49 @@ function executeGatePunchIn() {
     .catch(err => alert("Database Error: " + err.message));
 }
 
-// 1. Open Modal & Clear Input Focus
+// 1. Open Bottom Sheet Interface
 function openDeptAssignModal() {
-  const modal = document.getElementById('deptAssignModal');
-  if (!modal) return alert("Modal missing!");
+  const sheet = document.getElementById('deptAssignSheet') || document.getElementById('deptAssignModal');
+  if (!sheet) return alert("Sheet element missing in HTML!");
 
   const inputField = document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
-  modal.style.display = 'flex';
-  setTimeout(() => inputField && inputField.focus(), 200);
+  sheet.style.display = 'flex';
+
+  // Smooth Focus on Input for Instant Typing
+  setTimeout(() => {
+    if (inputField) inputField.focus();
+  }, 150);
+}
+
+function closeDeptSheet() {
+  const sheet = document.getElementById('deptAssignSheet') || document.getElementById('deptAssignModal');
+  if (sheet) sheet.style.display = 'none';
 }
 
 function closeDeptModal() {
-  const modal = document.getElementById('deptAssignModal');
-  if (modal) modal.style.display = 'none';
+  closeDeptSheet();
 }
 
-// 2. Save Custom Department with Auto Entry Time
+// 2. Save Custom Department + Live Entry Time
 function saveDepartmentAllocation() {
-  const deptInput = (document.getElementById('customDeptInput') ? document.getElementById('customDeptInput').value : '').trim();
+  const customDeptInputEl = document.getElementById('customDeptInput');
+  const deptInput = customDeptInputEl ? customDeptInputEl.value.trim() : '';
 
   if (!deptInput) {
     alert("Kripya Department ka naam type karein!");
     return;
   }
 
+  // Auto-generate Exact Duty Entry Time
   const now = new Date();
   const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const today = getTodayDate();
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
   const payload = {
     assignedDepartment: deptInput,
@@ -5851,33 +5861,43 @@ function saveDepartmentAllocation() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
-    closeDeptModal();
-    setElementText('textDeptDisplay', deptInput);
-    setElementText('textTimeNoteDisplay', entryTime);
+    closeDeptSheet();
 
+    // UI Live Updates
+    const deptDisplay = document.getElementById('textDeptDisplay');
+    if (deptDisplay) deptDisplay.innerText = deptInput;
+
+    const timeDisplay = document.getElementById('textTimeNoteDisplay');
+    if (timeDisplay) timeDisplay.innerText = entryTime;
+
+    // Reload Table Logs if function exists
     if (typeof loadPunchesTable === 'function') {
       loadPunchesTable();
     }
 
-    alert(`✓ Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+    alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     return;
   }
 
   firebase.database().ref(`hostel_mess_data/punches/${userId}/${today}`).update(payload)
     .then(() => {
-      closeDeptModal();
+      closeDeptSheet();
 
-      // Refresh Live Cards & Logs Table
-      setElementText('textDeptDisplay', deptInput);
-      setElementText('textTimeNoteDisplay', entryTime);
+      // UI Live Updates
+      const deptDisplay = document.getElementById('textDeptDisplay');
+      if (deptDisplay) deptDisplay.innerText = deptInput;
 
+      const timeDisplay = document.getElementById('textTimeNoteDisplay');
+      if (timeDisplay) timeDisplay.innerText = entryTime;
+
+      // Reload Table Logs if function exists
       if (typeof loadPunchesTable === 'function') {
         loadPunchesTable();
       }
 
-      alert(`✓ Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
+      alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     })
-    .catch((err) => alert("Error: " + err.message));
+    .catch((err) => alert("Error saving duty: " + err.message));
 }
 
 // Live Clock & Running OT State Variables
@@ -6369,6 +6389,7 @@ window.startLiveClock = startLiveClock;
 window.executeGatePunchIn = executeGatePunchIn;
 window.openDeptAssignModal = openDeptAssignModal;
 window.closeDeptModal = closeDeptModal;
+window.closeDeptSheet = closeDeptSheet;
 window.saveDepartmentAllocation = saveDepartmentAllocation;
 window.handlePunchInButtonClick = handlePunchInButtonClick;
 window.closeSupervisorModal = closeSupervisorModal;
