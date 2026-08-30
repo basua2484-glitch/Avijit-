@@ -6212,6 +6212,8 @@ function clearDashboardDepartmentUI() {
   }
 }
 
+const resetTopCardsAndDashboard = clearDashboardDepartmentUI;
+
 // Complete Record Delete Function with Department Clean-Up
 function deletePunchRecord(recordId, recordDate, userId) {
   if (!confirm("Kya aap is Punch Record aur iski sabhi Department Duties ko delete karna chahte hain?")) {
@@ -6285,7 +6287,7 @@ function loadPunchesTable() {
     });
 }
 
-// Realtime Auto-Sync Listener (No Manual Refresh Needed)
+// Updated Realtime Sync Function with Full Null State Cleanup
 function listenForRealtimeUpdates() {
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
@@ -6295,41 +6297,39 @@ function listenForRealtimeUpdates() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
   if (!db) return;
 
-  // Firebase Realtime DB Listener
   db.ref(`hostel_mess_data/punches/${userId}/${today}`).on('value', (snapshot) => {
     const data = snapshot.val();
 
-    if (data) {
-      // 1. Live Overtime & Duty Calculation
-      if (data.punchInTimestamp || data.punchIn) {
-        const stats = calculateDutyAndOT(data.punchInTimestamp || data.punchIn, data.punchOutTimestamp || data.punchOut);
-        
-        setElementText('textLiveOT', `${stats.otHours} hours`);
-        setElementText('liveOtHoursEl', `${stats.otHours} hours`);
-        setElementText('textStandardHours', `${stats.standardHours} hours`);
+    if (!data) {
+      // 1. Agar Record Delete/Missing hai toh Top Cards ko RESET karein
+      resetTopCardsAndDashboard();
+      return;
+    }
 
-        if (parseFloat(stats.otHours) > 0) {
-          const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
-          if (otBadge) otBadge.style.color = '#f59e0b'; // Highlight OT in Yellow
-        }
-      }
+    // 2. Agar Active Punch / Valid Data hai toh Sync Karein
+    setElementText('textDeptDisplay', data.assignedDepartment || '--');
+    setElementText('textTimeNoteDisplay', data.departmentAssignedTime || '--');
+    setElementText('textOtTargetDeptDisplay', data.otTargetDepartment || '--');
+    setElementText('textOtDeptDisplay', data.otTargetDepartment || '--');
+    setElementText('textOtDept', data.otTargetDepartment || '--');
+    setElementText('otTargetDeptEl', data.otTargetDepartment || '--');
 
-      // 2. Department Displays Auto-Sync
-      if (data.assignedDepartment) {
-        setElementText('textDeptDisplay', data.assignedDepartment);
-      }
-      if (data.otTargetDepartment) {
-        setElementText('textOtTargetDeptDisplay', data.otTargetDepartment);
-        setElementText('otTargetDeptEl', data.otTargetDepartment);
-      }
+    if (data.punchInTimestamp || data.punchIn) {
+      const stats = calculateDutyAndOT(data.punchInTimestamp || data.punchIn, data.punchOutTimestamp || data.punchOut);
+      setElementText('textLiveOT', `${stats.otHours} hours`);
+      setElementText('liveOtHoursEl', `${stats.otHours} hours`);
+      setElementText('textStandardHours', `${stats.standardHours} hours`);
 
-      // 3. Auto-Reload Table UI
-      if (typeof loadPunchesTable === 'function') {
-        loadPunchesTable();
+      if (parseFloat(stats.otHours) > 0) {
+        const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
+        if (otBadge) otBadge.style.color = '#f59e0b';
       }
-      if (typeof renderRecordsTable === 'function') {
-        renderRecordsTable();
-      }
+    }
+
+    // 3. Render Table Logs
+    const tableBody = document.getElementById('punchesTableBody');
+    if (tableBody) {
+      tableBody.innerHTML = renderPunchTableRow(data);
     }
   });
 }
@@ -6628,6 +6628,7 @@ window.getRecordsTableHeaderHTML = getRecordsTableHeaderHTML;
 window.renderRecordHistoryRow = renderRecordHistoryRow;
 window.renderRecordsTable = renderRecordsTable;
 window.clearDashboardDepartmentUI = clearDashboardDepartmentUI;
+window.resetTopCardsAndDashboard = resetTopCardsAndDashboard;
 window.deletePunchRecord = deletePunchRecord;
 window.calculateDutyAndOT = calculateDutyAndOT;
 window.triggerPunchOut = triggerPunchOut;
