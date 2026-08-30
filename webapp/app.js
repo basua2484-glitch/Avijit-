@@ -5810,7 +5810,7 @@ function executeGatePunchIn() {
 
 // 1. Open Bottom Sheet Interface
 function openDeptAssignModal() {
-  const sheet = document.getElementById('deptAssignSheet') || document.getElementById('deptAssignModal');
+  const sheet = document.getElementById('deptAssignSheet');
   if (!sheet) return alert("Sheet element missing in HTML!");
 
   const inputField = document.getElementById('customDeptInput');
@@ -5825,7 +5825,7 @@ function openDeptAssignModal() {
 }
 
 function closeDeptSheet() {
-  const sheet = document.getElementById('deptAssignSheet') || document.getElementById('deptAssignModal');
+  const sheet = document.getElementById('deptAssignSheet');
   if (sheet) sheet.style.display = 'none';
 }
 
@@ -5833,84 +5833,67 @@ function closeDeptModal() {
   closeDeptSheet();
 }
 
-// Corrected Department & OT Saving Logic
+// 2. Save Custom Department + Live Entry Time
 function saveDepartmentAllocation() {
-  const deptInput = (document.getElementById('customDeptInput') ? document.getElementById('customDeptInput').value : '').trim();
-  
-  // Radio button value check
-  const selectedTypeEl = document.querySelector('input[name="deptTypeSelection"]:checked');
-  const isOTDept = selectedTypeEl ? (selectedTypeEl.value === 'OT_DEPT') : false;
+  const customInput = document.getElementById('customDeptInput');
+  const deptInput = customInput ? customInput.value.trim() : '';
 
   if (!deptInput) {
     alert("Kripya Department ka naam type karein!");
     return;
   }
 
+  // Auto-generate Exact Duty Entry Time
   const now = new Date();
   const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const today = now.toISOString().split('T')[0];
+  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
 
-  let payload = {};
-
-  if (isOTDept) {
-    // Save ONLY into OT fields
-    payload.otTargetDepartment = deptInput;
-    payload.otDeptAssignedTime = entryTime;
-  } else {
-    // Save ONLY into Regular Dept fields
-    payload.assignedDepartment = deptInput;
-    payload.departmentAssignedTime = entryTime;
-  }
+  const payload = {
+    assignedDepartment: deptInput,
+    departmentAssignedTime: entryTime,
+    status: 'ON_DUTY'
+  };
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
 
   if (!db) {
     closeDeptSheet();
-
-    if (isOTDept) {
-      setElementText('textOtTargetDeptDisplay', deptInput);
-      setElementText('textOtDeptDisplay', deptInput);
-      setElementText('textOtDept', deptInput);
-      setElementText('otTargetDeptEl', deptInput);
-      alert(`✓ OT Department Duty Registered!\nOT Dept: ${deptInput}\nTime: ${entryTime}`);
-    } else {
-      setElementText('textDeptDisplay', deptInput);
-      setElementText('textTimeNoteDisplay', entryTime);
-      alert(`✓ Regular Department Duty Saved!\nDept: ${deptInput}\nTime: ${entryTime}`);
-    }
-
-    // Refresh Tables
+    const deptDisplay = document.getElementById('textDeptDisplay');
+    if (deptDisplay) deptDisplay.innerText = deptInput;
+    const timeDisplay = document.getElementById('textTimeNoteDisplay');
+    if (timeDisplay) timeDisplay.innerText = entryTime;
     if (typeof loadPunchesTable === 'function') loadPunchesTable();
     if (typeof renderRecordsTable === 'function') renderRecordsTable();
+    alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     return;
   }
 
-  firebase.database().ref(`hostel_mess_data/punches/${userId}/${today}`).update(payload)
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update(payload)
     .then(() => {
       closeDeptSheet();
 
-      if (isOTDept) {
-        // Is line se Top Card ka OT TARGET DEPT live update ho jayega
-        setElementText('textOtTargetDeptDisplay', deptInput);
-        setElementText('textOtDeptDisplay', deptInput);
-        setElementText('textOtDept', deptInput);
-        setElementText('otTargetDeptEl', deptInput);
-        alert(`✓ OT Department Duty Registered!\nOT Dept: ${deptInput}\nTime: ${entryTime}`);
-      } else {
-        setElementText('textDeptDisplay', deptInput);
-        setElementText('textTimeNoteDisplay', entryTime);
-        alert(`✓ Regular Department Duty Saved!\nDept: ${deptInput}\nTime: ${entryTime}`);
+      // UI Live Updates
+      const deptDisplay = document.getElementById('textDeptDisplay');
+      if (deptDisplay) deptDisplay.innerText = deptInput;
+
+      const timeDisplay = document.getElementById('textTimeNoteDisplay');
+      if (timeDisplay) timeDisplay.innerText = entryTime;
+
+      // Reload Table Logs if function exists
+      if (typeof loadPunchesTable === 'function') {
+        loadPunchesTable();
+      }
+      if (typeof renderRecordsTable === 'function') {
+        renderRecordsTable();
       }
 
-      // Refresh Tables
-      if (typeof loadPunchesTable === 'function') loadPunchesTable();
-      if (typeof renderRecordsTable === 'function') renderRecordsTable();
+      alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
     })
-    .catch((err) => alert("Database Save Error: " + err.message));
+    .catch((err) => alert("Error saving duty: " + err.message));
 }
 
 // Live Clock & Running OT State Variables
@@ -6319,6 +6302,10 @@ function closeDutyModal() {
   if (modal) modal.style.display = 'none';
   const sheet = document.getElementById('deptAssignSheet');
   if (sheet) sheet.style.display = 'none';
+}
+
+function closeDeptSheet() {
+  closeDutyModal();
 }
 
 // 5. Today's Logs Table Renderer
@@ -7047,8 +7034,11 @@ window.syncKitchenAndMealPlates = syncKitchenAndMealPlates;
 window.initTwoWaySyncEngine = initTwoWaySyncEngine;
 window.initLogsAndReportSyncEngine = initLogsAndReportSyncEngine;
 window.initLiveClock = initLiveClock;
+window.openDeptAssignModal = openDeptAssignModal;
 window.saveDutyAssignment = saveDutyAssignment;
+window.saveDepartmentAllocation = saveDepartmentAllocation;
 window.closeDutyModal = closeDutyModal;
+window.closeDeptSheet = closeDeptSheet;
 window.renderLoggedInUserTodayLogs = renderLoggedInUserTodayLogs;
 window.calculateReportSummaryCards = calculateReportSummaryCards;
 window.savePunchFromResidentHome = savePunchFromResidentHome;
