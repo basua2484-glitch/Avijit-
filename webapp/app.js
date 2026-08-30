@@ -6090,18 +6090,19 @@ function renderPunchTableRow(punchData) {
   `;
 }
 
-// Header for All Records / History Table
+// Header for Attendance & OT Management Report Table
 function getRecordsTableHeaderHTML() {
   return `
     <thead>
       <tr style="background:#0f172a; text-align:left; border-bottom:2px solid #334155; color:#94a3b8; font-size:11px;">
-        <th style="padding:8px;">Date & Shift</th>
-        <th style="padding:8px;">Employee</th>
-        <th style="padding:8px; color:#38bdf8;">Regular Dept</th>
-        <th style="padding:8px; color:#f59e0b;">OT Dept</th>
-        <th style="padding:8px;">Punch In</th>
-        <th style="padding:8px;">Punch Out</th>
-        <th style="padding:8px; color:#f59e0b;">OT Hours</th>
+        <th style="padding:10px;">Date & Shift</th>
+        <th style="padding:10px;">Employee</th>
+        <th style="padding:10px; color:#38bdf8;">Regular Dept & Time</th>
+        <th style="padding:10px; color:#f59e0b;">OT Dept & Time</th>
+        <th style="padding:10px;">Punch In</th>
+        <th style="padding:10px;">Punch Out</th>
+        <th style="padding:10px; color:#f59e0b;">Total OT</th>
+        <th style="padding:10px; text-align:center;">Action</th>
       </tr>
     </thead>
   `;
