@@ -6184,6 +6184,58 @@ function renderRecordsTable() {
   });
 }
 
+function clearDashboardDepartmentUI() {
+  setElementText('textDeptDisplay', '--');
+  setElementText('textTimeNoteDisplay', '--');
+  setElementText('textOtDeptDisplay', '--');
+  setElementText('textOtDept', '--');
+  setElementText('otTargetDeptEl', '--');
+  setElementText('textOtTargetDeptDisplay', '--');
+  setElementText('textOtDeptAssignedTime', '--');
+  setElementText('textLiveOT', '0.00 hours');
+  setElementText('liveOtHoursEl', '0.00');
+  setElementText('textStandardHours', '0.00 hours');
+  const otBadge = document.getElementById('textLiveOT') || document.getElementById('liveOtHoursEl');
+  if (otBadge) otBadge.style.color = '#94a3b8';
+}
+
+// Complete Record Delete Function with Department Clean-Up
+function deletePunchRecord(recordId, recordDate, userId) {
+  if (!confirm("Kya aap is Punch Record aur iski sabhi Department Duties ko delete karna chahte hain?")) {
+    return;
+  }
+
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentUserId = userId || (authUser ? authUser.uid : 'SADM_001');
+  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    clearDashboardDepartmentUI();
+    if (typeof loadPunchesTable === 'function') loadPunchesTable();
+    if (typeof renderRecordsTable === 'function') renderRecordsTable();
+    alert("✓ Punch record aur sabhi associated Department Duty entries successfully delete ho gayi hain!");
+    return;
+  }
+
+  // 1. Firebase Database se Complete Record Remove Karein
+  db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
+    .then(() => {
+      // 2. Clear Live Dashboard UI Displays
+      clearDashboardDepartmentUI();
+
+      // 3. Reload All Tables
+      if (typeof loadPunchesTable === 'function') loadPunchesTable();
+      if (typeof renderRecordsTable === 'function') renderRecordsTable();
+
+      alert("✓ Punch record aur sabhi associated Department Duty entries successfully delete ho gayi hain!");
+    })
+    .catch((err) => {
+      alert("Error deleting record: " + err.message);
+    });
+}
+
 function loadPunchesTable() {
   const tbody = document.getElementById('punchesTableBody');
   if (!tbody) return;
@@ -6588,6 +6640,8 @@ window.loadPunchesTable = loadPunchesTable;
 window.getRecordsTableHeaderHTML = getRecordsTableHeaderHTML;
 window.renderRecordHistoryRow = renderRecordHistoryRow;
 window.renderRecordsTable = renderRecordsTable;
+window.clearDashboardDepartmentUI = clearDashboardDepartmentUI;
+window.deletePunchRecord = deletePunchRecord;
 window.calculateDutyAndOT = calculateDutyAndOT;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
