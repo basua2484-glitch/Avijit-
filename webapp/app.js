@@ -6101,7 +6101,6 @@ function getRecordsTableHeaderHTML() {
         <th style="padding:10px; color:#f59e0b;">OT Dept & Time</th>
         <th style="padding:10px;">Punch In</th>
         <th style="padding:10px;">Punch Out</th>
-        <th style="padding:10px; color:#f59e0b;">Total OT</th>
         <th style="padding:10px; text-align:center;">Action</th>
       </tr>
     </thead>
@@ -6119,8 +6118,6 @@ function renderRecordHistoryRow(recordKey, record) {
     ? `<span style="background:#d97706; color:#fff; padding:3px 8px; border-radius:4px; font-weight:bold; font-size:11px;">🔥 ${record.otTargetDepartment}</span><br><span style="font-size:10px; color:#fcd34d;">Time: ${record.otDeptAssignedTime || '--'}</span>`
     : '<span style="color:#64748b;">--</span>';
 
-  const stats = calculateDutyAndOT(record.punchInTimestamp || record.punchIn, record.punchOutTimestamp || record.punchOut);
-
   return `
     <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
       <td style="padding:10px; color:#94a3b8;">
@@ -6135,7 +6132,6 @@ function renderRecordHistoryRow(recordKey, record) {
       <td style="padding:10px;">${otDept}</td>
       <td style="padding:10px; color:#38bdf8;">${record.punchInTime || '--'}</td>
       <td style="padding:10px; color:#4ade80;">${record.punchOutTime || 'Active'}</td>
-      <td style="padding:10px; color:#f59e0b; font-weight:bold;">${stats.otHours} hrs</td>
       <td style="padding:10px; text-align:center;">
         <button onclick="deletePunchRecord('${recordKey}', '${record.date}', '${record.userId}')" 
                 style="background:#ef4444; color:#fff; border:none; padding:5px 10px; border-radius:4px; font-size:11px; cursor:pointer;">
@@ -6334,12 +6330,44 @@ function deleteMasterRecord(userId, recordDate) {
     .catch((err) => alert("Delete Failed: " + err.message));
 }
 
-// Central Delete Record Function - Cleans DB & UI Status Completely
+// 1. Delete Punch Record & Reset Local UI
 function deletePunchRecord(recordId, recordDate, userId) {
-  deleteMasterRecord(userId || (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : 'SADM_001'), recordDate);
+  if (!confirm("Kya aap is Record ko delete karna chahte hain?")) {
+    return;
+  }
+
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentUserId = userId || (authUser ? authUser.uid : 'SADM_001');
+  const dateKey = recordDate || (typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0]);
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    resetTopCardsAndDashboard();
+    if (typeof renderRecordsTable === 'function') renderRecordsTable();
+    if (typeof loadPunchesTable === 'function') loadPunchesTable();
+    alert("✓ Record successfully delete ho gaya!");
+    return;
+  }
+
+  // Firebase Database se record remove karein
+  db.ref(`hostel_mess_data/punches/${currentUserId}/${dateKey}`).remove()
+    .then(() => {
+      // Top cards aur status reset
+      resetTopCardsAndDashboard();
+
+      // Report Tables Reload
+      if (typeof renderRecordsTable === 'function') renderRecordsTable();
+      if (typeof loadPunchesTable === 'function') loadPunchesTable();
+
+      alert("✓ Record successfully delete ho gaya!");
+    })
+    .catch((err) => {
+      alert("Error deleting record: " + err.message);
+    });
 }
 
-// 4. UI Reset Handler for Deleted/Empty States
+// 2. Clear Dashboard & Top Cards
 function resetTopCardsAndDashboard() {
   setElementText('textDeptDisplay', '--');
   setElementText('textTimeNoteDisplay', '--');
@@ -6361,9 +6389,9 @@ function resetTopCardsAndDashboard() {
   const tableBody = document.getElementById('punchesTableBody');
   if (tableBody) {
     tableBody.innerHTML = `
-      <tr style="border-bottom:1px solid #334155;">
+      <tr>
         <td colspan="6" style="text-align:center; padding:15px; color:#64748b; font-size:12px;">
-          No active punch, duty allocation, or meal record found.
+          No active punch or duty logs found for today.
         </td>
       </tr>
     `;
