@@ -6030,6 +6030,37 @@ function initLiveOTEngine(startTimeISO, dept, otDept) {
 }
 
 // 4. Listen to Realtime State & Calculate Live OT Running
+function renderPunchTableRow(punchRecord, empName) {
+  const tbody = document.getElementById('punchesTableBody');
+  if (!tbody) return;
+
+  const employeeName = empName || (punchRecord && punchRecord.userName) || (typeof state !== 'undefined' && state.currentUser ? state.currentUser.name : 'Super Admin');
+  const dept = (punchRecord && punchRecord.assignedDepartment) || (punchRecord && punchRecord.departmentDuty && punchRecord.departmentDuty.deptName) || (punchRecord && punchRecord.assignedDept) || 'Pending Assignment';
+  const deptTime = (punchRecord && punchRecord.departmentAssignedTime) || (punchRecord && punchRecord.departmentDuty && punchRecord.departmentDuty.assignedTime) || (punchRecord && punchRecord.assignedTimeNote) || '--';
+  const punchIn = (punchRecord && (punchRecord.punchInTime || punchRecord.punchInTimeFormatted)) || (punchRecord && punchRecord.punchIn ? new Date(punchRecord.punchIn).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '--');
+  const punchOut = (punchRecord && punchRecord.punchOut ? (punchRecord.punchOut.includes('T') ? new Date(punchRecord.punchOut).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : punchRecord.punchOut) : (punchRecord && punchRecord.status === 'COMPLETED' ? 'Completed' : '<span style="color:#4ade80; font-weight:600;">Active Duty</span>'));
+  
+  let totalWorked = '--';
+  if (punchRecord && punchRecord.totalWorked) {
+    totalWorked = `${punchRecord.totalWorked} hrs`;
+  } else if (punchRecord && punchRecord.punchIn && punchRecord.status !== 'COMPLETED') {
+    const diff = (new Date() - new Date(punchRecord.punchIn || punchRecord.punchInTimestamp)) / (1000 * 60 * 60);
+    totalWorked = `${Math.max(0, diff).toFixed(1)} hrs (Live)`;
+  }
+
+  tbody.innerHTML = `
+    <tr style="border-bottom:1px solid #334155;">
+      <td style="padding:10px; font-weight:600;">${employeeName}</td>
+      <td style="padding:10px; color:#38bdf8; font-weight:500;">
+        🏢 ${dept} <span style="font-size:11px; color:#94a3b8;">(${deptTime})</span>
+      </td>
+      <td style="padding:10px; color:#4ade80;">${punchIn}</td>
+      <td style="padding:10px;">${punchOut}</td>
+      <td style="padding:10px; font-weight:700; color:#facc15;">${totalWorked}</td>
+    </tr>
+  `;
+}
+
 function listenToActiveDutyState() {
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
@@ -6044,8 +6075,14 @@ function listenToActiveDutyState() {
 
     if (!data || data.status === 'COMPLETED') {
       resetDutyUI();
+      if (data) {
+        renderPunchTableRow(data, currentLocalUser ? currentLocalUser.name : 'Super Admin');
+      }
       return;
     }
+
+    // Render table row
+    renderPunchTableRow(data, currentLocalUser ? currentLocalUser.name : 'Super Admin');
 
     // Update Basic Duty Info
     setElementText('textDutyStatus', 'ON DUTY (ACTIVE)');
@@ -6312,6 +6349,7 @@ window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
 window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
+window.renderPunchTableRow = renderPunchTableRow;
 window.triggerPunchOut = triggerPunchOut;
 window.startLiveClock = startLiveClock;
 window.executeGatePunchIn = executeGatePunchIn;
