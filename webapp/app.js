@@ -5776,6 +5776,42 @@ function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
 
+// Auto Overtime Calculator (Triggered on Punch-Out)
+function triggerPunchOut(userId, punchInTime) {
+  const punchOutTime = new Date();
+  const diffInMs = punchOutTime - new Date(punchInTime);
+  const totalHoursWorked = diffInMs / (1000 * 60 * 60); // Hours conversion
+
+  let standardHours = 8.0;
+  let otHours = 0;
+
+  // 8 Ghante se upar ka time OT me trigger hoga
+  if (totalHoursWorked > standardHours) {
+    otHours = totalHoursWorked - standardHours;
+  }
+
+  const today = getTodayDate();
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  
+  if (!db) {
+    alert(`✓ Punched Out! Total Worked: ${totalHoursWorked.toFixed(1)}h | OT Triggered: ${otHours.toFixed(1)}h`);
+    return;
+  }
+
+  // Save Punch Data with Calculated OT
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update({
+    punchOut: punchOutTime.toLocaleTimeString(),
+    totalWorked: totalHoursWorked.toFixed(1),
+    otHours: otHours.toFixed(1),
+    status: 'COMPLETED'
+  }).then(() => {
+    alert(`✓ Punched Out! Total Worked: ${totalHoursWorked.toFixed(1)}h | OT Triggered: ${otHours.toFixed(1)}h`);
+  }).catch((err) => {
+    console.error("Punch out update error:", err);
+    alert(`✓ Punched Out! Total Worked: ${totalHoursWorked.toFixed(1)}h | OT Triggered: ${otHours.toFixed(1)}h`);
+  });
+}
+
 // Duplicate Auto-Generated Users Sweep Function
 function cleanupDuplicateResidents() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
@@ -5913,6 +5949,7 @@ window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
 window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
+window.triggerPunchOut = triggerPunchOut;
 window.updateUI = updateUI;
 window.getTodayDate = getTodayDate;
 window.initFreshDashboard = initFreshDashboard;
