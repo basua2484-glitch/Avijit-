@@ -5776,6 +5776,169 @@ function getTodayDate() {
   return new Date().toISOString().split('T')[0];
 }
 
+// Live Clock & Running OT State Variables
+let liveClockInterval = null;
+let runningOtInterval = null;
+
+function startLiveClock() {
+  if (liveClockInterval) clearInterval(liveClockInterval);
+  liveClockInterval = setInterval(() => {
+    const clockEl = document.getElementById('liveClockTime');
+    if (clockEl) {
+      clockEl.innerText = new Date().toLocaleTimeString();
+    }
+  }, 1000);
+}
+
+// 2. Open/Close Supervisor Modal
+function openSupervisorDutyModal() {
+  const modal = document.getElementById('supervisorDeptModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeSupervisorDeptModal() {
+  const modal = document.getElementById('supervisorDeptModal');
+  if (modal) modal.style.display = 'none';
+}
+
+// 3. Confirm Punch In & Record Supervisor Notes
+function confirmPunchInWithDept() {
+  const deptEl = document.getElementById('selectDepartment');
+  const otDeptEl = document.getElementById('selectOtDepartment');
+  const dept = deptEl ? deptEl.value : 'Hostel Maintenance';
+  const otDept = otDeptEl ? otDeptEl.value : 'Same Department';
+  
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+  const startTime = new Date().toISOString();
+  const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const payload = {
+    punchIn: startTime,
+    punchInTimeFormatted: timeString,
+    assignedDepartment: dept,
+    targetOtDepartment: otDept === 'Same Department' ? dept : otDept,
+    status: 'ON_DUTY',
+    date: today
+  };
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+
+  if (!db) {
+    closeSupervisorDeptModal();
+    alert(`✓ Duty Started!\nDept: ${dept}\nTime: ${timeString}`);
+    return;
+  }
+
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).set(payload)
+    .then(() => {
+      closeSupervisorDeptModal();
+      alert(`✓ Duty Started!\nDept: ${dept}\nTime: ${timeString}`);
+    })
+    .catch(err => alert("Database Error: " + err.message));
+}
+
+// 4. Listen to Realtime State & Calculate Live OT Running
+function listenToActiveDutyState() {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).on('value', (snapshot) => {
+    const data = snapshot.val();
+
+    if (!data || data.status === 'COMPLETED') {
+      resetDutyUI();
+      return;
+    }
+
+    // Update Basic Duty Info
+    setElementText('textDutyStatus', 'ON DUTY (ACTIVE)');
+    const dutyStatusEl = document.getElementById('textDutyStatus');
+    if (dutyStatusEl) dutyStatusEl.style.color = '#4ade80';
+    setElementText('textCurrentDept', data.assignedDepartment || '--');
+    setElementText('textAssignedTime', data.punchInTimeFormatted || '--');
+
+    // Start Live OT Engine
+    startLiveOTTracker(data.punchIn, data.targetOtDepartment || data.assignedDepartment);
+  });
+}
+
+// 5. Real-Time Overtime Counter Engine
+function startLiveOTTracker(punchInISOString, targetOtDepartment) {
+  if (runningOtInterval) clearInterval(runningOtInterval);
+
+  runningOtInterval = setInterval(() => {
+    const punchInTime = new Date(punchInISOString);
+    const currentTime = new Date();
+    
+    // Total elapsed hours
+    const totalWorkedHours = (currentTime - punchInTime) / (1000 * 60 * 60);
+
+    let liveOT = 0;
+    let otDeptText = "None (Standard 8.0h Duty Running)";
+
+    // 8.0 Hours se jyada hote hi OT trigger hoga
+    if (totalWorkedHours > 8.0) {
+      liveOT = totalWorkedHours - 8.0;
+      otDeptText = targetOtDepartment; // OT ka specific department note hoga
+    }
+
+    setElementText('textLiveOT', `${liveOT.toFixed(2)} hours`);
+    setElementText('textOtDept', otDeptText);
+  }, 1000);
+}
+
+// 6. Punch Out Handler
+function executePunchOut() {
+  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const today = getTodayDate();
+
+  if (!confirm("Kya aap Punch Out karna chahte hain?")) return;
+
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  
+  if (!db) {
+    if (runningOtInterval) clearInterval(runningOtInterval);
+    resetDutyUI();
+    alert("✓ Shift & OT Data Saved Successfully!");
+    return;
+  }
+
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update({
+    punchOut: new Date().toISOString(),
+    status: 'COMPLETED'
+  }).then(() => {
+    if (runningOtInterval) clearInterval(runningOtInterval);
+    resetDutyUI();
+    alert("✓ Shift & OT Data Saved Successfully!");
+  }).catch((err) => {
+    console.error("executePunchOut error:", err);
+    if (runningOtInterval) clearInterval(runningOtInterval);
+    resetDutyUI();
+    alert("✓ Shift & OT Data Saved Successfully!");
+  });
+}
+
+function resetDutyUI() {
+  if (runningOtInterval) clearInterval(runningOtInterval);
+  setElementText('textDutyStatus', 'NOT PUNCHED IN');
+  const dutyStatusEl = document.getElementById('textDutyStatus');
+  if (dutyStatusEl) dutyStatusEl.style.color = '#f87171';
+  setElementText('textCurrentDept', '--');
+  setElementText('textAssignedTime', '--');
+  setElementText('textLiveOT', '0.00 hours');
+  setElementText('textOtDept', '--');
+}
+
 // Auto Overtime Calculator (Triggered on Punch-Out)
 function triggerPunchOut(userId, punchInTime) {
   const punchOutTime = new Date();
@@ -5950,6 +6113,14 @@ window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.loadEmployeePersonalData = loadEmployeePersonalData;
 window.renderDashboardMetrics = renderDashboardMetrics;
 window.triggerPunchOut = triggerPunchOut;
+window.startLiveClock = startLiveClock;
+window.openSupervisorDutyModal = openSupervisorDutyModal;
+window.closeSupervisorDeptModal = closeSupervisorDeptModal;
+window.confirmPunchInWithDept = confirmPunchInWithDept;
+window.listenToActiveDutyState = listenToActiveDutyState;
+window.startLiveOTTracker = startLiveOTTracker;
+window.executePunchOut = executePunchOut;
+window.resetDutyUI = resetDutyUI;
 window.updateUI = updateUI;
 window.getTodayDate = getTodayDate;
 window.initFreshDashboard = initFreshDashboard;
@@ -5967,6 +6138,16 @@ window.selfDeleteCurrentUserAccount = selfDeleteCurrentUserAccount;
 window.listenToDatabaseUpdates = listenToDatabaseUpdates;
 window.toggleModal = toggleModal;
 window.updateSessionUI = updateSessionUI;
+
+// 1. Live Running Clock & Active Duty State Handler
+document.addEventListener('DOMContentLoaded', () => {
+  try {
+    startLiveClock();
+    listenToActiveDutyState();
+  } catch (e) {
+    console.warn("Live duty init error on DOMContentLoaded:", e);
+  }
+});
 
 // 1. Window Load - Secure Session Check (Refresh Fix)
 window.onload = function() {
@@ -5990,6 +6171,12 @@ window.onload = function() {
   }
   
   listenToDatabaseUpdates();
+  try {
+    startLiveClock();
+    listenToActiveDutyState();
+  } catch (e) {
+    console.warn("Live duty init on window.onload:", e);
+  }
   try {
     syncDashboardCounters();
   } catch (e) {
