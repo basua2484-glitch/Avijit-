@@ -5808,22 +5808,16 @@ function executeGatePunchIn() {
     .catch(err => alert("Database Error: " + err.message));
 }
 
-// 1. Direct Modal Trigger & Force UI Fix
+// 1. Open Modal with Auto-Formatted Time Text
 function openDeptAssignModal() {
   const modal = document.getElementById('deptAssignModal');
-  
-  if (!modal) {
-    alert("Modal Error: HTML Element 'deptAssignModal' missing in index.html!");
-    return;
-  }
+  if (!modal) return alert("Modal element missing!");
 
-  // Auto-fill current time in Time Picker
-  const now = new Date();
-  const timeStr = now.toTimeString().substring(0, 5);
-  const timeInput = document.getElementById('inputDeptTime');
-  if (timeInput) timeInput.value = timeStr;
+  // Current time text format (Clock popup bypass)
+  const currentTimeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const timeInput = document.getElementById('inputDeptTimeText') || document.getElementById('inputDeptTime');
+  if (timeInput) timeInput.value = currentTimeString;
 
-  // Show Popup Modal
   modal.style.display = 'flex';
 }
 
@@ -5832,21 +5826,28 @@ function closeDeptModal() {
   if (modal) modal.style.display = 'none';
 }
 
-// 2. Save Department Duty Details & Sync Realtime Database
+// 2. Save Sub-Department/Ward Area into Realtime Database
 function saveDepartmentAllocation() {
-  const deptNameEl = document.getElementById('inputDeptName');
-  const deptTimeEl = document.getElementById('inputDeptTime');
-  const deptName = deptNameEl ? deptNameEl.value : 'Hostel Maintenance';
-  const deptTime = deptTimeEl ? deptTimeEl.value : new Date().toTimeString().substring(0, 5);
+  const categoryEl = document.getElementById('inputDeptCategory') || document.getElementById('inputDeptName');
+  const specificAreaEl = document.getElementById('inputSpecificArea');
+  const timeInputEl = document.getElementById('inputDeptTimeText') || document.getElementById('inputDeptTime');
+
+  const category = categoryEl ? categoryEl.value : 'Hostel Maintenance';
+  const specificArea = (specificAreaEl ? specificAreaEl.value.trim() : '') || 'General Area';
+  const dutyTimeNote = timeInputEl ? timeInputEl.value : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  const fullDeptName = `${category} - ${specificArea}`;
 
   const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
   const today = getTodayDate();
 
-  const updateData = {
-    assignedDepartment: deptName,
-    departmentAssignedTime: deptTime,
+  const payload = {
+    assignedDepartment: fullDeptName,
+    departmentCategory: category,
+    specificWardArea: specificArea,
+    departmentAssignedTime: dutyTimeNote,
     status: 'ON_DUTY'
   };
 
@@ -5854,40 +5855,50 @@ function saveDepartmentAllocation() {
 
   if (!db) {
     closeDeptModal();
+    const deptDisplay = document.getElementById('textDeptDisplay');
+    if (deptDisplay) deptDisplay.innerText = fullDeptName;
+    const currentDeptDisplay = document.getElementById('textCurrentDept');
+    if (currentDeptDisplay) currentDeptDisplay.innerText = fullDeptName;
+
+    const timeDisplay = document.getElementById('textTimeNoteDisplay');
+    if (timeDisplay) timeDisplay.innerText = dutyTimeNote;
+    const assignedTimeDisplay = document.getElementById('textAssignedTime');
+    if (assignedTimeDisplay) assignedTimeDisplay.innerText = dutyTimeNote;
+
     const dutyStatusText = document.getElementById('textDutyStatus');
     if (dutyStatusText) {
       dutyStatusText.innerText = 'ON DUTY (ACTIVE)';
       dutyStatusText.style.color = '#4ade80';
     }
-    setElementText('textDeptDisplay', deptName);
-    setElementText('textCurrentDept', deptName);
-    setElementText('textTimeNoteDisplay', deptTime);
-    setElementText('textAssignedTime', deptTime);
-    alert(`✓ Department Duty Saved!\nDept: ${deptName}\nAssigned Time: ${deptTime}`);
+
+    alert(`✓ Duty Assigned Successfully!\nLocation: ${fullDeptName}\nTime: ${dutyTimeNote}`);
     return;
   }
 
-  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update(updateData)
+  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update(payload)
     .then(() => {
       closeDeptModal();
-      
-      // Update UI elements dynamically
+
+      // UI Screen Updates
+      const deptDisplay = document.getElementById('textDeptDisplay');
+      if (deptDisplay) deptDisplay.innerText = fullDeptName;
+      const currentDeptDisplay = document.getElementById('textCurrentDept');
+      if (currentDeptDisplay) currentDeptDisplay.innerText = fullDeptName;
+
+      const timeDisplay = document.getElementById('textTimeNoteDisplay');
+      if (timeDisplay) timeDisplay.innerText = dutyTimeNote;
+      const assignedTimeDisplay = document.getElementById('textAssignedTime');
+      if (assignedTimeDisplay) assignedTimeDisplay.innerText = dutyTimeNote;
+
       const dutyStatusText = document.getElementById('textDutyStatus');
       if (dutyStatusText) {
         dutyStatusText.innerText = 'ON DUTY (ACTIVE)';
         dutyStatusText.style.color = '#4ade80';
       }
 
-      setElementText('textDeptDisplay', deptName);
-      setElementText('textCurrentDept', deptName);
-      setElementText('textTimeNoteDisplay', deptTime);
-      setElementText('textAssignedTime', deptTime);
-
-      alert(`✓ Department Duty Saved!\nDept: ${deptName}\nAssigned Time: ${deptTime}`);
+      alert(`✓ Duty Assigned Successfully!\nLocation: ${fullDeptName}\nTime: ${dutyTimeNote}`);
     })
-    .catch((err) => {
-      alert("Database Save Error: " + err.message);
-    });
+    .catch((err) => alert("Save Error: " + err.message));
 }
 
 // Live Clock & Running OT State Variables
