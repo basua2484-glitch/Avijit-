@@ -5524,6 +5524,11 @@ function updateSessionUI(userId, userObj = null) {
     } catch (e) {
       console.warn("loadEmployeePersonalData error:", e);
     }
+    try {
+      renderDashboardMetrics(user.id, user.role);
+    } catch (e) {
+      console.warn("renderDashboardMetrics error:", e);
+    }
   }
 }
 
@@ -5695,6 +5700,82 @@ function setElementText(id, value) {
   if (el) el.innerText = value;
 }
 
+// Dynamic Dashboard Counters Setup
+function renderDashboardMetrics(loggedInUserId, userRole) {
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (!db) return;
+
+  const roleStr = String(userRole || '').toUpperCase().trim();
+  const isAdminRole = (roleStr === 'SUPER ADMIN' || roleStr === 'SUPER_ADMIN' || roleStr === 'MANAGER' || roleStr === 'ADMIN');
+
+  if (isAdminRole) {
+    // 👑 ADMIN VIEW: Total System Metrics
+    db.ref('hostel_mess_data').on('value', (snapshot) => {
+      const data = snapshot.val() || {};
+      const users = data.users || {};
+      const roster = data.roster || {};
+      const punches = data.punches || {};
+
+      let totalMembers = Object.keys(users).length;
+      let onDuty = 0, lunch = 0, dinner = 0, presentToday = 0, totalOT = 0;
+
+      Object.values(roster).forEach(r => {
+        if (r && (r.status === 'ON' || r.shift === 'ON_DUTY')) onDuty++;
+        if (r && (r.lunch === true || r.lunchCount > 0 || r.mealType === 'LUNCH')) lunch++;
+        if (r && (r.dinner === true || r.dinnerCount > 0 || r.mealType === 'DINNER')) dinner++;
+      });
+
+      const today = getTodayDate();
+      Object.values(punches).forEach(p => {
+        if (p && (p.date === today || (p[today] && (p[today].punchedIn || p[today].date === today)))) {
+          presentToday++;
+          const otVal = p.otHours || (p[today] && p[today].otHours) || 0;
+          totalOT += Number(otVal || 0);
+        } else if (p && p.punchedIn) {
+          presentToday++;
+          totalOT += Number(p.otHours || 0);
+        }
+      });
+
+      updateUI(totalMembers, onDuty, lunch, dinner, presentToday, totalOT.toFixed(1) + 'h');
+    });
+
+  } else {
+    // 👤 EMPLOYEE/RESIDENT VIEW: Individual Data Only
+    if (!loggedInUserId) return;
+
+    db.ref(`hostel_mess_data/roster/${loggedInUserId}`).on('value', (rosterSnap) => {
+      const r = rosterSnap.val() || {};
+      const today = getTodayDate();
+      
+      db.ref(`hostel_mess_data/punches/${loggedInUserId}/${today}`).on('value', (punchSnap) => {
+        const p = punchSnap.val() || {};
+
+        let myOnDuty = (r.status === 'ON' || r.shift === 'ON_DUTY') ? 1 : 0;
+        let myLunch = (r.lunch === true || r.lunchCount > 0 || r.mealType === 'LUNCH') ? 1 : 0;
+        let myDinner = (r.dinner === true || r.dinnerCount > 0 || r.mealType === 'DINNER') ? 1 : 0;
+        let myPresent = (p.punchedIn) ? 1 : 0;
+        let myOT = Number(p.otHours || 0).toFixed(1) + 'h';
+
+        updateUI(1, myOnDuty, myLunch, myDinner, myPresent, myOT);
+      });
+    });
+  }
+}
+
+function updateUI(members, duty, lunch, dinner, present, ot) {
+  setElementText('totalMembersEl', members);
+  setElementText('onDutyNowEl', duty);
+  setElementText('lunchPlatesEl', lunch);
+  setElementText('dinnerPlatesEl', dinner);
+  setElementText('presentTodayEl', present);
+  setElementText('totalOtEl', ot);
+}
+
+function getTodayDate() {
+  return new Date().toISOString().split('T')[0];
+}
+
 // Duplicate Auto-Generated Users Sweep Function
 function cleanupDuplicateResidents() {
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
@@ -5831,6 +5912,9 @@ window.loadAppUsers = loadAppUsers;
 window.deleteMemberByUniqueKey = deleteMemberByUniqueKey;
 window.superAdminDeleteEmployee = superAdminDeleteEmployee;
 window.loadEmployeePersonalData = loadEmployeePersonalData;
+window.renderDashboardMetrics = renderDashboardMetrics;
+window.updateUI = updateUI;
+window.getTodayDate = getTodayDate;
 window.initFreshDashboard = initFreshDashboard;
 window.setElementText = setElementText;
 window.handleApprovePendingUser = handleApprovePendingUser;
