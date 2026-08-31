@@ -1559,7 +1559,41 @@
       </div>
     </div>
 
-    <!-- Bottom Floating Duty Assignment Sheet (Gemini Chat Input Style) -->
+    <!-- ASSIGN DEPARTMENT / OT DUTY MODAL -->
+    <div id="assignDeptModal" style="display: none; background: rgba(0,0,0,0.8); position: fixed; bottom: 0; left: 0; right: 0; padding: 15px; border-top-left-radius: 20px; border-top-right-radius: 20px; border-top: 1px solid #1e293b; z-index: 999999; box-shadow: 0 -10px 30px rgba(0,0,0,0.8);">
+      
+      <!-- Modal Header -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h4 style="color: #38bdf8; margin: 0; font-size: 16px; font-weight: bold;">📝 Assign Department / OT Duty</h4>
+        <span onclick="document.getElementById('assignDeptModal').style.display='none'" style="color: #94a3b8; font-size: 20px; cursor: pointer; padding: 0 5px;">&times;</span>
+      </div>
+
+      <!-- Radio Button Selector Row -->
+      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <!-- Regular Duty Radio -->
+        <label style="flex: 1; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="radio" name="dutyType" id="radioRegularDuty" checked style="accent-color: #0284c7;">
+          <span>Regular Dept Duty</span>
+        </label>
+
+        <!-- OT Duty Radio -->
+        <label style="flex: 1; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+          <input type="radio" name="dutyType" id="radioOtDuty" style="accent-color: #0284c7;">
+          <span>OT Specific Dept</span>
+        </label>
+      </div>
+
+      <!-- Input Field & Save Button Row -->
+      <div style="display: flex; gap: 10px;">
+        <input type="text" id="deptInputText" placeholder="Type Department Name (e.g. ICU)" onkeydown="if(event.key==='Enter') processDutySave()" style="flex: 1; background: #e2e8f0; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; outline: none;">
+        <button id="btnSaveDutyModal" onclick="processDutySave()" style="background: #0284c7; color: #ffffff; border: none; padding: 12px 18px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+          Save Duty ➔
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Bottom Floating Duty Assignment Sheet (Fallback / Fast Entry) -->
     <div id="deptAssignSheet" style="display:none; position:fixed; bottom:0; left:0; width:100%; background:#1e293b; border-top:2px solid #38bdf8; border-top-left-radius:18px; border-top-right-radius:18px; box-shadow:0 -10px 30px rgba(0,0,0,0.8); z-index:999999; padding:16px; box-sizing:border-box;">
       
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -1569,9 +1603,9 @@
 
       <!-- Live Typing Box -->
       <div style="display:flex; gap:8px; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:12px; padding:6px 12px;">
-        <input type="text" id="customDeptInput" onkeydown="if(event.key==='Enter') saveDepartmentAllocation()" placeholder="Type Department Name (e.g. ICU Ward 2)..." style="flex:1; background:transparent; border:none; color:#fff; font-size:15px; outline:none; padding:8px 0;" />
+        <input type="text" id="customDeptInput" onkeydown="if(event.key==='Enter') processDutySave()" placeholder="Type Department Name (e.g. ICU Ward 2)..." style="flex:1; background:transparent; border:none; color:#fff; font-size:15px; outline:none; padding:8px 0;" />
         
-        <button onclick="saveDepartmentAllocation()" style="background:#0284c7; color:#fff; border:none; padding:10px 16px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:4px;">
+        <button onclick="processDutySave()" style="background:#0284c7; color:#fff; border:none; padding:10px 16px; border-radius:8px; font-weight:bold; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:4px;">
           Save ➔
         </button>
       </div>

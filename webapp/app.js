@@ -5810,13 +5810,16 @@ function executeGatePunchIn() {
 
 // 1. Open Bottom Sheet Interface
 function openDeptAssignModal() {
-  const sheet = document.getElementById('deptAssignSheet');
-  if (!sheet) return alert("Sheet element missing in HTML!");
+  const modal = document.getElementById('assignDeptModal') || document.getElementById('deptAssignSheet');
+  if (!modal) return alert("Sheet element missing in HTML!");
 
-  const inputField = document.getElementById('customDeptInput');
+  const inputField = document.getElementById('deptInputText') || document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
-  sheet.style.display = 'block';
+  const regularRadio = document.getElementById('radioRegularDuty');
+  if (regularRadio) regularRadio.checked = true;
+
+  modal.style.display = 'block';
 
   // Smooth Focus on Input for Instant Typing
   setTimeout(() => {
@@ -5825,6 +5828,8 @@ function openDeptAssignModal() {
 }
 
 function closeDeptSheet() {
+  const modal = document.getElementById('assignDeptModal');
+  if (modal) modal.style.display = 'none';
   const sheet = document.getElementById('deptAssignSheet');
   if (sheet) sheet.style.display = 'none';
 }
