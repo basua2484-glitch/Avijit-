@@ -6457,6 +6457,159 @@ function deleteRecord(uid, date) {
 
 const deleteMasterRecord = deleteRecord;
 
+// =========================================================================
+// REST API BACKEND INTEGRATION ENGINE (API_BASE & PUNCH IN/OUT CLIENT)
+// =========================================================================
+
+const API_BASE = "http://localhost:5000/api";
+const EMPLOYEE_ID = "EMP6063"; // Dynamic Logged-in User ID
+
+// 1. Live Clock
+function updateClock() {
+  const clockEl = document.getElementById('time-display') || 
+                  document.getElementById('liveClockDisplay') ||
+                  document.getElementById('liveClockTime') ||
+                  document.getElementById('textLiveClock');
+  if (clockEl) {
+    clockEl.innerText = new Date().toLocaleTimeString('en-US');
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// 2. Initial Data Load (Page load par current status aur logs lana)
+async function fetchCurrentStatus() {
+  try {
+    const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+    const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+    const activeEmpId = currentUser ? currentUser.uid : (currentLocalUser ? (currentLocalUser.employeeId || currentLocalUser.id) : EMPLOYEE_ID);
+    
+    const res = await fetch(`${API_BASE}/status/${activeEmpId}`);
+    const data = await res.json();
+    
+    if (data.isPunchedIn) {
+      updateUIOnPunchIn(data.punchInTime);
+    } else if (data.shiftCompleted) {
+      updateUIOnPunchOut();
+    }
+  } catch (err) {
+    console.warn("Status fetch error (REST API offline/unreachable, fallback to Firebase realtime):", err);
+  }
+}
+
+// 3. API Call: Punch In
+async function punchIn() {
+  try {
+    const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+    const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+    const activeEmpId = currentUser ? currentUser.uid : (currentLocalUser ? (currentLocalUser.employeeId || currentLocalUser.id) : EMPLOYEE_ID);
+
+    const response = await fetch(`${API_BASE}/punch-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: activeEmpId, timestamp: new Date() })
+    });
+    
+    const result = await response.json();
+    if (result.success) {
+      updateUIOnPunchIn(result.log.punchInTime);
+    }
+  } catch (err) {
+    console.warn("Punch In REST call fallback to Firebase:", err);
+    if (typeof executeGatePunchIn === 'function') {
+      executeGatePunchIn();
+    } else {
+      alert("Punch In Failed! Check connection.");
+    }
+  }
+}
+
+// 4. API Call: Punch Out
+async function punchOut() {
+  try {
+    const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
+    const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
+    const activeEmpId = currentUser ? currentUser.uid : (currentLocalUser ? (currentLocalUser.employeeId || currentLocalUser.id) : EMPLOYEE_ID);
+
+    const response = await fetch(`${API_BASE}/punch-out`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: activeEmpId, timestamp: new Date() })
+    });
+
+    const result = await response.json();
+    if (result.success) {
+      updateUIOnPunchOut();
+    }
+  } catch (err) {
+    console.warn("Punch Out REST call fallback to Firebase:", err);
+    if (typeof executePunchOut === 'function') {
+      executePunchOut();
+    } else {
+      alert("Punch Out Failed!");
+    }
+  }
+}
+
+// Helper Functions for UI State
+function updateUIOnPunchIn(time) {
+  const statusText = document.getElementById('status-text') || document.getElementById('textDutyStatusMain') || document.getElementById('textDutyStatus');
+  if (statusText) {
+    statusText.innerText = "PUNCHED IN";
+    statusText.classList.add('punched');
+    statusText.style.color = '#4ade80';
+  }
+  
+  const btnIn = document.getElementById('btn-in') || document.getElementById('btn-employee-punch-in');
+  if (btnIn) btnIn.disabled = true;
+
+  const btnOut = document.getElementById('btn-out') || document.getElementById('btn-employee-punch-out');
+  if (btnOut) btnOut.disabled = false;
+
+  const timeFormatted = time ? (time.includes(':') && !time.includes('T') ? time : new Date(time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })) : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const punchLogTime = document.getElementById('punch-log-time') || document.getElementById('textPunchInDisplay') || document.getElementById('duty-in-time');
+  if (punchLogTime) punchLogTime.innerText = timeFormatted;
+
+  const dutyBadge = document.getElementById('textDutyStatusBadge') || document.getElementById('resident-punch-status-badge');
+  if (dutyBadge) {
+    dutyBadge.innerText = 'ON DUTY (ACTIVE)';
+    dutyBadge.style.background = '#15803d';
+    dutyBadge.style.color = '#ffffff';
+  }
+}
+
+function updateUIOnPunchOut() {
+  const statusText = document.getElementById('status-text') || document.getElementById('textDutyStatusMain') || document.getElementById('textDutyStatus');
+  if (statusText) {
+    statusText.innerText = "NOT PUNCHED IN";
+    statusText.classList.remove('punched');
+    statusText.style.color = '#f87171';
+  }
+
+  const shiftBadge = document.getElementById('shift-badge') || document.getElementById('shift-badge-indicator');
+  if (shiftBadge) shiftBadge.style.display = "inline-block";
+
+  const btnIn = document.getElementById('btn-in') || document.getElementById('btn-employee-punch-in');
+  if (btnIn) btnIn.disabled = false;
+
+  const btnOut = document.getElementById('btn-out') || document.getElementById('btn-employee-punch-out');
+  if (btnOut) btnOut.disabled = true;
+
+  const dutyBadge = document.getElementById('textDutyStatusBadge') || document.getElementById('resident-punch-status-badge');
+  if (dutyBadge) {
+    dutyBadge.innerText = 'OFF DUTY';
+    dutyBadge.style.background = '#be123c';
+    dutyBadge.style.color = '#ffffff';
+  }
+}
+
+// Load initial status on start
+try {
+  fetchCurrentStatus();
+} catch (e) {
+  console.warn("fetchCurrentStatus init:", e);
+}
+
 // 1. Two-Way Realtime Listener (Alias / Fallback)
 function initTwoWaySyncEngine() {
   initLogsAndReportSyncEngine();
@@ -7113,6 +7266,12 @@ window.calculateReportSummaryCards = calculateReportSummaryCards;
 window.savePunchFromResidentHome = savePunchFromResidentHome;
 window.deleteRecordFromReport = deleteRecordFromReport;
 window.updateResidentHomeUI = updateResidentHomeUI;
+window.updateClock = updateClock;
+window.fetchCurrentStatus = fetchCurrentStatus;
+window.punchIn = punchIn;
+window.punchOut = punchOut;
+window.updateUIOnPunchIn = updateUIOnPunchIn;
+window.updateUIOnPunchOut = updateUIOnPunchOut;
 
 // 1. Live Running Clock & Active Duty State Handler
 document.addEventListener('DOMContentLoaded', () => {
