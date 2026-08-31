@@ -6568,8 +6568,34 @@ async function punchOut() {
   }
 }
 
+// Firebase Realtime DB instance & Duty updater
+function updateDutyInFirebase(isPunchedIn) {
+  try {
+    const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+    if (!db) {
+      console.warn("Firebase Database is not initialized for updateDutyInFirebase");
+      return;
+    }
+    const adminStatsRef = db.ref('hostel_mess_data/admin_stats');
+
+    // Firebase mein live status write karein
+    adminStatsRef.update({
+      liveOnDuty: isPunchedIn ? 1 : 0,
+      dinnerPlates: 1,       // Apne logic ke hisaab se update karein
+      currentRate: 50.00
+    }).then(() => {
+      console.log("Database updated successfully!");
+    }).catch((error) => {
+      console.error("Firebase update failed:", error);
+    });
+  } catch (err) {
+    console.error("updateDutyInFirebase error:", err);
+  }
+}
+
 // Helper Functions for UI State
 function updateUIOnPunchIn(time) {
+  updateDutyInFirebase(true);
   const statusText = document.getElementById('status-text') || document.getElementById('textDutyStatusMain') || document.getElementById('textDutyStatus');
   if (statusText) {
     statusText.innerText = "PUNCHED IN";
@@ -6596,6 +6622,7 @@ function updateUIOnPunchIn(time) {
 }
 
 function updateUIOnPunchOut() {
+  updateDutyInFirebase(false);
   const statusText = document.getElementById('status-text') || document.getElementById('textDutyStatusMain') || document.getElementById('textDutyStatus');
   if (statusText) {
     statusText.innerText = "NOT PUNCHED IN";
@@ -7291,6 +7318,36 @@ window.punchIn = punchIn;
 window.punchOut = punchOut;
 window.updateUIOnPunchIn = updateUIOnPunchIn;
 window.updateUIOnPunchOut = updateUIOnPunchOut;
+window.updateDutyInFirebase = updateDutyInFirebase;
+
+// Page Load hone par Firebase Listener attach karein
+window.addEventListener('DOMContentLoaded', () => {
+  try {
+    const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+    if (db) {
+      const adminStatsRef = db.ref('hostel_mess_data/admin_stats');
+
+      // Realtime Data Fetch (Refresh hone par bhi data rahega)
+      adminStatsRef.on('value', (snapshot) => {
+        const data = snapshot.val();
+
+        if (data) {
+          // Screen ke Numbers update karein (ID match kar lein)
+          const liveOnDutyEl = document.getElementById('liveOnDutyCount');
+          if (liveOnDutyEl) liveOnDutyEl.innerText = data.liveOnDuty !== undefined ? data.liveOnDuty : 0;
+
+          const dinnerPlatesEl = document.getElementById('dinnerPlatesCount');
+          if (dinnerPlatesEl) dinnerPlatesEl.innerText = data.dinnerPlates !== undefined ? data.dinnerPlates : 0;
+
+          const currentRateEl = document.getElementById('currentRate');
+          if (currentRateEl) currentRateEl.innerText = `₹${data.currentRate !== undefined ? data.currentRate : '0.00'}`;
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("admin_stats listener init error:", err);
+  }
+});
 
 // 1. Live Running Clock & Active Duty State Handler
 document.addEventListener('DOMContentLoaded', () => {
