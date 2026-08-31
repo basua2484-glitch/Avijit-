@@ -19,20 +19,20 @@
 <body>
   <div id="app">
     <!-- Top Global Header -->
-    <header class="app-header">
+    <header class="app-header" style="position: relative; z-index: 50; margin-bottom: 8px;">
       <div class="header-content">
-        <div class="user-badge" id="header-user-badge">
-          <div class="avatar" id="header-avatar">AD</div>
+        <div class="user-badge" id="header-user-badge" style="display:flex; align-items:center; gap:12px;">
+          <div class="avatar" id="header-avatar" style="background:#0284c7; color:#ffffff; font-weight:800; width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px;">AB</div>
           <div class="user-info">
-            <h2 id="header-user-name">Super Admin</h2>
-            <span class="user-sub" id="header-user-role">ADMIN • ROOM Admin Office</span>
+            <h2 id="header-user-name" style="margin:0; font-size:16px; font-weight:700; color:#0f172a;">Avijit Basu</h2>
+            <span class="user-sub" id="header-user-role" style="font-size:11px; font-weight:600; color:#64748b;">SUPER ADMIN • Dept: Admin • Office 6063</span>
           </div>
         </div>
-        <div class="header-actions">
-          <button class="btn btn-secondary btn-sm" id="btn-header-refer" title="Refer & Invite Friend via WhatsApp" style="display:flex; align-items:center; gap:4px; padding:6px 10px; font-size:12px; font-weight:600; background:rgba(255,255,255,0.15); color:#FFFFFF; border:1px solid rgba(255,255,255,0.25);">
+        <div class="header-actions" style="display:flex; align-items:center; gap:8px;">
+          <button class="btn btn-secondary btn-sm" id="btn-header-refer" title="Refer & Invite Friend via WhatsApp" style="display:flex; align-items:center; gap:4px; padding:6px 10px; font-size:12px; font-weight:600; background:#f1f5f9; color:#0f172a; border:1px solid #cbd5e1; border-radius:8px;">
             🎁 Refer Friend
           </button>
-          <span class="role-tag" id="current-role-badge">ADMIN</span>
+          <span class="role-tag" id="current-role-badge" style="background:#fef3c7; color:#92400e; font-weight:800; font-size:11px; padding:4px 10px; border-radius:12px;">SUPER ADMIN</span>
           <button class="icon-btn" id="btn-switch-user" title="Switch User / Switch Account">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
           </button>
@@ -170,16 +170,15 @@
             <span class="badge badge-alert" id="resident-punch-status-badge"><span id="textDutyStatusBadge">NOT PUNCHED IN</span></span>
           </div>
 
-          <div class="punch-btn-group">
-            <button onclick="executeGatePunchIn()" class="btn-punch-in" id="btn-employee-punch-in" style="background:#2563EB;">
-              ▶ Gate Punch In
+          <div class="punch-btn-group" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:10px; margin-top:14px;">
+            <button onclick="punchIn()" class="btn-punch-in" id="btn-employee-punch-in" style="background:#2563EB; color:#FFFFFF; font-weight:700; border:none; padding:12px 8px; border-radius:10px; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 4px 12px rgba(37,99,235,0.3);">
+              ▶ Punch In
             </button>
-            <button onclick="openDeptAssignModal()" id="btn-assign-dept" style="background:#7c3aed; color:#fff; border:none; padding:12px; border-radius:10px; cursor:pointer;">
+            <button onclick="openDeptAssignModal()" id="btn-assign-dept" style="background:#7c3aed; color:#FFFFFF; font-weight:700; border:none; padding:12px 8px; border-radius:10px; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 4px 12px rgba(124,58,237,0.3);">
               🏢 Assign Dept Duty
             </button>
-            <button class="btn-punch-out" id="btn-employee-punch-out" onclick="executePunchOut()">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-              Punch Out (End Duty)
+            <button class="btn-punch-out" id="btn-employee-punch-out" onclick="punchOut()" style="background:#1e293b; color:#f87171; border:1px solid #475569; font-weight:700; padding:12px 8px; border-radius:10px; cursor:pointer; font-size:13px; display:flex; align-items:center; justify-content:center; gap:6px;">
+              ⏹ Punch Out
             </button>
           </div>
 
