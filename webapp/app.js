@@ -5808,18 +5808,18 @@ function executeGatePunchIn() {
     .catch(err => alert("Database Error: " + err.message));
 }
 
-// 1. Open Bottom Sheet Interface
+// 1. Open Bottom Sheet Interface / Modal
 function openDeptAssignModal() {
   const modal = document.getElementById('assignDeptModal') || document.getElementById('deptAssignSheet');
-  if (!modal) return alert("Sheet element missing in HTML!");
+  if (!modal) return alert("Modal element missing in HTML!");
 
-  const inputField = document.getElementById('deptInputName') || document.getElementById('deptInputText') || document.getElementById('customDeptInput');
+  const inputField = document.getElementById('manualDeptInput') || document.getElementById('deptInputName') || document.getElementById('deptInputText') || document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
-  const regularRadio = document.getElementById('radioRegularDuty');
+  const regularRadio = document.getElementById('radioRegularDuty') || document.querySelector('input[name="dutyType"][value="Regular"]');
   if (regularRadio) regularRadio.checked = true;
 
-  modal.style.display = 'block';
+  modal.style.display = 'flex';
 
   // Smooth Focus on Input for Instant Typing
   setTimeout(() => {
@@ -5835,6 +5835,10 @@ function closeDeptSheet() {
 }
 
 function closeDeptModal() {
+  closeDeptSheet();
+}
+
+function closeDutyModal() {
   closeDeptSheet();
 }
 
@@ -6249,60 +6253,56 @@ document.addEventListener('click', function(e) {
 });
 
 // 2. PROCESS AND MERGE DUTY DATA & SAVE DUTY HANDLER
-function saveDuty() {
-  // 1. Correct Input element target karein
-  const inputElement = document.getElementById('deptInputName') || 
+function saveManualDuty() {
+  // 1. Manually typed input box ka data fetch karein
+  const inputElement = document.getElementById('manualDeptInput') || 
+                       document.getElementById('deptInputName') || 
                        document.getElementById('deptInputText') || 
                        document.getElementById('customDeptInput');
-  
-  // 2. Value get karke whitespace remove karein
-  const deptValue = inputElement ? inputElement.value.trim() : "";
+  const deptName = inputElement ? inputElement.value.trim() : "";
 
-  // 3. Validation Check
-  if (!deptValue) {
+  // 2. Check karein ki user ne konsa radio button select kiya hai
+  const dutyTypeRadio = document.querySelector('input[name="dutyType"]:checked');
+  const dutyType = dutyTypeRadio ? dutyTypeRadio.value : (document.getElementById('radioOtDuty')?.checked ? 'OT' : 'Regular');
+  const isOtDuty = (dutyType === 'OT') || (dutyType === 'OT_DEPT');
+
+  // 3. Agar box khali hai, toh error show karein
+  if (deptName === "") {
     alert("Kripya Department ka naam enter karein.");
     return;
   }
 
-  // 4. Input sahi hone par aage ka logic run karein
-  console.log("Saved Department:", deptValue);
+  // 4. Update UI displays
+  const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
+  if (isOtDuty) {
+    if (typeof setVal === 'function') {
+      setVal('textOtTargetDeptDisplay', deptName);
+      setVal('textOtDeptDisplay', deptName);
+      setVal('textOtDept', deptName);
+      setVal('otTargetDeptEl', deptName);
+    }
+  } else {
+    if (typeof setVal === 'function') {
+      setVal('textDeptDisplay', deptName);
+      setVal('textTimeNoteDisplay', timeNow);
+    }
+    const dutyDeptEl = document.getElementById('textAssignedDept') || document.getElementById('resident-duty-dept');
+    if (dutyDeptEl) dutyDeptEl.innerText = deptName;
+  }
 
-  // Check if this is an OT assignment
-  const isOtDuty = document.getElementById('radioOtDuty')?.checked || 
-                   document.getElementById('chkOtDuty')?.checked || 
-                   (document.querySelector('input[name="deptTypeSelection"]:checked')?.value === 'OT_DEPT') || false;
-
-  // Fetch Employee Details
+  // Fetch Employee Details for backend/cloud sync
   const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = currentUser ? currentUser.uid : (currentLocalUser ? (currentLocalUser.employeeId || currentLocalUser.id) : 'EMP6063');
   const userName = currentUser ? (currentUser.displayName || 'Avijit Basu') : (currentLocalUser ? currentLocalUser.name : 'Avijit Basu');
   const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
-  const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
-
-  // Update local UI immediately
-  if (isOtDuty) {
-    if (typeof setVal === 'function') {
-      setVal('textOtTargetDeptDisplay', deptValue);
-      setVal('textOtDeptDisplay', deptValue);
-      setVal('textOtDept', deptValue);
-      setVal('otTargetDeptEl', deptValue);
-    }
-  } else {
-    if (typeof setVal === 'function') {
-      setVal('textDeptDisplay', deptValue);
-      setVal('textTimeNoteDisplay', timeNow);
-    }
-    const dutyDeptEl = document.getElementById('textAssignedDept') || document.getElementById('resident-duty-dept');
-    if (dutyDeptEl) dutyDeptEl.innerText = deptValue;
-  }
 
   // Call REST Backend if available
   if (typeof API_BASE !== 'undefined') {
     fetch(`${API_BASE}/assign-dept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employeeId: userId, department: deptValue, isOtDuty: isOtDuty, timestamp: new Date() })
+      body: JSON.stringify({ employeeId: userId, department: deptName, isOtDuty: isOtDuty, timestamp: new Date() })
     }).catch(e => console.warn("Backend assign-dept sync:", e));
   }
 
@@ -6317,32 +6317,38 @@ function saveDuty() {
       lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
     };
     if (isOtDuty) {
-      payload.otTargetDepartment = deptValue;
+      payload.otTargetDepartment = deptName;
       payload.otDeptAssignedTime = timeNow;
     } else {
-      payload.assignedDepartment = deptValue;
+      payload.assignedDepartment = deptName;
       payload.departmentAssignedTime = timeNow;
     }
     recordRef.update(payload).catch(e => console.warn("Firebase update:", e));
   }
 
-  alert("Department Successfully Saved: " + deptValue);
+  // 4. Data successfully save hone ka confirmation
+  alert(`Success! ${dutyType} duty assigned for department: ${deptName}`);
 
-  // Input field reset karein aur modal close karein
+  // 5. Input box ko dobara khali kar dein aur modal close karein
   if (inputElement) inputElement.value = "";
+  const manualInput = document.getElementById('manualDeptInput');
+  if (manualInput) manualInput.value = '';
   const customInput = document.getElementById('customDeptInput');
   if (customInput) customInput.value = '';
   const deptInputText = document.getElementById('deptInputText');
   if (deptInputText) deptInputText.value = '';
+  const deptInputName = document.getElementById('deptInputName');
+  if (deptInputName) deptInputName.value = '';
 
-  const modal = document.getElementById('assignDeptModal') || document.querySelector('.modal');
-  if (modal) modal.style.display = 'none';
-  const sheet = document.getElementById('deptAssignSheet');
-  if (sheet) sheet.style.display = 'none';
+  closeDutyModal();
 }
 
-const processDutySave = saveDuty;
-const saveDutyAssignment = saveDuty;
+function saveDuty() {
+  saveManualDuty();
+}
+
+const processDutySave = saveManualDuty;
+const saveDutyAssignment = saveManualDuty;
 
 // Helper to Close Modal
 function closeDutyModal() {
@@ -7268,6 +7274,7 @@ window.initTwoWaySyncEngine = initTwoWaySyncEngine;
 window.initLogsAndReportSyncEngine = initLogsAndReportSyncEngine;
 window.initLiveClock = initLiveClock;
 window.openDeptAssignModal = openDeptAssignModal;
+window.saveManualDuty = saveManualDuty;
 window.saveDuty = saveDuty;
 window.saveDutyAssignment = saveDutyAssignment;
 window.saveDepartmentAllocation = saveDepartmentAllocation;

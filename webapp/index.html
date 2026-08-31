@@ -1559,35 +1559,50 @@
     </div>
 
     <!-- ASSIGN DEPARTMENT / OT DUTY MODAL -->
-    <div id="assignDeptModal" style="display: none; background: rgba(0,0,0,0.8); position: fixed; bottom: 0; left: 0; right: 0; padding: 15px; border-top-left-radius: 20px; border-top-right-radius: 20px; border-top: 1px solid #1e293b; z-index: 999999; box-shadow: 0 -10px 30px rgba(0,0,0,0.8);">
+    <div id="assignDeptModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999999; display: none; align-items: center; justify-content: center; padding: 15px;">
       
-      <!-- Modal Header -->
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h4 style="color: #38bdf8; margin: 0; font-size: 16px; font-weight: bold;">📝 Assign Department / OT Duty</h4>
-        <span onclick="document.getElementById('assignDeptModal').style.display='none'" style="color: #94a3b8; font-size: 20px; cursor: pointer; padding: 0 5px;">&times;</span>
-      </div>
+      <!-- HTML Structure for Manual Department Entry -->
+      <div class="modal-box" style="background: #1e293b; padding: 20px; border-radius: 12px; color: white; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid #334155; position: relative;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
+          <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #38bdf8;">
+            📝 Assign Department / OT Duty
+          </h3>
+          <span onclick="closeDutyModal()" style="color: #94a3b8; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;">&times;</span>
+        </div>
 
-      <!-- Radio Button Selector Row -->
-      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-        <!-- Regular Duty Radio -->
-        <label style="flex: 1; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="radio" name="dutyType" id="radioRegularDuty" checked style="accent-color: #0284c7;">
-          <span>Regular Dept Duty</span>
-        </label>
+        <!-- Duty Type Selection -->
+        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+          <label style="background: #0f172a; padding: 10px; border-radius: 8px; flex: 1; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; border: 1px solid #334155;">
+            <input type="radio" name="dutyType" id="radioRegularDuty" value="Regular" checked style="accent-color: #0284c7;"> Regular Dept Duty
+          </label>
+          <label style="background: #0f172a; padding: 10px; border-radius: 8px; flex: 1; cursor: pointer; font-size: 13px; display: flex; align-items: center; gap: 8px; border: 1px solid #334155;">
+            <input type="radio" name="dutyType" id="radioOtDuty" value="OT" style="accent-color: #0284c7;"> OT Specific Dept
+          </label>
+        </div>
 
-        <!-- OT Duty Radio -->
-        <label style="flex: 1; background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155; color: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
-          <input type="radio" name="dutyType" id="radioOtDuty" style="accent-color: #0284c7;">
-          <span>OT Specific Dept</span>
-        </label>
-      </div>
+        <!-- Manual Typing Input Box -->
+        <div class="modal-body" style="margin-bottom: 15px;">
+          <input 
+            type="text" 
+            id="manualDeptInput" 
+            placeholder="Department manually type karein..." 
+            onkeydown="if(event.key==='Enter') saveManualDuty()"
+            class="input-field"
+            style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; font-size: 14px;"
+          />
+        </div>
 
-      <!-- Input Field & Save Button Row -->
-      <div class="modal-body" style="display: flex; gap: 10px;">
-        <input type="text" id="deptInputName" placeholder="Department name enter karein (e.g. ICU)" onkeydown="if(event.key==='Enter') saveDuty()" class="input-field" style="flex: 1; background: #e2e8f0; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; outline: none;">
-        <button id="btnSaveDutyModal" type="button" onclick="saveDuty()" class="btn-save" style="background: #0284c7; color: #ffffff; border: none; padding: 12px 18px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+        <!-- Save Button -->
+        <button 
+          id="btnSaveDutyModal"
+          type="button"
+          onclick="saveManualDuty()" 
+          class="btn-save"
+          style="width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(2,132,199,0.3);">
           Save Duty ➔
         </button>
+
       </div>
 
     </div>
