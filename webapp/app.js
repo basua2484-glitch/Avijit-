@@ -5835,65 +5835,7 @@ function closeDeptModal() {
 
 // 2. Save Custom Department + Live Entry Time
 function saveDepartmentAllocation() {
-  const customInput = document.getElementById('customDeptInput');
-  const deptInput = customInput ? customInput.value.trim() : '';
-
-  if (!deptInput) {
-    alert("Kripya Department ka naam type karein!");
-    return;
-  }
-
-  // Auto-generate Exact Duty Entry Time
-  const now = new Date();
-  const entryTime = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-  const authUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
-  const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
-  const userId = authUser ? authUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
-  const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
-
-  const payload = {
-    assignedDepartment: deptInput,
-    departmentAssignedTime: entryTime,
-    status: 'ON_DUTY'
-  };
-
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-
-  if (!db) {
-    closeDeptSheet();
-    const deptDisplay = document.getElementById('textDeptDisplay');
-    if (deptDisplay) deptDisplay.innerText = deptInput;
-    const timeDisplay = document.getElementById('textTimeNoteDisplay');
-    if (timeDisplay) timeDisplay.innerText = entryTime;
-    if (typeof loadPunchesTable === 'function') loadPunchesTable();
-    if (typeof renderRecordsTable === 'function') renderRecordsTable();
-    alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
-    return;
-  }
-
-  db.ref(`hostel_mess_data/punches/${userId}/${today}`).update(payload)
-    .then(() => {
-      closeDeptSheet();
-
-      // UI Live Updates
-      const deptDisplay = document.getElementById('textDeptDisplay');
-      if (deptDisplay) deptDisplay.innerText = deptInput;
-
-      const timeDisplay = document.getElementById('textTimeNoteDisplay');
-      if (timeDisplay) timeDisplay.innerText = entryTime;
-
-      // Reload Table Logs if function exists
-      if (typeof loadPunchesTable === 'function') {
-        loadPunchesTable();
-      }
-      if (typeof renderRecordsTable === 'function') {
-        renderRecordsTable();
-      }
-
-      alert(`✓ Department Duty Saved!\nDept: ${deptInput}\nEntry Time: ${entryTime}`);
-    })
-    .catch((err) => alert("Error saving duty: " + err.message));
+  processDutySave();
 }
 
 // Live Clock & Running OT State Variables
@@ -6287,29 +6229,54 @@ function setVal(id, text) {
   if (el) el.innerText = text;
 }
 
-// 4. Duty Assign Handler (Separate Regular / OT + Employee Details)
-function saveDutyAssignment() {
-  const inputEl = document.getElementById('deptInputText') || document.getElementById('customDeptInput');
-  const isOtDuty = document.getElementById('radioOtDuty')?.checked || (document.querySelector('input[name="deptTypeSelection"]:checked')?.value === 'OT_DEPT');
+// =========================================================================
+// SMART DUTY ASSIGNMENT ENGINE (SEPARATE REGULAR / OT + EMPLOYEE DATA)
+// =========================================================================
+
+// 1. GUARANTEED "SAVE ➔" BUTTON TRIGGER
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('button');
+  // Trigger if button text contains 'Save' in duty assignment modal/sheet
+  if (btn && (btn.id === 'btnSaveDutyModal' || btn.getAttribute('onclick')?.includes('saveDepartmentAllocation') || btn.getAttribute('onclick')?.includes('saveDutyAssignment') || (btn.innerText.includes('Save') && btn.closest('#assignDeptModal, #deptAssignSheet, .modal')))) {
+    e.preventDefault();
+    processDutySave();
+  }
+});
+
+// 2. PROCESS AND MERGE DUTY DATA
+function processDutySave() {
+  // Find the input field inside the modal or sheet
+  const inputEl = document.getElementById('customDeptInput') ||
+                  document.getElementById('deptInputText') ||
+                  document.querySelector('.modal input[type="text"]') || 
+                  document.querySelector('input[placeholder*="Department"]');
+                  
   const deptValue = inputEl ? inputEl.value.trim() : '';
 
   if (!deptValue) {
-    alert("Kripya Department ka naam/number enter karein.");
+    alert("Kripya Department ka naam enter karein.");
     return;
   }
 
-  // Employee details fetch
+  // Check if this is an OT assignment
+  const isOtDuty = document.getElementById('radioOtDuty')?.checked || 
+                   document.getElementById('chkOtDuty')?.checked || 
+                   (document.querySelector('input[name="deptTypeSelection"]:checked')?.value === 'OT_DEPT') || false;
+
+  // Fetch Employee Details
   const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
   const userId = currentUser ? currentUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
   const userName = currentUser ? (currentUser.displayName || 'Avijit Basu') : (currentLocalUser ? currentLocalUser.name : 'Avijit Basu');
   const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
-  const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true });
+  
+  // Format Time (e.g., 09:30 PM)
+  const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
 
   const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-  const dbRef = db ? db.ref(`${PUNCHE_PATH}/${userId}/${today}`) : (firebase.database().ref(`${PUNCHE_PATH}/${userId}/${today}`));
+  const recordRef = db ? db.ref(`${PUNCHE_PATH}/${userId}/${today}`) : (firebase.database().ref(`${PUNCHE_PATH}/${userId}/${today}`));
 
-  // Base Payload with Employee Details
+  // BASE PAYLOAD: Employee Details
   let payload = {
     userId: userId,
     userName: userName,
@@ -6317,31 +6284,49 @@ function saveDutyAssignment() {
     lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
   };
 
-  // Separate Entry Logic: Regular Dept vs OT Dept
+  // 🔴 CRITICAL SEPARATION: Regular Duty vs OT Duty
   if (isOtDuty) {
-    payload.otTargetDepartment = deptValue;
-    payload.otDeptAssignedTime = timeNow;
+    payload.otTargetDepartment = deptValue;      // Sirf OT Dept update hoga
+    payload.otDeptAssignedTime = timeNow;        // Sirf OT Time update hoga
   } else {
-    payload.assignedDepartment = deptValue;
-    payload.departmentAssignedTime = timeNow;
+    payload.assignedDepartment = deptValue;      // Sirf Regular Dept update hoga
+    payload.departmentAssignedTime = timeNow;    // Sirf Regular Time update hoga
   }
 
-  // Save to Firebase Realtime Database
-  dbRef.update(payload)
+  // UPDATE FIREBASE (Merges new data without deleting existing columns)
+  recordRef.update(payload)
     .then(() => {
       alert("✓ Duty entry successfully save ho gayi!");
-      if (inputEl) inputEl.value = '';
+      // Success hone par Input clear karein aur Modal band karein
+      if (inputEl) inputEl.value = ''; 
       const customInput = document.getElementById('customDeptInput');
       if (customInput) customInput.value = '';
-      
-      // Close Modal Trigger
+      const deptInputText = document.getElementById('deptInputText');
+      if (deptInputText) deptInputText.value = '';
+
       const modal = document.getElementById('assignDeptModal') || document.querySelector('.modal');
       if (modal) modal.style.display = 'none';
       const sheet = document.getElementById('deptAssignSheet');
       if (sheet) sheet.style.display = 'none';
+
+      // Update UI displays if present
+      if (isOtDuty) {
+        setVal('textOtTargetDeptDisplay', deptValue);
+        setVal('textOtDeptDisplay', deptValue);
+        setVal('textOtDept', deptValue);
+        setVal('otTargetDeptEl', deptValue);
+      } else {
+        setVal('textDeptDisplay', deptValue);
+        setVal('textTimeNoteDisplay', timeNow);
+      }
     })
-    .catch((err) => alert("Save Error: " + err.message));
+    .catch((error) => {
+      console.error("Save Error:", error);
+      alert("Data save karne me error aayi: " + error.message);
+    });
 }
+
+const saveDutyAssignment = processDutySave;
 
 // Helper to Close Modal
 function closeDutyModal() {
@@ -6355,9 +6340,9 @@ function closeDeptSheet() {
   closeDutyModal();
 }
 
-// 5. Separate Column Table Renderer for Today's Logs
-function renderTodayLogs(rec) {
-  const tbody = document.getElementById('todayLogsTableBody') || document.getElementById('punchesTableBody');
+// 4. RENDER TABLE (Matches columns in 78984_2.jpg)
+function renderTodayLogsTable(rec) {
+  const tbody = document.getElementById('todayLogsTableBody') || document.getElementById('punchesTableBody') || document.querySelector('tbody');
   if (!tbody) return;
 
   if (!rec) {
@@ -6365,40 +6350,50 @@ function renderTodayLogs(rec) {
     return;
   }
 
-  // Separate Regular Dept & Time formatting
-  const regCell = rec.assignedDepartment 
-    ? `<div style="color:#38bdf8; font-weight:bold;">${rec.assignedDepartment}</div><small style="color:#94a3b8;">${rec.departmentAssignedTime || ''}</small>`
-    : '--';
+  // Column 1: Regular Dept & Time UI
+  const regDeptUI = rec.assignedDepartment 
+    ? `<span style="color:#38bdf8; font-weight:bold;">${rec.assignedDepartment}</span><br>
+       <small style="color:#94a3b8;">${rec.departmentAssignedTime || ''}</small>`
+    : `<span style="color:#64748b;">--</span>`;
 
-  // Separate OT Dept & Time formatting
-  const otCell = rec.otTargetDepartment 
-    ? `<div style="color:#f59e0b; font-weight:bold;">🔥 ${rec.otTargetDepartment}</div><small style="color:#94a3b8;">${rec.otDeptAssignedTime || ''}</small>`
-    : '--';
+  // Column 2: OT Dept & Time UI
+  const otDeptUI = rec.otTargetDepartment 
+    ? `<span style="color:#f59e0b; font-weight:bold;">${rec.otTargetDepartment}</span><br>
+       <small style="color:#94a3b8;">${rec.otDeptAssignedTime || ''}</small>`
+    : `<span style="color:#64748b;">--</span>`;
 
   tbody.innerHTML = `
     <tr style="border-bottom:1px solid #1e293b; font-size:12px;">
-      <!-- Employee Details -->
+      <!-- Employee Column -->
       <td style="padding:10px;">
-        <b style="color:#fff; display:block;">${rec.userName || 'Avijit Basu'}</b>
-        <small style="color:#64748b;">ID: ${rec.userId || 'SADM_001'}</small>
+        <b style="color:#fff; display:block;">${rec.userName || 'Employee'}</b>
+        <small style="color:#64748b;">ID: ${rec.userId || 'N/A'}</small>
       </td>
-      <!-- Regular Dept & Time -->
-      <td style="padding:10px;">${regCell}</td>
-      <!-- OT Dept & Time -->
-      <td style="padding:10px;">${otCell}</td>
+      
+      <!-- Regular Dept & Time Column -->
+      <td style="padding:10px;">${regDeptUI}</td>
+      
+      <!-- OT Dept & Time Column -->
+      <td style="padding:10px;">${otDeptUI}</td>
+      
       <!-- Punch In Time -->
-      <td style="padding:10px; color:#4ade80;">${rec.punchInTime || '--'}</td>
-      <!-- Action -->
+      <td style="padding:10px; color:#4ade80; font-weight:bold;">${rec.punchInTime || '--'}</td>
+      
+      <!-- Action (Delete / Manage) -->
       <td style="padding:10px; text-align:center;">
-        <button onclick="deleteRecord('${rec.userId || ''}', '${rec.date || ''}')" style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">Delete</button>
+        <button onclick="deleteRecord('${rec.userId || ''}', '${rec.date || ''}')" 
+                style="background:#ef4444; color:#fff; border:none; padding:4px 8px; border-radius:4px; cursor:pointer;">
+          Delete
+        </button>
       </td>
     </tr>`;
 }
 
-const renderTodayUserLogs = renderTodayLogs;
+const renderTodayLogs = renderTodayLogsTable;
+const renderTodayUserLogs = renderTodayLogsTable;
 const renderLoggedInUserTodayLogs = (rootPunches, currentUserId, today) => {
   const userRec = (rootPunches && rootPunches[currentUserId] && rootPunches[currentUserId][today]) ? rootPunches[currentUserId][today] : null;
-  renderTodayUserLogs(userRec);
+  renderTodayLogsTable(userRec);
 };
 
 // 6. Report Table
@@ -7052,9 +7047,13 @@ window.startLiveClock = startLiveClock;
 window.initRealtimeSync = initRealtimeSync;
 window.syncDutyStatusCard = syncDutyStatusCard;
 window.renderTodayUserLogs = renderTodayUserLogs;
+window.renderTodayLogsTable = renderTodayLogsTable;
+window.renderTodayLogs = renderTodayLogs;
 window.renderAllAttendanceReport = renderAllAttendanceReport;
 window.setVal = setVal;
 window.deleteRecord = deleteRecord;
+window.processDutySave = processDutySave;
+window.saveDutyAssignment = saveDutyAssignment;
 window.executeGatePunchIn = executeGatePunchIn;
 window.openDeptAssignModal = openDeptAssignModal;
 window.closeDeptModal = closeDeptModal;
