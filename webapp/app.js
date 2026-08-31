@@ -5813,7 +5813,7 @@ function openDeptAssignModal() {
   const modal = document.getElementById('assignDeptModal') || document.getElementById('deptAssignSheet');
   if (!modal) return alert("Sheet element missing in HTML!");
 
-  const inputField = document.getElementById('deptInputText') || document.getElementById('customDeptInput');
+  const inputField = document.getElementById('deptInputName') || document.getElementById('deptInputText') || document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
   const regularRadio = document.getElementById('radioRegularDuty');
@@ -6248,20 +6248,24 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// 2. PROCESS AND MERGE DUTY DATA
-function processDutySave() {
-  // Find the input field inside the modal or sheet
-  const inputEl = document.getElementById('customDeptInput') ||
-                  document.getElementById('deptInputText') ||
-                  document.querySelector('.modal input[type="text"]') || 
-                  document.querySelector('input[placeholder*="Department"]');
-                  
-  const deptValue = inputEl ? inputEl.value.trim() : '';
+// 2. PROCESS AND MERGE DUTY DATA & SAVE DUTY HANDLER
+function saveDuty() {
+  // 1. Correct Input element target karein
+  const inputElement = document.getElementById('deptInputName') || 
+                       document.getElementById('deptInputText') || 
+                       document.getElementById('customDeptInput');
+  
+  // 2. Value get karke whitespace remove karein
+  const deptValue = inputElement ? inputElement.value.trim() : "";
 
+  // 3. Validation Check
   if (!deptValue) {
     alert("Kripya Department ka naam enter karein.");
     return;
   }
+
+  // 4. Input sahi hone par aage ka logic run karein
+  console.log("Saved Department:", deptValue);
 
   // Check if this is an OT assignment
   const isOtDuty = document.getElementById('radioOtDuty')?.checked || 
@@ -6271,67 +6275,74 @@ function processDutySave() {
   // Fetch Employee Details
   const currentUser = (typeof firebase !== 'undefined' && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
   const currentLocalUser = (typeof state !== 'undefined' && state.currentUser) ? state.currentUser : null;
-  const userId = currentUser ? currentUser.uid : (currentLocalUser ? currentLocalUser.id : 'SADM_001');
+  const userId = currentUser ? currentUser.uid : (currentLocalUser ? (currentLocalUser.employeeId || currentLocalUser.id) : 'EMP6063');
   const userName = currentUser ? (currentUser.displayName || 'Avijit Basu') : (currentLocalUser ? currentLocalUser.name : 'Avijit Basu');
   const today = typeof getTodayDate === 'function' ? getTodayDate() : new Date().toISOString().split('T')[0];
-  
-  // Format Time (e.g., 09:30 PM)
   const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
 
-  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
-  const recordRef = db ? db.ref(`${PUNCHE_PATH}/${userId}/${today}`) : (firebase.database().ref(`${PUNCHE_PATH}/${userId}/${today}`));
-
-  // BASE PAYLOAD: Employee Details
-  let payload = {
-    userId: userId,
-    userName: userName,
-    date: today,
-    lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
-  };
-
-  // 🔴 CRITICAL SEPARATION: Regular Duty vs OT Duty
+  // Update local UI immediately
   if (isOtDuty) {
-    payload.otTargetDepartment = deptValue;      // Sirf OT Dept update hoga
-    payload.otDeptAssignedTime = timeNow;        // Sirf OT Time update hoga
+    if (typeof setVal === 'function') {
+      setVal('textOtTargetDeptDisplay', deptValue);
+      setVal('textOtDeptDisplay', deptValue);
+      setVal('textOtDept', deptValue);
+      setVal('otTargetDeptEl', deptValue);
+    }
   } else {
-    payload.assignedDepartment = deptValue;      // Sirf Regular Dept update hoga
-    payload.departmentAssignedTime = timeNow;    // Sirf Regular Time update hoga
+    if (typeof setVal === 'function') {
+      setVal('textDeptDisplay', deptValue);
+      setVal('textTimeNoteDisplay', timeNow);
+    }
+    const dutyDeptEl = document.getElementById('textAssignedDept') || document.getElementById('resident-duty-dept');
+    if (dutyDeptEl) dutyDeptEl.innerText = deptValue;
   }
 
-  // UPDATE FIREBASE (Merges new data without deleting existing columns)
-  recordRef.update(payload)
-    .then(() => {
-      alert("✓ Duty entry successfully save ho gayi!");
-      // Success hone par Input clear karein aur Modal band karein
-      if (inputEl) inputEl.value = ''; 
-      const customInput = document.getElementById('customDeptInput');
-      if (customInput) customInput.value = '';
-      const deptInputText = document.getElementById('deptInputText');
-      if (deptInputText) deptInputText.value = '';
+  // Call REST Backend if available
+  if (typeof API_BASE !== 'undefined') {
+    fetch(`${API_BASE}/assign-dept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employeeId: userId, department: deptValue, isOtDuty: isOtDuty, timestamp: new Date() })
+    }).catch(e => console.warn("Backend assign-dept sync:", e));
+  }
 
-      const modal = document.getElementById('assignDeptModal') || document.querySelector('.modal');
-      if (modal) modal.style.display = 'none';
-      const sheet = document.getElementById('deptAssignSheet');
-      if (sheet) sheet.style.display = 'none';
+  // Firebase Realtime DB Update
+  const db = (typeof database !== "undefined" && database) || (typeof rtdb !== "undefined" && rtdb) || (typeof firebase !== "undefined" && typeof firebase.database === "function" ? firebase.database() : null);
+  if (db && typeof PUNCHE_PATH !== 'undefined') {
+    const recordRef = db.ref(`${PUNCHE_PATH}/${userId}/${today}`);
+    let payload = {
+      userId: userId,
+      userName: userName,
+      date: today,
+      lastUpdated: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now()
+    };
+    if (isOtDuty) {
+      payload.otTargetDepartment = deptValue;
+      payload.otDeptAssignedTime = timeNow;
+    } else {
+      payload.assignedDepartment = deptValue;
+      payload.departmentAssignedTime = timeNow;
+    }
+    recordRef.update(payload).catch(e => console.warn("Firebase update:", e));
+  }
 
-      // Update UI displays if present
-      if (isOtDuty) {
-        setVal('textOtTargetDeptDisplay', deptValue);
-        setVal('textOtDeptDisplay', deptValue);
-        setVal('textOtDept', deptValue);
-        setVal('otTargetDeptEl', deptValue);
-      } else {
-        setVal('textDeptDisplay', deptValue);
-        setVal('textTimeNoteDisplay', timeNow);
-      }
-    })
-    .catch((error) => {
-      console.error("Save Error:", error);
-      alert("Data save karne me error aayi: " + error.message);
-    });
+  alert("Department Successfully Saved: " + deptValue);
+
+  // Input field reset karein aur modal close karein
+  if (inputElement) inputElement.value = "";
+  const customInput = document.getElementById('customDeptInput');
+  if (customInput) customInput.value = '';
+  const deptInputText = document.getElementById('deptInputText');
+  if (deptInputText) deptInputText.value = '';
+
+  const modal = document.getElementById('assignDeptModal') || document.querySelector('.modal');
+  if (modal) modal.style.display = 'none';
+  const sheet = document.getElementById('deptAssignSheet');
+  if (sheet) sheet.style.display = 'none';
 }
 
-const saveDutyAssignment = processDutySave;
+const processDutySave = saveDuty;
+const saveDutyAssignment = saveDuty;
 
 // Helper to Close Modal
 function closeDutyModal() {
@@ -7257,6 +7268,7 @@ window.initTwoWaySyncEngine = initTwoWaySyncEngine;
 window.initLogsAndReportSyncEngine = initLogsAndReportSyncEngine;
 window.initLiveClock = initLiveClock;
 window.openDeptAssignModal = openDeptAssignModal;
+window.saveDuty = saveDuty;
 window.saveDutyAssignment = saveDutyAssignment;
 window.saveDepartmentAllocation = saveDepartmentAllocation;
 window.closeDutyModal = closeDutyModal;

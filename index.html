@@ -1583,9 +1583,9 @@
       </div>
 
       <!-- Input Field & Save Button Row -->
-      <div style="display: flex; gap: 10px;">
-        <input type="text" id="deptInputText" placeholder="Type Department Name (e.g. ICU)" onkeydown="if(event.key==='Enter') processDutySave()" style="flex: 1; background: #e2e8f0; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; outline: none;">
-        <button id="btnSaveDutyModal" onclick="processDutySave()" style="background: #0284c7; color: #ffffff; border: none; padding: 12px 18px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
+      <div class="modal-body" style="display: flex; gap: 10px;">
+        <input type="text" id="deptInputName" placeholder="Department name enter karein (e.g. ICU)" onkeydown="if(event.key==='Enter') saveDuty()" class="input-field" style="flex: 1; background: #e2e8f0; color: #0f172a; border: none; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 14px; outline: none;">
+        <button id="btnSaveDutyModal" type="button" onclick="saveDuty()" class="btn-save" style="background: #0284c7; color: #ffffff; border: none; padding: 12px 18px; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 5px;">
           Save Duty ➔
         </button>
       </div>
