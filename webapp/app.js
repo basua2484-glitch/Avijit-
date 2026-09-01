@@ -5813,7 +5813,7 @@ function openDeptAssignModal() {
   const modal = document.getElementById('assignDeptModal') || document.getElementById('deptAssignSheet');
   if (!modal) return alert("Modal element missing in HTML!");
 
-  const inputField = document.getElementById('manualDeptInput') || document.getElementById('deptInputName') || document.getElementById('deptInputText') || document.getElementById('customDeptInput');
+  const inputField = document.getElementById('dutyDeptInputField') || document.getElementById('manualDeptInput') || document.getElementById('deptInputName') || document.getElementById('deptInputText') || document.getElementById('customDeptInput');
   if (inputField) inputField.value = '';
 
   const regularRadio = document.getElementById('radioRegularDuty') || document.querySelector('input[name="dutyType"][value="Regular"]');
@@ -6252,28 +6252,36 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// 2. PROCESS AND MERGE DUTY DATA & SAVE DUTY HANDLER
-function saveManualDuty() {
-  // 1. Manually typed input box ka data fetch karein
-  const inputElement = document.getElementById('manualDeptInput') || 
-                       document.getElementById('deptInputName') || 
-                       document.getElementById('deptInputText') || 
-                       document.getElementById('customDeptInput');
-  const deptName = inputElement ? inputElement.value.trim() : "";
+function saveDuty(event) {
+  if (event && typeof event.preventDefault === 'function') {
+    event.preventDefault(); // Form reload hone se rokein
+  }
 
-  // 2. Check karein ki user ne konsa radio button select kiya hai
-  const dutyTypeRadio = document.querySelector('input[name="dutyType"]:checked');
-  const dutyType = dutyTypeRadio ? dutyTypeRadio.value : (document.getElementById('radioOtDuty')?.checked ? 'OT' : 'Regular');
-  const isOtDuty = (dutyType === 'OT') || (dutyType === 'OT_DEPT');
+  // Direct unique ID se input fetch karein
+  const inputEl = document.getElementById('dutyDeptInputField') || 
+                  document.getElementById('manualDeptInput') || 
+                  document.getElementById('deptInputName') || 
+                  document.getElementById('deptInputText');
+  
+  // Input ki typed value read karein
+  const deptName = inputEl ? inputEl.value.trim() : "";
 
-  // 3. Agar box khali hai, toh error show karein
-  if (deptName === "") {
+  // Dynamic Validation Check
+  if (!deptName || deptName.length === 0) {
     alert("Kripya Department ka naam enter karein.");
     return;
   }
 
-  // 4. Update UI displays
+  // Value successfully read hone par
+  console.log("Department Saved:", deptName);
+
+  // Check if this is an OT assignment
+  const dutyTypeRadio = document.querySelector('input[name="dutyType"]:checked');
+  const dutyType = dutyTypeRadio ? dutyTypeRadio.value : (document.getElementById('radioOtDuty')?.checked ? 'OT' : 'Regular');
+  const isOtDuty = (dutyType === 'OT') || (dutyType === 'OT_DEPT');
   const timeNow = new Date().toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' });
+
+  // Update UI displays
   if (isOtDuty) {
     if (typeof setVal === 'function') {
       setVal('textOtTargetDeptDisplay', deptName);
@@ -6326,11 +6334,12 @@ function saveManualDuty() {
     recordRef.update(payload).catch(e => console.warn("Firebase update:", e));
   }
 
-  // 4. Data successfully save hone ka confirmation
-  alert(`Success! ${dutyType} duty assigned for department: ${deptName}`);
+  alert("Success! Department Saved: " + deptName);
 
-  // 5. Input box ko dobara khali kar dein aur modal close karein
-  if (inputElement) inputElement.value = "";
+  // Field clear karke modal close karein
+  if (inputEl) inputEl.value = "";
+  const dutyInputField = document.getElementById('dutyDeptInputField');
+  if (dutyInputField) dutyInputField.value = '';
   const manualInput = document.getElementById('manualDeptInput');
   if (manualInput) manualInput.value = '';
   const customInput = document.getElementById('customDeptInput');
@@ -6343,12 +6352,9 @@ function saveManualDuty() {
   closeDutyModal();
 }
 
-function saveDuty() {
-  saveManualDuty();
-}
-
-const processDutySave = saveManualDuty;
-const saveDutyAssignment = saveManualDuty;
+const saveManualDuty = saveDuty;
+const processDutySave = saveDuty;
+const saveDutyAssignment = saveDuty;
 
 // Helper to Close Modal
 function closeDutyModal() {

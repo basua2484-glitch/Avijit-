@@ -1568,11 +1568,11 @@
     <div id="assignDeptModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 999999; display: none; align-items: center; justify-content: center; padding: 15px;">
       
       <!-- HTML Structure for Manual Department Entry -->
-      <div class="modal-box" style="background: #1e293b; padding: 20px; border-radius: 12px; color: white; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid #334155; position: relative;">
+      <div class="modal-box modal-content" style="background: #1e293b; padding: 20px; border-radius: 12px; color: white; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid #334155; position: relative;">
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
           <h3 style="margin: 0; font-size: 16px; font-weight: bold; color: #38bdf8;">
-            📝 Assign Department / OT Duty
+            Assign Department / OT Duty
           </h3>
           <span onclick="closeDutyModal()" style="color: #94a3b8; font-size: 22px; cursor: pointer; line-height: 1; padding: 0 4px;">&times;</span>
         </div>
@@ -1587,13 +1587,14 @@
           </label>
         </div>
 
-        <!-- Manual Typing Input Box -->
+        <!-- Unique ID: dutyDeptInputField -->
         <div class="modal-body" style="margin-bottom: 15px;">
           <input 
             type="text" 
-            id="manualDeptInput" 
-            placeholder="Department manually type karein..." 
-            onkeydown="if(event.key==='Enter') saveManualDuty()"
+            id="dutyDeptInputField" 
+            placeholder="Department enter karein (e.g. ICU)" 
+            autocomplete="off"
+            onkeydown="if(event.key==='Enter') saveDuty(event)"
             class="input-field"
             style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: white; outline: none; font-size: 14px;"
           />
@@ -1603,7 +1604,7 @@
         <button 
           id="btnSaveDutyModal"
           type="button"
-          onclick="saveManualDuty()" 
+          onclick="saveDuty(event)" 
           class="btn-save"
           style="width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(2,132,199,0.3);">
           Save Duty ➔
