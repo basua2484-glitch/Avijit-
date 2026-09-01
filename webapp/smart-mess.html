@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Mess & Management System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans pb-10">
+
+  <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50 p-4 shadow-lg">
+    <div class="max-w-6xl mx-auto flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-blue-600 p-2.5 rounded-xl text-white font-bold"><i class="fa-solid font-bold fa-utensils"></i></div>
+        <div>
+          <h1 class="font-bold text-lg leading-none">Smart Mess Pro</h1>
+          <p class="text-xs text-slate-400 mt-1">Super Admin Dashboard • Live Duty</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <div id="firebaseStatusPill" class="flex items-center gap-1.5 bg-slate-900 border border-slate-700 px-2.5 py-1 rounded-full text-[11px] font-semibold text-slate-300">
+          <span id="firebaseStatusDot" class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <span id="firebaseStatusText">Firebase: Connecting...</span>
+        </div>
+      </div>
+      <nav class="flex gap-2 overflow-x-auto py-1 max-w-full text-xs font-semibold">
+        <button onclick="switchTab('kitchen')" id="btn-kitchen" class="tab-btn bg-blue-600 text-white px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-fire mr-1"></i> Kitchen Live</button>
+        <button onclick="switchTab('attendance')" id="btn-attendance" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-qrcode mr-1"></i> Attendance & Pause</button>
+        <button onclick="switchTab('billing')" id="btn-billing" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-file-invoice-dollar mr-1"></i> Billing & UPI</button>
+        <button onclick="switchTab('inventory')" id="btn-inventory" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory</button>
+        <button onclick="switchTab('analytics')" id="btn-analytics" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-chart-line mr-1"></i> Analytics</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4 space-y-6">
+
+    <section id="tab-kitchen" class="tab-content space-y-6">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Live On Duty / Served</p>
+          <p class="text-2xl font-bold text-green-400 mt-1" id="liveServed">0</p>
+          <span class="text-[10px] text-slate-500">Plates Scanned Today</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Expected Members</p>
+          <p class="text-2xl font-bold text-blue-400 mt-1" id="expectedMembers">45</p>
+          <span class="text-[10px] text-slate-500">Excluding Paused Meals</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Paused Meals Today</p>
+          <p class="text-2xl font-bold text-amber-400 mt-1" id="pausedCount">5</p>
+          <span class="text-[10px] text-slate-500">Saved Portions</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 p-4 rounded-xl">
+          <p class="text-xs text-slate-400 uppercase font-semibold">Rate Per Plate</p>
+          <p class="text-2xl font-bold text-purple-400 mt-1">₹50.00</p>
+          <span class="text-[10px] text-slate-500">Standard Plan</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl md:col-span-2 space-y-4">
+          <h2 class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-counter text-blue-400"></i> Counter Punch & Quick Serve</h2>
+          <div class="flex flex-wrap gap-3">
+            <button onclick="recordMeal('EMP6063', 'Avijit Basu')" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2.5 rounded-lg text-sm flex-1"><i class="fa-solid fa-plus mr-1"></i> Scan / Punch Plate (+1)</button>
+            <button onclick="resetCounter()" class="bg-slate-700 hover:bg-slate-600 text-slate-300 font-semibold px-4 py-2.5 rounded-lg text-sm"><i class="fa-solid fa-rotate-left mr-1"></i> Reset Counter</button>
+          </div>
+          <div class="mt-4 border-t border-slate-700 pt-4">
+            <h3 class="text-xs font-bold text-slate-400 uppercase mb-2"><i class="fa-solid fa-calendar-week text-amber-400"></i> Today's Special Menu</h3>
+            <div class="bg-slate-900/60 p-3 rounded-lg text-xs space-y-1">
+              <p><span class="text-slate-400">Lunch:</span> Shahi Paneer, Dal Tadka, Jeera Rice, Chapati, Salad</p>
+              <p><span class="text-slate-400">Dinner:</span> Mix Veg, Chana Dal, Rice, Phulka, Gulab Jamun</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-3">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-star text-amber-400"></i> Member Feedback</h2>
+          <div class="space-y-2 text-xs">
+            <label class="block text-slate-400">Rating (1 to 5 Stars):</label>
+            <select id="ratingSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white">
+              <option value="5">⭐⭐⭐⭐⭐ (5/5) Excellent</option>
+              <option value="4">⭐⭐⭐⭐ (4/5) Good</option>
+              <option value="3">⭐⭐⭐ (3/5) Average</option>
+              <option value="2">⭐⭐ (2/5) Needs Improvement</option>
+            </select>
+            <textarea id="feedbackComment" placeholder="Hygiene or taste comments..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white h-20 outline-none"></textarea>
+            <button onclick="submitFeedback()" class="w-full bg-amber-600 hover:bg-amber-700 font-semibold p-2 rounded-lg text-white">Submit Rating</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-attendance" class="tab-content hidden space-y-6">
+      <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-4">
+        <h2 class="font-bold text-base flex items-center gap-2"><i class="fa-solid fa-user-check text-green-400"></i> Digital Identification & Attendance</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input type="text" id="memberScanInput" placeholder="Scan QR / RFID / Member ID..." class="bg-slate-900 border border-slate-700 p-2.5 rounded-lg text-sm text-white outline-none">
+          <button onclick="manualMemberPunch()" class="bg-green-600 hover:bg-green-700 text-white font-semibold p-2.5 rounded-lg text-sm">Verify & Punch Entry</button>
+          <button onclick="simulateBiometric()" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold p-2.5 rounded-lg text-sm"><i class="fa-solid fa-fingerprint mr-1"></i> Biometric Scan</button>
+        </div>
+
+        <div class="border-t border-slate-700 pt-4 mt-4">
+          <h3 class="text-sm font-bold text-amber-400 mb-2"><i class="fa-solid fa-clock-rotate-left"></i> Meal Skip / Pause Lock System (2 Hours Prior)</h3>
+          <div class="bg-slate-900 p-4 rounded-xl flex flex-wrap justify-between items-center gap-4">
+            <div>
+              <p class="text-sm font-semibold">Avijit Basu (EMP6063) - Monthly Plan</p>
+              <p class="text-xs text-slate-400">Status: Currently Active for Dinner</p>
+            </div>
+            <button id="pauseBtn" onclick="toggleMealPause()" class="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg">Pause Today's Meal</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-billing" class="tab-content hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-4">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-calculator text-blue-400"></i> Automated Net Billing Calculator</h2>
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="text-slate-400 block mb-1">Select Member:</label>
+              <input type="text" value="Avijit Basu (EMP6063)" readonly class="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-slate-300">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-slate-400 block mb-1">Total Month Days:</label>
+                <input type="number" id="totalDays" value="30" class="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-white">
+              </div>
+              <div>
+                <label class="text-slate-400 block mb-1">Paused Meal Days:</label>
+                <input type="number" id="pausedDays" value="4" oninput="calculateNetBill()" class="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-white">
+              </div>
+            </div>
+            <div class="bg-slate-900 p-3 rounded-lg space-y-1">
+              <p>Base Monthly Plan: <span class="float-right font-semibold">₹3,000.00</span></p>
+              <p>Deduction (4 days skipped): <span class="float-right text-green-400 font-semibold">- ₹400.00</span></p>
+              <hr class="border-slate-800 my-1">
+              <p class="text-sm font-bold">Net Total Payable: <span class="float-right text-blue-400" id="netBillAmount">₹2,600.00</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-4">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-qrcode text-purple-400"></i> Dynamic UPI QR & Guest Token</h2>
+          <div class="bg-slate-900 p-4 rounded-xl text-center space-y-3">
+            <p class="text-xs text-slate-400">Scan to Pay Net Dues via PhonePe / GPay / Paytm</p>
+            <div class="flex justify-center">
+              <img id="upiQrCode" src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=mess@upi%26pn=MessManagement%26am=2600" alt="UPI QR" class="border-4 border-white rounded-lg">
+            </div>
+            <p class="text-xs font-mono text-purple-300">UPI ID: messmanager@upi</p>
+          </div>
+          <button onclick="printGuestToken()" class="w-full bg-slate-700 hover:bg-slate-600 text-xs font-bold p-2.5 rounded-lg text-white"><i class="fa-solid fa-ticket mr-1"></i> Print Instant Guest Coupon (₹60)</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-inventory" class="tab-content hidden space-y-6">
+      <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-4">
+        <div class="flex justify-between items-center">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-warehouse text-amber-400"></i> Stock In/Out & Low Stock Alerts</h2>
+          <span class="bg-red-500/20 text-red-400 border border-red-500/30 text-[10px] font-bold px-2.5 py-1 rounded-full"><i class="fa-solid fa-triangle-exclamation"></i> 2 Low Stock Alerts</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-300">
+            <thead class="bg-slate-900 text-slate-400 uppercase">
+              <tr>
+                <th class="p-3">Item Name</th>
+                <th class="p-3">Category</th>
+                <th class="p-3">Current Stock</th>
+                <th class="p-3">Min Threshold</th>
+                <th class="p-3">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-700">
+              <tr>
+                <td class="p-3 font-semibold">Basmati Rice</td>
+                <td class="p-3">Dry Ration</td>
+                <td class="p-3">120 Kg</td>
+                <td class="p-3">30 Kg</td>
+                <td class="p-3"><span class="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-[10px] font-bold">Sufficient</span></td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold">Amul Fresh Milk</td>
+                <td class="p-3">Daily Fresh</td>
+                <td class="p-3">4 Liters</td>
+                <td class="p-3">15 Liters</td>
+                <td class="p-3"><span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-[10px] font-bold">LOW STOCK</span></td>
+              </tr>
+              <tr>
+                <td class="p-3 font-semibold">Cooking Oil</td>
+                <td class="p-3">Grocery</td>
+                <td class="p-3">3 Liters</td>
+                <td class="p-3">10 Liters</td>
+                <td class="p-3"><span class="bg-red-500/20 text-red-400 px-2 py-0.5 rounded text-[10px] font-bold">LOW STOCK</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-analytics" class="tab-content hidden space-y-6">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-3">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-chart-pie text-green-400"></i> Daily Revenue vs Expenses</h2>
+          <div class="space-y-2 text-xs">
+            <div class="flex justify-between bg-slate-900 p-2.5 rounded-lg"><span>Total Mess Collection Today:</span><span class="text-green-400 font-bold">₹2,250.00</span></div>
+            <div class="flex justify-between bg-slate-900 p-2.5 rounded-lg"><span>Grocery & Vegetables Expense:</span><span class="text-red-400 font-bold">- ₹1,100.00</span></div>
+            <div class="flex justify-between bg-slate-900 p-2.5 rounded-lg"><span>LPG Gas & Labor Expense:</span><span class="text-red-400 font-bold">- ₹450.00</span></div>
+            <hr class="border-slate-700">
+            <div class="flex justify-between text-sm font-bold"><span>Net Profit Margin:</span><span class="text-blue-400">₹700.00</span></div>
+          </div>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-3">
+          <h2 class="font-bold text-base"><i class="fa-solid fa-trash-can-arrow-up text-red-400"></i> Food Wastage Analytics</h2>
+          <div class="bg-slate-900 p-4 rounded-lg space-y-2 text-xs">
+            <div class="flex justify-between"><span>Batch Cooked Quantity:</span><span>50 Portions</span></div>
+            <div class="flex justify-between"><span>Total Consumed:</span><span>45 Portions</span></div>
+            <div class="flex justify-between text-red-400 font-semibold"><span>Wastage Quantity:</span><span>5 Portions (10%)</span></div>
+            <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden mt-2">
+              <div class="bg-red-500 h-full w-[10%]"></div>
+            </div>
+            <p class="text-[10px] text-slate-500 mt-1">⚡ Tip: Reduce tomorrow's rice preparation batch by 2.5 kg to minimize waste.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Firebase SDKs (v10 Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyBmsF0FdATAAz3cRNHPJzAykO6FGOouHE",
+      authDomain: "hostel-management-96f81.firebaseapp.com",
+      databaseURL: "https://hostel-management-96f81-default-rtdb.firebaseio.com",
+      projectId: "hostel-management-96f81",
+      storageBucket: "hostel-management-96f81.firebasestorage.app",
+      messagingSenderId: "952292948322",
+      appId: "1:952292948322:web:ed54a71de1a647c887543b"
+    };
+
+    let rtdb = null;
+    let smartMessRef = null;
+    let isConnectedToCloud = false;
+
+    // 1. Initial State (Fallback to localStorage)
+    let state = JSON.parse(localStorage.getItem('smartMessData')) || {
+      served: 0,
+      pausedCount: 5,
+      isPaused: false,
+      lastUpdated: Date.now()
+    };
+
+    function updateSyncUI(online, msg) {
+      const dot = document.getElementById('firebaseStatusDot');
+      const text = document.getElementById('firebaseStatusText');
+      if (dot) {
+        dot.className = online 
+          ? "inline-block w-2 h-2 rounded-full bg-emerald-400" 
+          : "inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse";
+      }
+      if (text) {
+        text.innerText = msg || (online ? "Firebase: Live Synced ☁️" : "Firebase: Local Cache");
+      }
+    }
+
+    // Initialize Firebase Realtime Database
+    function initFirebase() {
+      try {
+        if (typeof firebase !== 'undefined') {
+          if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+          }
+          rtdb = firebase.database();
+          smartMessRef = rtdb.ref('hostel_mess_data/smart_mess_state');
+
+          // Realtime Listener: Real-time update across all devices and tab refreshes
+          smartMessRef.on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+              state.served = Number(data.served) || 0;
+              state.pausedCount = data.pausedCount !== undefined ? Number(data.pausedCount) : 5;
+              state.isPaused = Boolean(data.isPaused);
+              state.lastUpdated = data.lastUpdated || Date.now();
+              localStorage.setItem('smartMessData', JSON.stringify(state));
+              renderUI();
+            }
+            isConnectedToCloud = true;
+            updateSyncUI(true, "Firebase: Live Synced ☁️");
+          }, (err) => {
+            console.warn("Firebase listener warning:", err);
+            updateSyncUI(false, "Firebase: Reconnecting...");
+          });
+
+          // Also listen for Admin Stats
+          const adminStatsRef = rtdb.ref('hostel_mess_data/admin_stats');
+          adminStatsRef.on('value', (snap) => {
+            const val = snap.val();
+            if (val && typeof val.liveOnDuty !== 'undefined' && !state.served) {
+              state.served = Number(val.liveOnDuty) || 0;
+              renderUI();
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("Firebase initialization error:", e);
+        updateSyncUI(false, "Local Offline Mode");
+      }
+    }
+
+    // Save State to Firebase and localStorage
+    function saveState() {
+      state.lastUpdated = Date.now();
+      localStorage.setItem('smartMessData', JSON.stringify(state));
+      renderUI();
+
+      if (smartMessRef) {
+        smartMessRef.set({
+          served: state.served,
+          pausedCount: state.pausedCount,
+          isPaused: state.isPaused,
+          lastUpdated: state.lastUpdated
+        }).catch((err) => {
+          console.warn("Firebase write error:", err);
+        });
+
+        // Keep admin_stats synced
+        if (rtdb) {
+          rtdb.ref('hostel_mess_data/admin_stats').update({
+            liveOnDuty: state.served,
+            dinnerPlates: state.served,
+            lastUpdated: Date.now()
+          }).catch(() => {});
+        }
+      }
+    }
+
+    function renderUI() {
+      const servedEl = document.getElementById('liveServed');
+      if (servedEl) servedEl.innerText = state.served;
+
+      const pausedEl = document.getElementById('pausedCount');
+      if (pausedEl) pausedEl.innerText = state.pausedCount;
+
+      const expectedEl = document.getElementById('expectedMembers');
+      if (expectedEl) expectedEl.innerText = Math.max(0, 50 - state.pausedCount);
+      
+      const pauseBtn = document.getElementById('pauseBtn');
+      if (pauseBtn) {
+        if (state.isPaused) {
+          pauseBtn.innerText = "Resume Today's Meal";
+          pauseBtn.className = "bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg";
+        } else {
+          pauseBtn.innerText = "Pause Today's Meal";
+          pauseBtn.className = "bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-lg";
+        }
+      }
+    }
+
+    // 2. Navigation Tabs Switcher
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.replace('bg-blue-600', 'bg-slate-700');
+        btn.classList.replace('text-white', 'text-slate-300');
+      });
+
+      const tabEl = document.getElementById(`tab-${tabId}`);
+      if (tabEl) tabEl.classList.remove('hidden');
+      const activeBtn = document.getElementById(`btn-${tabId}`);
+      if (activeBtn) {
+        activeBtn.classList.replace('bg-slate-700', 'bg-blue-600');
+        activeBtn.classList.replace('text-slate-300', 'text-white');
+      }
+    }
+
+    // 3. Counter & Attendance Logic
+    function recordMeal(id, name) {
+      state.served++;
+      saveState();
+
+      // Log punch entry in Firebase if available
+      if (rtdb) {
+        const logEntry = {
+          userId: id || 'MEMBER',
+          userName: name || 'Member',
+          timestamp: Date.now(),
+          timeStr: new Date().toLocaleTimeString(),
+          dateStr: new Date().toISOString().split('T')[0],
+          type: 'MEAL_SERVED'
+        };
+        rtdb.ref('hostel_mess_data/meal_logs').push(logEntry).catch(() => {});
+      }
+
+      alert(`Plate Recorded (+1) for ${name} [${id}]`);
+    }
+
+    function resetCounter() {
+      if (confirm("Zero par reset karein?")) {
+        state.served = 0;
+        saveState();
+      }
+    }
+
+    function toggleMealPause() {
+      state.isPaused = !state.isPaused;
+      state.pausedCount += state.isPaused ? 1 : -1;
+      if (state.pausedCount < 0) state.pausedCount = 0;
+      saveState();
+      alert(state.isPaused ? "Meal Paused Successfully!" : "Meal Resumed!");
+    }
+
+    function manualMemberPunch() {
+      const val = document.getElementById('memberScanInput').value;
+      if (!val) return alert("Kripya ID/QR enter karein!");
+      recordMeal(val, "Member");
+      document.getElementById('memberScanInput').value = "";
+    }
+
+    function simulateBiometric() {
+      recordMeal("BIO-992", "Biometric User");
+    }
+
+    // 4. Billing Logic
+    function calculateNetBill() {
+      const paused = parseInt(document.getElementById('pausedDays').value) || 0;
+      const net = 3000 - (paused * 100);
+      document.getElementById('netBillAmount').innerText = `₹${net.toFixed(2)}`;
+      document.getElementById('upiQrCode').src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=upi://pay?pa=mess@upi%26pn=MessManagement%26am=${net}`;
+    }
+
+    function printGuestToken() {
+      if (rtdb) {
+        rtdb.ref('hostel_mess_data/guest_tokens').push({
+          amount: 60,
+          issuedAt: Date.now(),
+          dateStr: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
+      }
+      alert("🎟️ GUEST TOKEN PRINTED!\nAmount Paid: ₹60.00\nValid for 1 Time Meal Today.");
+    }
+
+    function submitFeedback() {
+      const rating = document.getElementById('ratingSelect')?.value || '5';
+      const comment = document.getElementById('feedbackComment')?.value || '';
+      
+      if (rtdb) {
+        rtdb.ref('hostel_mess_data/feedbacks').push({
+          rating: Number(rating),
+          comment: comment,
+          submittedAt: Date.now(),
+          dateStr: new Date().toISOString().split('T')[0]
+        }).catch(() => {});
+      }
+
+      alert("Feedback and Rating Saved Successfully!");
+      if (document.getElementById('feedbackComment')) {
+        document.getElementById('feedbackComment').value = "";
+      }
+    }
+
+    // Initial Load & Attach Firebase Listener
+    document.addEventListener('DOMContentLoaded', () => {
+      renderUI();
+      initFirebase();
+    });
+  </script>
+</body>
+</html>
