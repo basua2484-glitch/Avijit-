@@ -26,6 +26,7 @@
       </div>
       <nav class="flex gap-2 overflow-x-auto py-1 max-w-full text-xs font-semibold">
         <button onclick="switchTab('kitchen')" id="btn-kitchen" class="tab-btn bg-blue-600 text-white px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-fire mr-1"></i> Kitchen Live</button>
+        <button onclick="switchTab('shifts')" id="btn-shifts" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-user-clock mr-1"></i> Shifts & OT</button>
         <button onclick="switchTab('attendance')" id="btn-attendance" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-qrcode mr-1"></i> Attendance & Pause</button>
         <button onclick="switchTab('billing')" id="btn-billing" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-file-invoice-dollar mr-1"></i> Billing & UPI</button>
         <button onclick="switchTab('inventory')" id="btn-inventory" class="tab-btn bg-slate-700 text-slate-300 px-3 py-2 rounded-lg whitespace-nowrap"><i class="fa-solid fa-boxes-stacked mr-1"></i> Inventory</button>
@@ -88,6 +89,79 @@
             </select>
             <textarea id="feedbackComment" placeholder="Hygiene or taste comments..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-white h-20 outline-none"></textarea>
             <button onclick="submitFeedback()" class="w-full bg-amber-600 hover:bg-amber-700 font-semibold p-2 rounded-lg text-white">Submit Rating</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SHIFT & OT ALLOCATION MODULE (3 SHIFTS FOR REGULAR & OT) -->
+    <section id="tab-shifts" class="tab-content hidden space-y-6">
+      <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+          <h2 class="font-bold text-base flex items-center gap-2">
+            <i class="fa-solid fa-user-clock text-amber-400"></i> Shift & Department Duty Manager
+          </h2>
+          <span class="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full font-semibold">3-Shift System Active</span>
+        </div>
+
+        <form id="dutyAllocationForm" onsubmit="saveShiftDuty(event)" class="space-y-4">
+          
+          <!-- Duty Type Selector -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-2 font-semibold">1. SELECT DUTY TYPE</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="flex items-center gap-2 bg-slate-900 p-3 rounded-lg cursor-pointer border border-slate-700 hover:border-blue-500">
+                <input type="radio" name="dutyType" value="regular" checked onclick="toggleShiftMode('regular')" class="accent-blue-500">
+                <span class="text-xs font-bold text-slate-200">Regular Dept Duty</span>
+              </label>
+              <label class="flex items-center gap-2 bg-slate-900 p-3 rounded-lg cursor-pointer border border-slate-700 hover:border-amber-500">
+                <input type="radio" name="dutyType" value="ot" onclick="toggleShiftMode('ot')" class="accent-amber-500">
+                <span class="text-xs font-bold text-slate-200">OT Specific Dept</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 3 Shift Selection Tabs -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-2 font-semibold" id="shiftLabel">2. SELECT SHIFT (REGULAR)</label>
+            <div class="grid grid-cols-3 gap-2">
+              <button type="button" onclick="selectShift('Morning')" id="shift-morning" class="shift-btn bg-blue-600 text-white p-2.5 rounded-lg text-xs font-semibold text-center">
+                🌅 Morning<br><span class="text-[10px] opacity-80">(06:00 AM - 02:00 PM)</span>
+              </button>
+              <button type="button" onclick="selectShift('Evening')" id="shift-evening" class="shift-btn bg-slate-900 text-slate-400 p-2.5 rounded-lg text-xs font-semibold text-center hover:bg-slate-700">
+                🌇 Evening<br><span class="text-[10px] opacity-80">(02:00 PM - 10:00 PM)</span>
+              </button>
+              <button type="button" onclick="selectShift('Night')" id="shift-night" class="shift-btn bg-slate-900 text-slate-400 p-2.5 rounded-lg text-xs font-semibold text-center hover:bg-slate-700">
+                🌙 Night<br><span class="text-[10px] opacity-80">(10:00 PM - 06:00 AM)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Department Name Input -->
+          <div>
+            <label class="block text-xs text-slate-400 mb-1 font-semibold">3. DEPARTMENT NAME</label>
+            <input 
+              type="text" 
+              id="shiftDeptInput" 
+              placeholder="Enter Dept (e.g. ICU, Kitchen, Admin)" 
+              class="w-full bg-slate-900 border border-slate-700 p-3 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold p-3 rounded-lg text-sm flex items-center justify-center gap-2">
+            <i class="fa-solid fa-floppy-disk"></i> Save Shift & Duty Allocation
+          </button>
+        </form>
+
+        <!-- Saved Logs View -->
+        <div class="border-t border-slate-700 pt-4">
+          <div class="flex justify-between items-center mb-2">
+            <h3 class="text-xs font-bold text-slate-400 uppercase">Active Allocated Shifts</h3>
+            <button type="button" onclick="clearAllShifts()" class="text-[10px] text-slate-500 hover:text-red-400 transition-colors">Clear History</button>
+          </div>
+          <div id="allocatedShiftList" class="space-y-2 text-xs">
+            <!-- Dynamic list items will load here -->
           </div>
         </div>
       </div>
@@ -468,9 +542,97 @@
       }
     }
 
+    // 5. Shift & OT Allocation Logic
+    let selectedShift = 'Morning';
+    let currentDutyType = 'regular';
+
+    function toggleShiftMode(type) {
+      currentDutyType = type;
+      const label = document.getElementById('shiftLabel');
+      if (label) {
+        label.innerText = type === 'regular' ? '2. SELECT SHIFT (REGULAR)' : '2. SELECT SHIFT (OVERTIME - OT)';
+      }
+    }
+
+    function selectShift(shiftName) {
+      selectedShift = shiftName;
+      document.querySelectorAll('.shift-btn').forEach(btn => {
+        btn.className = 'shift-btn bg-slate-900 text-slate-400 p-2.5 rounded-lg text-xs font-semibold text-center hover:bg-slate-700';
+      });
+      
+      const activeBtn = document.getElementById(`shift-${shiftName.toLowerCase()}`);
+      if (activeBtn) {
+        activeBtn.className = 'shift-btn bg-blue-600 text-white p-2.5 rounded-lg text-xs font-semibold text-center';
+      }
+    }
+
+    function saveShiftDuty(e) {
+      if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      const deptInput = document.getElementById('shiftDeptInput');
+      const deptName = deptInput ? deptInput.value.trim() : '';
+
+      if (!deptName) {
+        alert("Kripya Department ka naam enter karein.");
+        return;
+      }
+
+      const shiftData = JSON.parse(localStorage.getItem('allocatedShifts')) || [];
+      const newEntry = {
+        id: Date.now(),
+        type: currentDutyType.toUpperCase(),
+        shift: selectedShift,
+        department: deptName,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        dateStr: new Date().toISOString().split('T')[0]
+      };
+
+      shiftData.unshift(newEntry);
+      localStorage.setItem('allocatedShifts', JSON.stringify(shiftData));
+
+      // Push to Firebase Realtime DB
+      if (rtdb) {
+        rtdb.ref('hostel_mess_data/allocated_shifts').push(newEntry).catch((err) => {
+          console.warn("Firebase shift allocation push error:", err);
+        });
+      }
+
+      if (deptInput) deptInput.value = '';
+      renderShiftLogs();
+      alert(`Success! ${newEntry.type} (${selectedShift} Shift) saved for Department: ${deptName}`);
+    }
+
+    function renderShiftLogs() {
+      const shiftData = JSON.parse(localStorage.getItem('allocatedShifts')) || [];
+      const container = document.getElementById('allocatedShiftList');
+      if (!container) return;
+
+      if (shiftData.length === 0) {
+        container.innerHTML = '<p class="text-slate-500 italic py-2 text-center bg-slate-900/50 rounded-lg">No active duty allocations found.</p>';
+        return;
+      }
+
+      container.innerHTML = shiftData.slice(0, 8).map(item => `
+        <div class="bg-slate-900 p-2.5 rounded-lg flex justify-between items-center border-l-4 ${item.type === 'OT' ? 'border-amber-500' : 'border-blue-500'}">
+          <div>
+            <span class="font-bold text-white">${item.department}</span> 
+            <span class="text-[10px] ${item.type === 'OT' ? 'text-amber-400' : 'text-blue-400'} font-semibold">(${item.type} - ${item.shift} Shift)</span>
+          </div>
+          <span class="text-[10px] text-slate-500">${item.time || ''}</span>
+        </div>
+      `).join('');
+    }
+
+    function clearAllShifts() {
+      if (confirm("Clear all shift logs history?")) {
+        localStorage.removeItem('allocatedShifts');
+        renderShiftLogs();
+      }
+    }
+
     // Initial Load & Attach Firebase Listener
     document.addEventListener('DOMContentLoaded', () => {
       renderUI();
+      renderShiftLogs();
       initFirebase();
     });
   </script>
