@@ -104,7 +104,7 @@
           <span class="text-xs bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full font-semibold">3-Shift System Active</span>
         </div>
 
-        <form id="dutyAllocationForm" onsubmit="saveShiftDuty(event)" class="space-y-4">
+        <form id="dutyAllocationForm" onsubmit="saveDuty(event)" class="space-y-4">
           
           <!-- Duty Type Selector -->
           <div>
@@ -384,6 +384,20 @@
               renderUI();
             }
           });
+
+          // Realtime Listener for Shift & Duty Allocations
+          const dutyAllocationsRef = rtdb.ref('hostel_mess_data/duty_allocations');
+          dutyAllocationsRef.limitToLast(20).on('value', (snap) => {
+            const val = snap.val();
+            if (val) {
+              const entries = Object.keys(val).map(key => ({
+                id: key,
+                ...val[key]
+              })).reverse();
+              localStorage.setItem('allocatedShifts', JSON.stringify(entries));
+              renderShiftLogs(entries);
+            }
+          });
         }
       } catch (e) {
         console.warn("Firebase initialization error:", e);
@@ -566,43 +580,57 @@
       }
     }
 
-    function saveShiftDuty(e) {
+    function saveDuty(e) {
       if (e && typeof e.preventDefault === 'function') e.preventDefault();
-      const deptInput = document.getElementById('shiftDeptInput');
+
+      const deptInput = document.getElementById('shiftDeptInput') || document.getElementById('dutyDeptInput');
       const deptName = deptInput ? deptInput.value.trim() : '';
+      const dutyType = document.querySelector('input[name="dutyType"]:checked')?.value || currentDutyType || 'regular';
 
       if (!deptName) {
         alert("Kripya Department ka naam enter karein.");
         return;
       }
 
-      const shiftData = JSON.parse(localStorage.getItem('allocatedShifts')) || [];
       const newEntry = {
-        id: Date.now(),
-        type: currentDutyType.toUpperCase(),
-        shift: selectedShift,
         department: deptName,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        dateStr: new Date().toISOString().split('T')[0]
+        dutyType: dutyType.toUpperCase(),
+        shift: typeof selectedShift !== 'undefined' ? selectedShift : 'Morning',
+        timestamp: (typeof firebase !== 'undefined' && firebase.database && firebase.database.ServerValue) ? firebase.database.ServerValue.TIMESTAMP : Date.now(),
+        date: new Date().toLocaleDateString(),
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
 
-      shiftData.unshift(newEntry);
+      // Local Cache Backup
+      const shiftData = JSON.parse(localStorage.getItem('allocatedShifts')) || [];
+      shiftData.unshift({ id: Date.now(), ...newEntry });
       localStorage.setItem('allocatedShifts', JSON.stringify(shiftData));
-
-      // Push to Firebase Realtime DB
-      if (rtdb) {
-        rtdb.ref('hostel_mess_data/allocated_shifts').push(newEntry).catch((err) => {
-          console.warn("Firebase shift allocation push error:", err);
-        });
-      }
-
-      if (deptInput) deptInput.value = '';
       renderShiftLogs();
-      alert(`Success! ${newEntry.type} (${selectedShift} Shift) saved for Department: ${deptName}`);
+
+      // Firebase Node Path: hostel_mess_data/duty_allocations
+      const database = (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) ? firebase.database() : rtdb;
+      if (database) {
+        const dutyRef = database.ref('hostel_mess_data/duty_allocations');
+        dutyRef.push(newEntry)
+          .then(() => {
+            alert(`Success! ${deptName} (${dutyType.toUpperCase()}) Firebase me save ho gaya.`);
+            if (deptInput) deptInput.value = '';
+          })
+          .catch((error) => {
+            console.error("Firebase Push Error:", error);
+            alert("Firebase me data save nahi ho paya: " + error.message);
+          });
+      } else {
+        alert(`Success! ${dutyType.toUpperCase()} (${selectedShift} Shift) saved locally for Department: ${deptName}`);
+        if (deptInput) deptInput.value = '';
+      }
     }
 
-    function renderShiftLogs() {
-      const shiftData = JSON.parse(localStorage.getItem('allocatedShifts')) || [];
+    // Alias for backward compatibility
+    const saveShiftDuty = saveDuty;
+
+    function renderShiftLogs(customList) {
+      const shiftData = customList || JSON.parse(localStorage.getItem('allocatedShifts')) || [];
       const container = document.getElementById('allocatedShiftList');
       if (!container) return;
 
@@ -611,21 +639,72 @@
         return;
       }
 
-      container.innerHTML = shiftData.slice(0, 8).map(item => `
-        <div class="bg-slate-900 p-2.5 rounded-lg flex justify-between items-center border-l-4 ${item.type === 'OT' ? 'border-amber-500' : 'border-blue-500'}">
-          <div>
-            <span class="font-bold text-white">${item.department}</span> 
-            <span class="text-[10px] ${item.type === 'OT' ? 'text-amber-400' : 'text-blue-400'} font-semibold">(${item.type} - ${item.shift} Shift)</span>
+      container.innerHTML = shiftData.slice(0, 10).map(item => {
+        const isOT = (item.dutyType || item.type) === 'OT';
+        const typeDisplay = item.dutyType || item.type || 'REGULAR';
+        const shiftDisplay = item.shift || 'Morning';
+        const deptDisplay = item.department || 'General';
+        const timeDisplay = item.time || (item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
+
+        return `
+          <div class="bg-slate-900 p-2.5 rounded-lg flex justify-between items-center border-l-4 ${isOT ? 'border-amber-500' : 'border-blue-500'}">
+            <div>
+              <span class="font-bold text-white">${deptDisplay}</span> 
+              <span class="text-[10px] ${isOT ? 'text-amber-400' : 'text-blue-400'} font-semibold">(${typeDisplay} - ${shiftDisplay} Shift)</span>
+            </div>
+            <span class="text-[10px] text-slate-500">${timeDisplay}</span>
           </div>
-          <span class="text-[10px] text-slate-500">${item.time || ''}</span>
-        </div>
-      `).join('');
+        `;
+      }).join('');
+    }
+
+    // Realtime Database Listener for Shift & Duty Allocations
+    function listenToFirebaseDuties() {
+      const database = (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length) ? firebase.database() : rtdb;
+      if (!database) return;
+
+      const dutyRef = database.ref('hostel_mess_data/duty_allocations');
+
+      // Firebase Realtime Listener
+      dutyRef.on('value', (snapshot) => {
+        const container = document.getElementById('allocatedShiftList');
+        if (!container) return;
+
+        const data = snapshot.val();
+        if (!data) {
+          container.innerHTML = '<p class="text-slate-500 text-xs italic py-2 text-center bg-slate-900/50 rounded-lg">Koi active duty record nahi hai.</p>';
+          return;
+        }
+
+        let html = '';
+        // Unique Firebase Keys se Data Fetch karke Latest entries upar dikhayein
+        Object.keys(data).reverse().slice(0, 10).forEach(key => {
+          const item = data[key];
+          const isOT = item.dutyType === 'OT' || item.type === 'OT';
+          const dutyTypeStr = item.dutyType || item.type || 'REGULAR';
+          const shiftStr = item.shift || 'Morning';
+          const timeStr = item.time || (item.timestamp ? new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
+
+          html += `
+            <div class="bg-slate-900 p-2.5 rounded-lg flex justify-between items-center border-l-4 ${isOT ? 'border-amber-500' : 'border-blue-500'}">
+              <div>
+                <span class="font-bold text-white text-xs">${item.department || 'Department'}</span> 
+                <span class="text-[10px] ${isOT ? 'text-amber-400' : 'text-slate-400'} font-semibold">(${dutyTypeStr} - ${shiftStr})</span>
+              </div>
+              <span class="text-[10px] text-slate-500">${timeStr}</span>
+            </div>
+          `;
+        });
+
+        container.innerHTML = html;
+      });
     }
 
     function clearAllShifts() {
       if (confirm("Clear all shift logs history?")) {
         localStorage.removeItem('allocatedShifts');
-        renderShiftLogs();
+        const container = document.getElementById('allocatedShiftList');
+        if (container) container.innerHTML = '<p class="text-slate-500 text-xs italic py-2 text-center bg-slate-900/50 rounded-lg">Koi active duty record nahi hai.</p>';
       }
     }
 
@@ -634,6 +713,7 @@
       renderUI();
       renderShiftLogs();
       initFirebase();
+      listenToFirebaseDuties();
     });
   </script>
 </body>
